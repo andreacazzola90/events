@@ -1,103 +1,132 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import ImageUploader from './components/ImageUploader';
+import { EventData } from './types/event';
+import EventDisplay from './components/EventDisplay';
+import EventList from './components/EventList';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    const [eventData, setEventData] = useState<EventData | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'upload' | 'list'>('upload');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+    useEffect(() => {
+        return () => {
+            // Cleanup any object URLs when component unmounts
+            if (eventData?.imageUrl) {
+                URL.revokeObjectURL(eventData.imageUrl);
+            }
+        };
+    }, []);
+
+    const handleNewEventData = (data: EventData) => {
+        // Cleanup previous image URL if it exists
+        if (eventData?.imageUrl) {
+            URL.revokeObjectURL(eventData.imageUrl);
+        }
+        setEventData(data);
+        setError(null);
+    };
+
+    const handleSave = async (updatedData: EventData) => {
+        setEventData(updatedData);
+        try {
+            // Check if there's an image URL that needs to be uploaded
+            if (updatedData.imageUrl && updatedData.imageUrl.startsWith('blob:')) {
+                const response = await fetch(updatedData.imageUrl);
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('eventData', JSON.stringify(updatedData));
+                formData.append('image', blob, 'event-image.jpg');
+
+                const saveResponse = await fetch('/api/events', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (saveResponse.ok) {
+                    console.log('Event saved successfully');
+                } else {
+                    console.error('Failed to save event');
+                }
+            } else {
+                // No image upload needed, use regular JSON
+                const response = await fetch('/api/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(updatedData),
+                });
+
+                if (response.ok) {
+                    console.log('Event saved successfully');
+                } else {
+                    console.error('Failed to save event');
+                }
+            }
+        } catch (error) {
+            console.error('Error saving event:', error);
+        }
+    };
+
+    return (
+        <main className="min-h-screen p-8">
+            <div className="max-w-6xl mx-auto space-y-8">
+                <div className="text-center space-y-4">
+                    <h1 className="text-4xl font-bold">Event Image Scanner</h1>
+                    <p className="text-xl text-gray-600">
+                        Carica l'immagine di un evento e lascia che l'AI estragga tutte le informazioni
+                    </p>
+                </div>
+
+                {/* Tab Navigation */}
+                <div className="flex justify-center">
+                    <div className="bg-white rounded-lg shadow-md p-1">
+                        <button
+                            onClick={() => setActiveTab('upload')}
+                            className={`px-6 py-2 rounded-md transition-colors ${activeTab === 'upload'
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-600 hover:bg-gray-100'
+                                }`}
+                        >
+                            Carica Evento
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('list')}
+                            className={`px-6 py-2 rounded-md transition-colors ${activeTab === 'list'
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-600 hover:bg-gray-100'
+                                }`}
+                        >
+                            Eventi Salvati
+                        </button>
+                    </div>
+                </div>
+
+                {activeTab === 'upload' && (
+                    <div className="space-y-8">
+                        <ImageUploader
+                            onProcessed={handleNewEventData}
+                            onError={(message: string) => {
+                                setError(message);
+                                setEventData(null);
+                            }}
+                        />
+
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
+                                {error}
+                            </div>
+                        )}
+
+                        {eventData && <EventDisplay eventData={eventData} onSave={handleSave} />}
+                    </div>
+                )}
+
+                {activeTab === 'list' && <EventList />}
+            </div>
+        </main>
+    );
 }

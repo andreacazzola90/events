@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractTextFromImage, parseEventData } from '../../lib/ocr';
+import { analyzeEventImageGroq } from '../../lib/groqVision';
 
 
 export async function POST(request: NextRequest) {
@@ -14,23 +14,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert File to Buffer
-    // Log per debug
     console.log('Ricevuto file:', file.name, 'Size:', file.size, 'Type:', file.type);
 
-    // Extract text from image using the file directly
-    const rawText = await extractTextFromImage(file);
-    
-    // Log per debug
-    console.log('Testo estratto:', rawText);
-
-    // Parse the extracted text into structured event data
-    const eventData = parseEventData(rawText);
+    const events = await analyzeEventImageGroq(file);
+    const engine = 'groq';
 
     // Log per debug
-    console.log('Dati evento estratti:', eventData);
+  console.log(`Eventi estratti (${engine}):`, events.length);
 
-    return NextResponse.json(eventData);
+    return NextResponse.json({
+      engine,
+      events,
+      count: events.length
+    });
   } catch (error) {
     // Log dettagliato dell'errore
     console.error('Errore dettagliato:', error);

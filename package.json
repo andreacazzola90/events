@@ -6,19 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+  "ocr:test": "echo 'No OpenAI test. Using API Ninjas OCR.'"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
     "@types/tesseract.js": "^0.0.2",
     "axios": "^1.13.1",
+    "dotenv": "^17.2.3",
     "form-data": "^4.0.4",
     "next": "^16.0.1",
     "prisma": "^6.18.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-dropzone": "^14.3.8",
-    "tesseract.js": "^4.1.4"
+  "tesseract.js": "^4.1.4",
+  "groq-sdk": "^0.5.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

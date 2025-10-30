@@ -4,71 +4,93 @@ import { useState, useEffect } from 'react';
 import ImageUploader from './components/ImageUploader';
 import { EventData } from './types/event';
 import EventDisplay from './components/EventDisplay';
+import MultipleEventsEditor from './components/MultipleEventsEditor';
 import EventList from './components/EventList';
 
 export default function Home() {
-    const [eventData, setEventData] = useState<EventData | null>(null);
+    const [events, setEvents] = useState<EventData[]>([]);
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'upload' | 'list'>('upload');
+    const [activeTab, setActiveTab] = useState<'upload' | 'list'>('list');
 
     useEffect(() => {
         return () => {
             // Cleanup any object URLs when component unmounts
-            if (eventData?.imageUrl) {
-                URL.revokeObjectURL(eventData.imageUrl);
+            if (imageUrl) {
+                URL.revokeObjectURL(imageUrl);
             }
         };
-    }, []);
+    }, [imageUrl]);
 
-    const handleNewEventData = (data: EventData) => {
+    const handleNewEvents = (newEvents: EventData[], newImageUrl: string) => {
         // Cleanup previous image URL if it exists
-        if (eventData?.imageUrl) {
-            URL.revokeObjectURL(eventData.imageUrl);
+        if (imageUrl) {
+            URL.revokeObjectURL(imageUrl);
         }
-        setEventData(data);
+        // Assicura che ogni evento abbia imageUrl valorizzato
+        const eventsWithImage = newEvents.map(ev => ({
+            ...ev,
+            imageUrl: ev.imageUrl || newImageUrl
+        }));
+        setEvents(eventsWithImage);
+        setImageUrl(newImageUrl);
         setError(null);
     };
 
-    const handleSave = async (updatedData: EventData) => {
-        setEventData(updatedData);
+    const handleSaveAll = async (eventsToSave: EventData[]) => {
         try {
-            // Check if there's an image URL that needs to be uploaded
-            if (updatedData.imageUrl && updatedData.imageUrl.startsWith('blob:')) {
-                const response = await fetch(updatedData.imageUrl);
-                const blob = await response.blob();
-                const formData = new FormData();
-                formData.append('eventData', JSON.stringify(updatedData));
-                formData.append('image', blob, 'event-image.jpg');
+            // Save each event
+            for (const eventData of eventsToSave) {
+                // Check if there's an image URL that needs to be uploaded
+                if (eventData.imageUrl && eventData.imageUrl.startsWith('blob:')) {
+                    const response = await fetch(eventData.imageUrl);
+                    const blob = await response.blob();
+                    const formData = new FormData();
+                    formData.append('eventData', JSON.stringify(eventData));
+                    formData.append('image', blob, 'event-image.jpg');
 
-                const saveResponse = await fetch('/api/events', {
-                    method: 'POST',
-                    body: formData,
-                });
+                    const saveResponse = await fetch('/api/events', {
+                        method: 'POST',
+                        body: formData,
+                    });
 
-                if (saveResponse.ok) {
-                    console.log('Event saved successfully');
+                    if (!saveResponse.ok) {
+                        throw new Error(`Failed to save event: ${eventData.title}`);
+                    }
                 } else {
-                    console.error('Failed to save event');
-                }
-            } else {
-                // No image upload needed, use regular JSON
-                const response = await fetch('/api/events', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(updatedData),
-                });
+                    // No image upload needed, use regular JSON
+                    const response = await fetch('/api/events', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(eventData),
+                    });
 
-                if (response.ok) {
-                    console.log('Event saved successfully');
-                } else {
-                    console.error('Failed to save event');
+                    if (!response.ok) {
+                        throw new Error(`Failed to save event: ${eventData.title}`);
+                    }
                 }
             }
+
+            console.log(`Successfully saved ${eventsToSave.length} events`);
+
+            // Reset state after successful save
+            setEvents([]);
+            setImageUrl(null);
+
+            // Switch to list view to see the saved events
+            setActiveTab('list');
         } catch (error) {
-            console.error('Error saving event:', error);
+            console.error('Error saving events:', error);
+            throw error; // Re-throw to let the MultipleEventsEditor handle it
         }
+    };
+
+    const handleSaveSingle = (updatedData: EventData) => {
+        // Aggiorna solo lo stato locale dell'evento modificato
+        setEvents(prev => prev.map(ev => ev === events[0] ? updatedData : ev));
+        // Non cambiare tab, non mostrare lista eventi
     };
 
     return (
@@ -108,10 +130,11 @@ export default function Home() {
                 {activeTab === 'upload' && (
                     <div className="space-y-8">
                         <ImageUploader
-                            onProcessed={handleNewEventData}
+                            onProcessed={handleNewEvents}
                             onError={(message: string) => {
                                 setError(message);
-                                setEventData(null);
+                                setEvents([]);
+                                setImageUrl(null);
                             }}
                         />
 
@@ -121,7 +144,15 @@ export default function Home() {
                             </div>
                         )}
 
-                        {eventData && <EventDisplay eventData={eventData} onSave={handleSave} />}
+                        {events.length > 1 ? (
+                            <MultipleEventsEditor
+                                events={events}
+                                imageUrl={imageUrl || undefined}
+                                onSaveAll={handleSaveAll}
+                            />
+                        ) : events.length === 1 ? (
+                            <EventDisplay eventData={events[0]} onSave={handleSaveSingle} />
+                        ) : null}
                     </div>
                 )}
 

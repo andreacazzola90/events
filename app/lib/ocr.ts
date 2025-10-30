@@ -36,6 +36,78 @@ export async function extractTextFromImage(imageFile: File): Promise<string> {
   }
 }
 
+/**
+ * Analizza il testo grezzo ed estrae uno o più eventi
+ */
+export function parseMultipleEvents(rawText: string): EventData[] {
+  const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
+  
+  // Cerca separatori di eventi o pattern che indicano multipli eventi
+  const eventBoundaries = findEventBoundaries(lines);
+  
+  if (eventBoundaries.length <= 1) {
+    // Un solo evento trovato
+    return [parseEventData(rawText)];
+  }
+  
+  // Multipli eventi trovati - dividi il testo e parsa ciascun evento
+  const events: EventData[] = [];
+  for (let i = 0; i < eventBoundaries.length; i++) {
+    const start = eventBoundaries[i];
+    const end = i < eventBoundaries.length - 1 ? eventBoundaries[i + 1] : lines.length;
+    const eventLines = lines.slice(start, end);
+    const eventText = eventLines.join('\n');
+    
+    if (eventText.trim()) {
+      events.push(parseEventData(eventText));
+    }
+  }
+  
+  return events.filter(event => event.title); // Filtra eventi vuoti
+}
+
+/**
+ * Trova i confini tra multipli eventi nel testo
+ */
+function findEventBoundaries(lines: string[]): number[] {
+  const boundaries: number[] = [0]; // Il primo evento inizia sempre a 0
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    const prevLine = lines[i - 1];
+    
+    // Pattern che indicano l'inizio di un nuovo evento:
+    // 1. Una data seguita da un possibile titolo in maiuscolo
+    // 2. Separatori visivi (----, ===, etc.)
+    // 3. Keywords come "Evento:", "Event:", etc.
+    // 4. Due date consecutive (suggerisce due eventi diversi)
+    
+    const hasDate = /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(line) || 
+                    /\d{1,2}\s+(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\.?\s+\d{2,4}/i.test(line);
+    const prevHasDate = /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(prevLine) || 
+                        /\d{1,2}\s+(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\.?\s+\d{2,4}/i.test(prevLine);
+    
+    const isSeparator = /^[\-=_]{3,}$/.test(line);
+    const isEventKeyword = /^(evento|event|events|eventi)[:]/i.test(line);
+    const isUppercaseTitle = line.length > 5 && line === line.toUpperCase() && !/\d/.test(line);
+    
+    // Se troviamo due date separate da meno di 3 righe, probabilmente sono due eventi diversi
+    if (hasDate && prevHasDate && i - boundaries[boundaries.length - 1] > 2) {
+      boundaries.push(i);
+    }
+    // Separatori visivi
+    else if (isSeparator && i - boundaries[boundaries.length - 1] > 2) {
+      boundaries.push(i + 1); // Il prossimo evento inizia dopo il separatore
+    }
+    // Keywords o titoli in maiuscolo (se abbastanza distanti dall'ultimo confine)
+    else if ((isEventKeyword || isUppercaseTitle) && i - boundaries[boundaries.length - 1] > 5) {
+      boundaries.push(i);
+    }
+  }
+  
+  return boundaries;
+}
+
 export function parseEventData(rawText: string): EventData {
   const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
   let eventData: EventData = {

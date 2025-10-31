@@ -53,8 +53,35 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
             imageUrl: imageUrl,
             rawText: eventData.rawText
         };
-        // Solo update locale, nessun salvataggio su DB, nessun reload
-        onSave?.(updated);
+
+        // If there's a new image file, we need to send it as FormData
+        if (imageUrl && imageUrl.startsWith('blob:')) {
+            try {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('eventData', JSON.stringify(updated));
+                formData.append('image', blob, 'event-image.jpg');
+
+                const saveResponse = await fetch('/api/events', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (saveResponse.ok) {
+                    console.log('Event saved successfully');
+                    // Refresh the page or update state as needed
+                    window.location.reload();
+                } else {
+                    console.error('Failed to save event');
+                }
+            } catch (error) {
+                console.error('Error saving event:', error);
+            }
+        } else {
+            // No new image, use regular JSON save
+            onSave?.(updated);
+        }
         setIsEditing(false);
     };
 
@@ -112,7 +139,6 @@ ${eventData.description}
             dates: `${start}/${end}`,
             details: event.description || '',
             location: event.location || '',
-            add: 'eventi' // etichetta/tag
         });
 
         const url = `https://calendar.google.com/calendar/render?${params.toString()}`;
@@ -122,14 +148,13 @@ ${eventData.description}
     return (
         <div className="space-y-6">
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }}>
-                <div className="bg-white rounded-lg shadow-lg flex flex-col md:flex-row items-center md:items-start gap-8 p-6">
-                    {/* Immagine evento */}
-                    <div className="w-full md:w-1/3 flex flex-col items-center">
+                <div className="flex flex-row gap-8">
+                    <div className="rounded-lg overflow-hidden shadow-lg min-w-[220px] max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
                                 alt="Immagine evento"
-                                className="w-full h-auto object-cover mb-4 rounded-lg"
+                                className="w-full h-auto object-cover mb-2"
                             />
                         ) : (
                             <div className="w-full h-[220px] flex items-center justify-center text-gray-400">Nessuna immagine</div>
@@ -149,9 +174,8 @@ ${eventData.description}
                             />
                         )}
                     </div>
-                    {/* Dati evento + azioni */}
-                    <div className="w-full md:w-2/3 flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-2">
+                    <div className="flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-6">
+                        <div className="flex justify-between items-center mb-4 gap-2">
                             <h2 className="text-2xl font-bold">
                                 {isEditing ? (
                                     <input
@@ -164,7 +188,7 @@ ${eventData.description}
                                     eventData.title
                                 )}
                             </h2>
-                            <div className="flex gap-2 mt-2 md:mt-0">
+                            <div className="flex gap-2">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -183,9 +207,7 @@ ${eventData.description}
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        openGoogleCalendar({ ...eventData, imageUrl });
-                                    }}
+                                    onClick={() => openGoogleCalendar(eventData)}
                                     className="px-4 py-2 rounded bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center"
                                     title="Aggiungi a Google Calendar"
                                 >
@@ -196,7 +218,8 @@ ${eventData.description}
                                 </button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                        <div className="space-y-3">
                             <EditableField label="Data" field="date" />
                             <EditableField label="Ora" field="time" />
                             <div className="flex items-start space-x-4">
@@ -222,7 +245,8 @@ ${eventData.description}
                             <EditableField label="Categoria" field="category" />
                             <EditableField label="Organizzatore" field="organizer" />
                             <EditableField label="Prezzo" field="price" />
-                            <div className="flex items-start space-x-4 md:col-span-2">
+
+                            <div className="flex items-start space-x-4">
                                 <span className="text-gray-600 w-24 mt-2">Descrizione:</span>
                                 {isEditing ? (
                                     <textarea
@@ -235,6 +259,7 @@ ${eventData.description}
                                 )}
                             </div>
                         </div>
+
                         <div className="flex space-x-4 mt-4">
                             <button
                                 type="button"
@@ -262,6 +287,7 @@ ${eventData.description}
                     </div>
                 </div>
             </form>
+
             {showOcr && (
                 <div className="bg-gray-50 rounded-lg p-4 animate-fadeIn">
                     <div className="flex justify-between items-center mb-2">

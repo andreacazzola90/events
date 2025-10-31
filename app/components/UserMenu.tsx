@@ -1,6 +1,5 @@
 "use client";
 import { useSession, signOut } from 'next-auth/react';
-import Link from 'next/link';
 
 export default function UserMenu() {
     const { data: session, status } = useSession();
@@ -17,32 +16,21 @@ export default function UserMenu() {
         <div className="flex items-center gap-4">
             {session ? (
                 <>
-                    <span className="text-gray-700 font-medium">
+                    <span className="text-gray-700 font-medium hidden sm:inline">
                         Ciao, {session.user?.name || session.user?.email}
                     </span>
                     <button
                         onClick={() => signOut({ callbackUrl: '/' })}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                        className="relative flex flex-col items-center group text-2xl text-red-500 hover:text-red-700 transition"
+                        aria-label="Logout"
                     >
-                        Logout
+                        <span>🚪</span>
+                        <span className="absolute left-1/2 -translate-x-1/2 mt-8 px-2 py-1 rounded bg-gray-900 text-white text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 whitespace-nowrap">
+                            Logout
+                        </span>
                     </button>
                 </>
-            ) : (
-                <>
-                    <Link
-                        href="/auth/signin"
-                        className="px-4 py-2 text-blue-600 font-medium hover:text-blue-700 transition"
-                    >
-                        Accedi
-                    </Link>
-                    <Link
-                        href="/auth/register"
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                        Registrati
-                    </Link>
-                </>
-            )}
+            ) : null}
         </div>
     );
 }

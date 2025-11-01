@@ -1,6 +1,35 @@
+
 'use client';
 
+// Helper to open Google Calendar with event data
+function openGoogleCalendar(event: EventData) {
+    // Format date: DD/MM/YYYY or YYYY-MM-DD to YYYYMMDD
+    let startDate = event.date;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(startDate)) {
+        const [d, m, y] = startDate.split('/');
+        startDate = `${y}${m}${d}`;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        startDate = startDate.replace(/-/g, '');
+    }
+    // Format time: HH:MM to HHMM
+    let startTime = event.time ? event.time.replace(':', '') : '0000';
+    // Default duration: 2 hours
+    let endTime = (parseInt(startTime) + 200).toString().padStart(4, '0');
+    // If time overflows, just add 2 hours (not robust for 24h wrap)
+    const start = `${startDate}T${startTime}00`;
+    const end = `${startDate}T${endTime}00`;
+    const details = encodeURIComponent(event.description || '');
+    const location = encodeURIComponent(event.location || '');
+    const title = encodeURIComponent(event.title || 'Evento');
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+    window.open(url, '_blank');
+}
+
 import { EventData } from '@/types/event';
+import { CalendarIcon, ClockIcon, MapPinIcon } from './EventIcons';
+const CategoryIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01" /></svg>;
+const UserIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-7 8-7s8 3 8 7" /></svg>;
+const PriceIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 8v8m0 0a4 4 0 1 1 0-8 4 4 0 1 1 0 8zm0 0h4m-4 0H8" /></svg>;
 import { useState, useEffect, useRef } from 'react';
 
 interface EventDisplayProps {
@@ -20,9 +49,17 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
     }, [eventData.imageUrl]);
 
     function EditableField({ label, field }: { label: string; field: keyof EventData }) {
+        let icon = null;
+        if (field === 'date') icon = <CalendarIcon className="w-5 h-5 text-blue-500" />;
+        if (field === 'time') icon = <ClockIcon className="w-5 h-5 text-blue-500" />;
+        if (field === 'location') icon = <MapPinIcon className="w-5 h-5 text-blue-500" />;
+        if (field === 'category') icon = <CategoryIcon className="w-5 h-5 text-blue-500" />;
+        if (field === 'organizer') icon = <UserIcon className="w-5 h-5 text-blue-500" />;
+        if (field === 'price') icon = <PriceIcon className="w-5 h-5 text-blue-500" />;
         return (
             <div className="flex items-start space-x-4">
-                <span className="text-gray-600 w-24 mt-2">{label}:</span>
+                {icon && <span className="mt-2">{icon}</span>}
+                {!icon && <span className="text-gray-600 w-24 mt-2">{label}:</span>}
                 {isEditing ? (
                     <input
                         type="text"
@@ -53,83 +90,19 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
             imageUrl: imageUrl,
             rawText: eventData.rawText
         };
-        // Solo update locale, nessun salvataggio su DB, nessun reload
         onSave?.(updated);
         setIsEditing(false);
     };
-
-    const copyToClipboard = async (text: string, type: 'formatted' | 'raw') => {
-        try {
-            await navigator.clipboard.writeText(text);
-            setCopySuccess(type);
-            setTimeout(() => setCopySuccess(null), 2000);
-        } catch (err) {
-            console.error('Failed to copy:', err);
-        }
-    };
-
-    const getFormattedText = () => {
-        return `
-${eventData.title}
-
-Data: ${eventData.date}
-Ora: ${eventData.time}
-Luogo: ${eventData.location}
-${eventData.category ? `Categoria: ${eventData.category}\n` : ''}${eventData.organizer ? `Organizzatore: ${eventData.organizer}\n` : ''}${eventData.price ? `Prezzo: ${eventData.price}\n` : ''}
-${eventData.description}
-        `.trim();
-    };
-
-    const openGoogleCalendar = (event: EventData) => {
-        console.log('Opening Google Calendar for event:', event);
-        if (!event.date || !event.time) return;
-
-        // Assume date format DD/MM/YYYY and time HH:MM
-        const [day, month, year] = event.date.split('/');
-        const [hour, minute] = event.time.split(':');
-
-        const startDate = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}:00`);
-
-        // Set end time to start + 1 hour (default duration)
-        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-
-        const formatDate = (date: Date): string => {
-            const year = date.getUTCFullYear();
-            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-            const day = String(date.getUTCDate()).padStart(2, '0');
-            const hours = String(date.getUTCHours()).padStart(2, '0');
-            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-            return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
-        };
-
-        const start = formatDate(startDate);
-        const end = formatDate(endDate);
-
-        const params = new URLSearchParams({
-            action: 'TEMPLATE',
-            text: event.title || 'Evento',
-            dates: `${start}/${end}`,
-            details: event.description || '',
-            location: event.location || '',
-            add: 'eventi' // etichetta/tag
-        });
-
-        const url = `https://calendar.google.com/calendar/render?${params.toString()}`;
-        window.open(url, '_blank', 'noopener,noreferrer');
-    };
-
     return (
         <div className="space-y-6">
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }}>
-                <div className="bg-white rounded-lg shadow-lg flex flex-col md:flex-row items-center md:items-start gap-8 p-6">
-                    {/* Immagine evento */}
-                    <div className="w-full md:w-1/3 flex flex-col items-center">
+                <div className="flex flex-row gap-8">
+                    <div className="rounded-lg overflow-hidden shadow-lg min-w-[220px] max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
                                 alt="Immagine evento"
-                                className="w-full h-auto object-cover mb-4 rounded-lg"
+                                className="w-full h-auto object-cover mb-2"
                             />
                         ) : (
                             <div className="w-full h-[220px] flex items-center justify-center text-gray-400">Nessuna immagine</div>
@@ -149,9 +122,8 @@ ${eventData.description}
                             />
                         )}
                     </div>
-                    {/* Dati evento + azioni */}
-                    <div className="w-full md:w-2/3 flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-2">
+                    <div className="flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-6">
+                        <div className="flex justify-between items-center mb-4 gap-2">
                             <h2 className="text-2xl font-bold">
                                 {isEditing ? (
                                     <input
@@ -164,7 +136,7 @@ ${eventData.description}
                                     eventData.title
                                 )}
                             </h2>
-                            <div className="flex gap-2 mt-2 md:mt-0">
+                            <div className="flex gap-2">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -174,33 +146,117 @@ ${eventData.description}
                                             setIsEditing(true);
                                         }
                                     }}
-                                    className={`px-4 py-2 rounded transition-colors ${isEditing
-                                        ? 'bg-green-500 hover:bg-green-600 text-white'
-                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                    className={`px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white ${isEditing
+                                        ? 'bg-linear-to-r from-green-400 via-green-500 to-green-600 hover:from-green-500 hover:to-green-700'
+                                        : 'bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400'
                                         }`}
                                 >
                                     {isEditing ? 'Salva' : 'Modifica'}
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        openGoogleCalendar({ ...eventData, imageUrl });
-                                    }}
-                                    className="px-4 py-2 rounded bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center"
-                                    title="Aggiungi a Google Calendar"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                    Salva nel calendario
-                                </button>
+                                {/* Pulsante aggiungi evento: salva solo su DB */}
+                                {!isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            // Salva su DB
+                                            if (imageUrl && imageUrl.startsWith('blob:')) {
+                                                try {
+                                                    const response = await fetch(imageUrl);
+                                                    const blob = await response.blob();
+                                                    const formData = new FormData();
+                                                    formData.append('eventData', JSON.stringify(eventData));
+                                                    formData.append('image', blob, 'event-image.jpg');
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        body: formData,
+                                                    });
+                                                    if (saveResponse.ok) {
+                                                        alert('Evento aggiunto al database!');
+                                                    } else {
+                                                        alert('Errore nel salvataggio evento.');
+                                                    }
+                                                } catch (error) {
+                                                    alert('Errore nel salvataggio evento.');
+                                                }
+                                            } else {
+                                                // No new image, use regular JSON
+                                                try {
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(eventData),
+                                                    });
+                                                    if (saveResponse.ok) {
+                                                        alert('Evento aggiunto al database!');
+                                                    } else {
+                                                        alert('Errore nel salvataggio evento.');
+                                                    }
+                                                } catch (error) {
+                                                    alert('Errore nel salvataggio evento.');
+                                                }
+                                            }
+                                        }}
+                                        className="px-4 py-2 rounded-full font-bold shadow-button bg-blue-500 hover:bg-blue-600 text-white transition-all"
+                                    >
+                                        Aggiungi evento
+                                    </button>
+                                )}
+                                {/* Pulsante aggiungi a calendario: salva su DB e poi apre Google Calendar */}
+                                {!isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            // Salva su DB
+                                            let saveOk = false;
+                                            if (imageUrl && imageUrl.startsWith('blob:')) {
+                                                try {
+                                                    const response = await fetch(imageUrl);
+                                                    const blob = await response.blob();
+                                                    const formData = new FormData();
+                                                    formData.append('eventData', JSON.stringify(eventData));
+                                                    formData.append('image', blob, 'event-image.jpg');
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        body: formData,
+                                                    });
+                                                    saveOk = saveResponse.ok;
+                                                } catch (error) {
+                                                    saveOk = false;
+                                                }
+                                            } else {
+                                                try {
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(eventData),
+                                                    });
+                                                    saveOk = saveResponse.ok;
+                                                } catch (error) {
+                                                    saveOk = false;
+                                                }
+                                            }
+                                            if (saveOk) {
+                                                openGoogleCalendar(eventData);
+                                            } else {
+                                                alert('Errore nel salvataggio evento.');
+                                            }
+                                        }}
+                                        className="px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-red-500 via-pink-500 to-yellow-400 hover:from-red-600 hover:to-yellow-500 text-white transition-all flex items-center"
+                                        title="Aggiungi a Google Calendar"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        Salva nel calendario
+                                    </button>
+                                )}
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-3">
                             <EditableField label="Data" field="date" />
                             <EditableField label="Ora" field="time" />
                             <div className="flex items-start space-x-4">
-                                <span className="text-gray-600 w-24 mt-2">Luogo:</span>
+                                <MapPinIcon className="w-5 h-5 text-blue-500 mt-2" />
                                 {isEditing ? (
                                     <input
                                         type="text"
@@ -222,7 +278,7 @@ ${eventData.description}
                             <EditableField label="Categoria" field="category" />
                             <EditableField label="Organizzatore" field="organizer" />
                             <EditableField label="Prezzo" field="price" />
-                            <div className="flex items-start space-x-4 md:col-span-2">
+                            <div className="flex items-start space-x-4">
                                 <span className="text-gray-600 w-24 mt-2">Descrizione:</span>
                                 {isEditing ? (
                                     <textarea
@@ -235,49 +291,9 @@ ${eventData.description}
                                 )}
                             </div>
                         </div>
-                        <div className="flex space-x-4 mt-4">
-                            <button
-                                type="button"
-                                onClick={() => copyToClipboard(getFormattedText(), 'formatted')}
-                                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                            >
-                                {copySuccess === 'formatted' ? '✓ Copiato!' : 'Copia testo formattato'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowOcr(!showOcr)}
-                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center space-x-2"
-                            >
-                                <span>{showOcr ? 'Nascondi OCR' : 'Mostra OCR'}</span>
-                                <svg
-                                    className={`w-4 h-4 transition-transform ${showOcr ? 'transform rotate-180' : ''}`}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </button>
-                        </div>
                     </div>
                 </div>
             </form>
-            {showOcr && (
-                <div className="bg-gray-50 rounded-lg p-4 animate-fadeIn">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-sm font-medium text-gray-500">Testo OCR estratto:</h3>
-                        <button
-                            onClick={() => copyToClipboard(eventData.rawText, 'raw')}
-                            className="text-sm text-blue-500 hover:text-blue-600"
-                        >
-                            {copySuccess === 'raw' ? '✓ Copiato!' : 'Copia'}
-                        </button>
-                    </div>
-                    <pre className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border border-gray-200">
-                        {eventData.rawText}
-                    </pre>
-                </div>
-            )}
         </div>
     );
 }

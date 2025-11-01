@@ -26,22 +26,10 @@ export default function EventList() {
     const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const categories = [
-        'Musica',
-        'Sport',
-        'Cultura',
-        'Teatro',
-        'Cinema',
-        'Food & Drink',
-        'Feste',
-        'Bambini',
-        'Workshop',
-        'Altro',
-    ];
-    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    const [category, setCategory] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
-    const [showTodayOnly, setShowTodayOnly] = useState(false);
+    const [onlyToday, setOnlyToday] = useState(false);
 
     useEffect(() => {
         fetchEvents();
@@ -49,13 +37,13 @@ export default function EventList() {
 
     useEffect(() => {
         filterEvents();
-    }, [events, search, selectedCategories, dateFrom, dateTo]);
+    }, [events, search, category, dateFrom, dateTo, onlyToday]);
 
     const fetchEvents = async () => {
         try {
             const params = new URLSearchParams();
             if (search) params.append('search', search);
-            // rimosso filtro category singolo
+            if (category) params.append('category', category);
             if (dateFrom) params.append('dateFrom', dateFrom);
             if (dateTo) params.append('dateTo', dateTo);
 
@@ -81,22 +69,20 @@ export default function EventList() {
             );
         }
 
-        if (selectedCategories.length > 0) {
-            filtered = filtered.filter(event => selectedCategories.includes(event.category));
+        if (category) {
+            filtered = filtered.filter(event => event.category === category);
         }
 
-        if (dateFrom) {
-            filtered = filtered.filter(event => event.date >= dateFrom);
-        }
-
-        if (dateTo) {
-            filtered = filtered.filter(event => event.date <= dateTo);
-        }
-
-        if (showTodayOnly) {
-            const today = new Date();
-            const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-            filtered = filtered.filter(event => event.date === todayStr);
+        if (onlyToday) {
+            const today = new Date().toISOString().slice(0, 10);
+            filtered = filtered.filter(event => event.date === today);
+        } else {
+            if (dateFrom) {
+                filtered = filtered.filter(event => event.date >= dateFrom);
+            }
+            if (dateTo) {
+                filtered = filtered.filter(event => event.date <= dateTo);
+            }
         }
 
         setFilteredEvents(filtered);
@@ -111,108 +97,91 @@ export default function EventList() {
     }
 
     return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-center">Eventi Salvati</h2>
-
+        <div className="space-y-12">
             {/* Filters */}
-            <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
-                <div className="flex flex-col md:flex-row md:items-center md:gap-4 gap-2">
+            <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
+                <form
+                    className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 w-full"
+                    onSubmit={e => { e.preventDefault(); handleFilterChange(); }}
+                >
                     <input
                         type="text"
                         placeholder="Cerca per titolo o descrizione"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-56"
                     />
-                    <select
-                        multiple
-                        value={selectedCategories}
-                        onChange={e => {
-                            const options = Array.from(e.target.selectedOptions).map(opt => opt.value);
-                            setSelectedCategories(options);
-                        }}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 min-h-10"
-                    >
-                        {categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                    </select>
+                    <input
+                        type="text"
+                        placeholder="Categoria"
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-40"
+                    />
                     <input
                         type="date"
                         placeholder="Data da"
                         value={dateFrom}
                         onChange={(e) => setDateFrom(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500"
-                        disabled={showTodayOnly}
+                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-40"
+                        disabled={onlyToday}
                     />
                     <input
                         type="date"
                         placeholder="Data a"
                         value={dateTo}
                         onChange={(e) => setDateTo(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500"
-                        disabled={showTodayOnly}
+                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-40"
+                        disabled={onlyToday}
                     />
-                    <label className="flex items-center gap-2 text-sm font-medium">
+                    <label className="flex items-center gap-2 text-base font-medium whitespace-nowrap select-none">
                         <input
                             type="checkbox"
-                            checked={showTodayOnly}
-                            onChange={e => setShowTodayOnly(e.target.checked)}
+                            checked={onlyToday}
+                            onChange={e => setOnlyToday(e.target.checked)}
+                            className="accent-blue-600 w-5 h-5"
                         />
-                        Solo eventi di oggi
+                        Solo oggi
                     </label>
-                </div>
-                <button
-                    onClick={handleFilterChange}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                    Applica filtri
-                </button>
+                    <button
+                        type="submit"
+                        className="px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400 text-white transition-all"
+                    >
+                        Applica filtri
+                    </button>
+                </form>
             </div>
 
             {/* Event List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mt-8">
                 {filteredEvents.length === 0 ? (
                     <div className="col-span-full text-center py-8 text-gray-500">Nessun evento trovato</div>
                 ) : (
-                    filteredEvents.map((event) => {
-                        // Calcola se evento è passato (gestione robusta date)
-                        let isPast = false;
-                        if (event.date) {
-                            const [day, month, year] = event.date.split('/');
-                            if (day && month && year) {
-                                const eventDate = new Date(`${year.padStart(4, '20')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
-                                const now = new Date();
-                                // Solo data, ignora orario
-                                isPast = eventDate < new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                            }
-                        }
-                        return (
-                            <div
-                                key={event.id}
-                                className={`bg-white p-4 rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow ${isPast ? 'opacity-60 grayscale' : ''}`}
-                                onClick={() => router.push(`/events/${event.id}`)}
-                            >
-                                {event.imageUrl && (
-                                    <img
-                                        src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
-                                        alt={event.title}
-                                        className="w-full h-32 object-cover rounded mb-4"
-                                    />
-                                )}
-                                <div>
-                                    <h3 className="text-xl font-semibold">{event.title}</h3>
-                                    <p className="text-gray-600">{event.description.slice(0, 100)}...</p>
-                                    <div className="mt-2 space-y-1 text-sm text-gray-500">
-                                        <p>Data: {event.date}</p>
-                                        <p>Ora: {event.time}</p>
-                                        <p>Luogo: {event.location}</p>
-                                        {event.category && <p>Categoria: {event.category}</p>}
-                                    </div>
+                    filteredEvents.map((event) => (
+                        <div
+                            key={event.id}
+                            className="bg-white p-8 rounded-2xl shadow-md border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow flex flex-col gap-6 min-h-80"
+                            onClick={() => router.push(`/events/${event.id}`)}
+                        >
+                            {event.imageUrl && (
+                                <img
+                                    src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
+                                    alt={event.title}
+                                    className="w-full h-40 object-cover rounded-xl mb-4"
+                                />
+                            )}
+                            <div className="flex flex-col gap-3 flex-1">
+                                <h3 className="text-2xl font-bold leading-tight">{event.title}</h3>
+                                <p className="text-gray-700 text-lg">{event.description.slice(0, 100)}...</p>
+                                <div className="mt-2 space-y-2 text-base text-gray-500">
+                                    <p className="flex items-center gap-2">📅 {event.date}</p>
+                                    <p className="flex items-center gap-2">🕐 {event.time}</p>
+                                    <p className="flex items-center gap-2">📍 {event.location}</p>
+                                    {event.category && <p className="flex items-center gap-2">🏷️ {event.category}</p>}
                                 </div>
                             </div>
-                        );
-                    })
+                        </div>
+                    ))
                 )}
             </div>
 

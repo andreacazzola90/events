@@ -1,0 +1,3 @@
+PLACEHOLDER: Crea un'icona 192x192 con il logo EventScanner (📅)
+Per ora verrà usata l'immagine di default del browser.
+Puoi generare icone su: https://realfavicongenerator.net/

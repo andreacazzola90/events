@@ -17,22 +17,21 @@ const EventMap = dynamic(() => import('../components/EventMap'), {
 
 export default function MappaPage() {
     return (
-        <main className="min-h-screen p-8">
-            <div className="max-w-7xl mx-auto space-y-8">
-                <div className="text-center space-y-4">
-                    <h1 className="text-4xl font-bold">Mappa Eventi</h1>
-                    <p className="text-xl text-gray-600">
-                        Visualizza tutti gli eventi sulla mappa in base alla loro posizione
-                    </p>
-                </div>
-
-                <EventMap />
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-800">
-                        💡 <strong>Suggerimento:</strong> Clicca sui marker sulla mappa per vedere i dettagli di ogni evento.
-                        La geocodifica delle località avviene automaticamente tramite OpenStreetMap.
-                    </p>
+        <main className="min-h-screen py-8 px-2 bg-light w-full">
+            <div className="container mx-auto px-8">
+                <div className="w-full space-y-8">
+                    <div className="w-full text-center space-y-4">
+                        <h1 className="text-4xl md:text-5xl font-extrabold text-primary drop-shadow-lg tracking-tight">Mappa Eventi</h1>
+                        <p className="text-xl md:text-2xl text-dark/70 font-semibold">
+                            Visualizza tutti gli eventi sulla mappa in base alla loro posizione
+                        </p>
+                    </div>
+                    <div className="card w-full max-w-full">
+                        <EventMap />
+                    </div>
+                    <div className="badge mt-4 inline-block">
+                        💡 <strong>Suggerimento:</strong> Clicca sui marker sulla mappa per vedere i dettagli di ogni evento. La geocodifica delle località avviene automaticamente tramite OpenStreetMap.
+                    </div>
                 </div>
             </div>
         </main>

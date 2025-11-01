@@ -5,12 +5,6 @@ import UserMenu from './UserMenu';
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 
-const navLinks = [
-    { href: '/', label: 'Eventi', icon: '🗂️' },
-    { href: '/auth', label: 'Profilo', icon: '👤', isProfile: true },
-    { href: '/mappa', label: 'Mappa', icon: '🗺️' },
-    { href: '/crea', label: 'Crea Evento', icon: '➕' },
-];
 
 export default function Header() {
     const pathname = usePathname() || '';
@@ -18,94 +12,77 @@ export default function Header() {
     const { data: session } = useSession();
     const [showProfile, setShowProfile] = useState(false);
 
+    // Profilo: se loggato vai su /account, altrimenti su /auth
+    const navLinks = [
+        { href: '/', label: 'Eventi' },
+        { href: session ? '/account' : '/auth', label: 'Profilo', isProfile: true },
+        { href: '/mappa', label: 'Mappa' },
+        { href: '/crea', label: 'Crea Evento' },
+    ];
+
     return (
-        <header className="w-full bg-white border-b border-gray-200 shadow-sm">
-            <div className="container mx-auto px-4 py-4 flex items-center justify-between md:justify-between flex-row-reverse md:flex-row">
+        <header className="w-full bg-linear-to-r from-primary via-accent to-secondary shadow-card">
+            <div className="container mx-auto px-8 py-6 flex items-center justify-between md:justify-between flex-row-reverse md:flex-row gap-8">
                 {/* Logo / Brand */}
-                <Link href="/" className="flex items-center gap-2">
-                    <div className="text-2xl font-bold text-blue-600">📅 EventScanner</div>
+                <Link href="/" className="flex items-center gap-2 group">
+                    <div className="text-3xl md:text-4xl font-extrabold text-white drop-shadow-lg tracking-tight transition-transform group-hover:scale-105">📅 EventScanner</div>
                 </Link>
 
                 {/* Desktop Navigation */}
-                <nav className="hidden md:flex items-center gap-6">
+                <nav className="hidden md:flex items-center gap-14">
                     {navLinks.map(link => {
                         const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
                         if (link.isProfile) {
                             return (
-                                <button
-                                    key={link.href}
-                                    type="button"
-                                    className={`relative flex flex-col items-center group text-2xl transition ${isActive ? 'text-blue-600' : 'text-gray-700 hover:text-blue-600'}`}
-                                    aria-label={link.label}
-                                    onClick={() => {
-                                        if (session) setShowProfile(v => !v);
-                                        else window.location.href = '/auth';
-                                    }}
-                                >
-                                    <span className={isActive ? 'bg-blue-100 rounded-full px-2 py-1' : ''}>{link.icon}</span>
-                                    <span className="absolute left-1/2 -translate-x-1/2 mt-8 px-2 py-1 rounded bg-gray-900 text-white text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 whitespace-nowrap">
+                                <div key={link.href} className="relative">
+                                    <Link
+                                        href={link.href}
+                                        className={`px-6 py-2 text-lg font-bold bg-transparent border-none text-white transition-all duration-200 ${isActive ? 'underline underline-offset-8' : 'opacity-80 hover:opacity-100'}`}
+                                        aria-label={link.label}
+                                    >
                                         {link.label}
-                                    </span>
-                                    {showProfile && session && (
-                                        <div className="absolute top-12 right-0 bg-white border rounded shadow-lg p-4 z-50 min-w-[200px] text-left">
-                                            <div className="mb-2 font-semibold text-blue-700">Profilo</div>
-                                            <div className="text-sm text-gray-800 mb-1">{session.user?.name || session.user?.email}</div>
-                                            <div className="text-xs text-gray-500 mb-2">{session.user?.email}</div>
-                                            <button
-                                                onClick={() => { setShowProfile(false); window.location.href = '/api/auth/signout'; }}
-                                                className="mt-2 w-full bg-red-500 text-white rounded px-3 py-1 hover:bg-red-600 text-sm"
-                                            >Logout</button>
-                                        </div>
-                                    )}
-                                </button>
+                                    </Link>
+                                </div>
                             );
                         }
                         return (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                className={`relative flex flex-col items-center group text-2xl transition ${isActive ? 'text-blue-600' : 'text-gray-700 hover:text-blue-600'}`}
-                                aria-label={link.label}
-                            >
-                                <span className={isActive ? 'bg-blue-100 rounded-full px-2 py-1' : ''}>{link.icon}</span>
-                                <span className="absolute left-1/2 -translate-x-1/2 mt-8 px-2 py-1 rounded bg-gray-900 text-white text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 whitespace-nowrap">
+                            <div key={link.href} className="relative">
+                                <Link
+                                    href={link.href}
+                                    className={`px-6 py-2 text-lg font-bold bg-transparent border-none text-white transition-all duration-200 ${isActive ? 'underline underline-offset-8' : 'opacity-80 hover:opacity-100'}`}
+                                    aria-label={link.label}
+                                >
                                     {link.label}
-                                </span>
-                            </Link>
+                                </Link>
+                            </div>
                         );
                     })}
                 </nav>
 
                 {/* Mobile Hamburger */}
                 <button
-                    className="md:hidden flex items-center text-3xl text-blue-600 focus:outline-none"
+                    className="md:hidden flex items-center text-4xl text-white drop-shadow-lg focus:outline-none transition-transform hover:scale-110 ml-4"
                     onClick={() => setMobileOpen(v => !v)}
                     aria-label="Apri menu"
                 >
                     {mobileOpen ? '✖️' : '☰'}
                 </button>
-
-                {/* User Menu sempre visibile */}
-                {/* <div className="ml-4">
-                    <UserMenu />
-                </div> */}
             </div>
 
             {/* Mobile Menu */}
             {mobileOpen && (
-                <nav className="md:hidden bg-white border-t border-gray-200 shadow-lg px-4 py-2 flex flex-col gap-2 z-50 items-end justify-end text-right">
+                <nav className="md:hidden bg-linear-to-r from-primary via-accent to-secondary border-t border-primary/30 shadow-2xl px-6 py-8 flex flex-col gap-8 z-50 items-end justify-end text-right animate-fadeIn">
                     {navLinks.map(link => {
                         const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
                         return (
                             <Link
                                 key={link.href}
                                 href={link.href}
-                                className={`flex items-center gap-3 text-lg py-2 px-2 rounded transition ${isActive ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-blue-50'}`}
+                                className={`w-full text-right px-6 py-4 text-xl font-bold bg-transparent border-none text-white transition-all duration-200 ${isActive ? 'underline underline-offset-8' : 'opacity-80 hover:opacity-100'}`}
                                 aria-label={link.label}
                                 onClick={() => setMobileOpen(false)}
                             >
-                                <span className={`text-2xl ${isActive ? 'bg-blue-100 rounded-full px-2 py-1' : ''}`}>{link.icon}</span>
-                                <span>{link.label}</span>
+                                {link.label}
                             </Link>
                         );
                     })}

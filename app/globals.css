@@ -1,16 +1,52 @@
+/*
+==============================
+  STYLEGUIDE PRAGMATIKE INSPIRED
+==============================
+Palette:
+  --background: #f7f8fa;   // grigio chiarissimo
+  --foreground: #181a1b;   // quasi nero
+  --accent: #5b3df6;       // blu/viola acceso
+  --accent-light: #edeaff;  // viola chiarissimo
+  --border: #e5e7eb;       // grigio chiaro
+  --card-bg: #fff;
+  --shadow: 0 2px 16px 0 rgba(91,61,246,0.06);
+
+Tipografia:
+  Font: 'Inter', 'Montserrat', Arial, Helvetica, sans-serif;
+  Titoli: font-weight: 800; line-height: 1.1; letter-spacing: -0.01em;
+  Testo: font-weight: 500; line-height: 1.7; color: var(--foreground);
+
+Card:
+  Sfondo: var(--card-bg); border: 1.5px solid var(--border); border-radius: 1.25rem; box-shadow: var(--shadow); padding: 2.5rem 2rem;
+
+Bottoni:
+  Primario: background: var(--accent); color: #fff; border-radius: 0.8rem; font-weight: 700; padding: 1em 2.5em; letter-spacing: 0.01em;
+  Hover: background: #3a1fd6;
+
+Link:
+  color: var(--accent); font-weight: 700; text-decoration: none; border-radius: 0.25em;
+  Hover: text-decoration: underline; color: #3a1fd6;
+
+Spaziatura:
+  Section: margin-bottom: 4rem;
+  Elementi: gap: 2.5rem;
+==============================
+*/
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f8fa;
+  --foreground: #181a1b;
+  --accent: #5b3df6;
+  --accent-light: #edeaff;
+  --border: #e5e7eb;
+  --card-bg: #fff;
+  --shadow: 0 2px 16px 0 rgba(91, 61, 246, 0.06);
 }
-
-/* Tailwind CSS custom properties - removed @theme inline for compatibility */
-/* The custom properties are already defined above in :root */
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #171717;
     --foreground: #ededed;
   }
 }
@@ -18,5 +54,88 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', 'Montserrat', Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  font-size: 1.09rem;
+  line-height: 1.7;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  word-spacing: 0.08em;
+  padding-bottom: 4rem;
+  padding-top: 2.5rem;
+  transition: background 0.3s, color 0.3s;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+  border-radius: 0.25em;
+  transition: color 0.2s;
+}
+
+a:hover {
+  color: #3a1fd6;
+  text-decoration: underline;
+}
+
+button,
+.btn {
+  font-family: 'Inter', 'Montserrat', Arial, Helvetica, sans-serif;
+  font-weight: 700;
+  border-radius: 0.8rem;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+  padding: 1em 2.5em;
+  margin-bottom: 1.5rem;
+  margin-top: 1.5rem;
+  font-size: 1.09rem;
+  letter-spacing: 0.01em;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s, border 0.2s, transform 0.1s;
+  cursor: pointer;
+}
+
+button:active,
+.btn:active {
+  background: #3a1fd6;
+  transform: scale(0.97);
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: 1.25rem;
+  border: 1.5px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 3rem 2.5rem;
+  margin-bottom: 4.5rem;
+  transition: box-shadow 0.2s, transform 0.1s, border 0.2s;
+}
+
+/* Hover disabilitato globalmente sulle card, lasciato solo su listing eventi */
+
+.badge {
+  /* nessun hover per badge */
+  display: inline-block;
+  background: var(--accent-light);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 1.25rem;
+  padding: 0.5em 1.3em;
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-right: 1.5em;
+  margin-bottom: 1.5em;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  background: #ffe60022;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ff2d55cc;
+  border-radius: 8px;
 }

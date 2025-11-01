@@ -7,32 +7,49 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const eventData = JSON.parse(formData.get('eventData') as string);
-    const imageFile = formData.get('image') as File | null;
+    let eventData: any = null;
+    let imageFile: File | null = null;
+    let imageUrl: string | undefined = undefined;
 
-    let imageUrl = eventData.imageUrl;
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      // Handle JSON body
+      eventData = await request.json();
+      imageUrl = eventData.imageUrl;
+    } else if (contentType.includes('multipart/form-data')) {
+      // Handle multipart/form-data
+      const formData = await request.formData();
+      eventData = JSON.parse(formData.get('eventData') as string);
+      imageFile = formData.get('image') as File | null;
+      imageUrl = eventData.imageUrl;
 
-    // Save image if provided
-    if (imageFile) {
-      const bytes = await imageFile.arrayBuffer();
-      const buffer = Buffer.from(bytes);
+      // Save image if provided
+      if (imageFile) {
+        const bytes = await imageFile.arrayBuffer();
+        const buffer = Buffer.from(bytes);
 
-      // Create unique filename
-      const timestamp = Date.now();
-      const filename = `${timestamp}-${imageFile.name}`;
-      const filepath = join(process.cwd(), 'public', 'uploads', 'events', filename);
+        // Create unique filename
+        const timestamp = Date.now();
+        const filename = `${timestamp}-${imageFile.name}`;
+        const filepath = join(process.cwd(), 'public', 'uploads', 'events', filename);
 
-      // Ensure directory exists
-      await mkdir(join(process.cwd(), 'public', 'uploads', 'events'), { recursive: true });
+        // Ensure directory exists
+        await mkdir(join(process.cwd(), 'public', 'uploads', 'events'), { recursive: true });
 
-      // Write file
-      await writeFile(filepath, buffer);
+        // Write file
+        await writeFile(filepath, buffer);
 
-      // Set URL for database
-      imageUrl = `/uploads/events/${filename}`;
+        // Set URL for database
+        imageUrl = `/uploads/events/${filename}`;
+      }
+    } else {
+      return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });
     }
 
+    // Ensure rawText is always present (required by schema)
+    if (typeof eventData.rawText !== 'string') {
+      eventData.rawText = '';
+    }
     const event = await prisma.event.create({
       data: {
         title: eventData.title,

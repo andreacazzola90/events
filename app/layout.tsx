@@ -15,17 +15,18 @@ export const metadata: Metadata = {
   title: "EventScanner - Scansiona e gestisci i tuoi eventi",
   description: "Carica immagini di eventi e ottieni automaticamente tutte le informazioni con AI",
   manifest: "/manifest.json",
-  themeColor: "#2563eb",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "EventScanner",
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-  },
+};
+
+export const viewport = {
+  themeColor: "#2563eb",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({

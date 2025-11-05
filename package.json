@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "vercel-build":"npm run vercel-build"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

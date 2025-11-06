@@ -239,7 +239,7 @@ export async function POST(request: NextRequest) {
             finalImageUrl = (scrapingResult as { pageText: string; finalImageUrl: string }).finalImageUrl;
 
         } catch (browserError) {
-            console.error('Errore durante lo scraping:', browserError);
+            console.error('Errore durante lo scraping con browser:', browserError);
             await closeBrowser(browser);
             
             // Check if it's a timeout error
@@ -250,7 +250,32 @@ export async function POST(request: NextRequest) {
                 );
             }
             
-            throw new Error('Errore durante l\'accesso alla pagina web: ' + (browserError instanceof Error ? browserError.message : 'Errore sconosciuto'));
+            // Check if it's a Chromium shared library error
+            if (browserError instanceof Error && (
+                browserError.message.includes('libnss3.so') || 
+                browserError.message.includes('Code: 127') ||
+                browserError.message.includes('shared libraries')
+            )) {
+                console.log('🔄 Browser failed due to missing libraries, trying HTTP fallback...');
+                
+                try {
+                    // Import and use HTTP fallback scraper
+                    const { httpScraper } = await import('../../../lib/http-scraper');
+                    const fallbackResult = await httpScraper(url);
+                    pageText = fallbackResult.pageText;
+                    finalImageUrl = fallbackResult.finalImageUrl;
+                    
+                    console.log('✅ HTTP fallback scraping successful');
+                } catch (fallbackError) {
+                    console.error('❌ HTTP fallback also failed:', fallbackError);
+                    return NextResponse.json(
+                        { error: 'Impossibile accedere alla pagina web. Il sito potrebbe non essere accessibile o avere restrizioni.' },
+                        { status: 503 } // Service Unavailable
+                    );
+                }
+            } else {
+                throw new Error('Errore durante l\'accesso alla pagina web: ' + (browserError instanceof Error ? browserError.message : 'Errore sconosciuto'));
+            }
         }
 
         // 2. Usa Groq per estrarre le informazioni dell'evento

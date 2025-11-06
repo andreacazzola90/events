@@ -12,11 +12,13 @@
   "build": {
     "env": {
       "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+      "PUPPETEER_SKIP_DOWNLOAD": "true",
       "PUPPETEER_EXECUTABLE_PATH": "/opt/chrome/chrome"
     }
   },
   "env": {
-    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+    "PUPPETEER_SKIP_DOWNLOAD": "true"
   },
   "outputDirectory": ".next",
   "buildCommand": "npm run build",

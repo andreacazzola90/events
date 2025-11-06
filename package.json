@@ -26,6 +26,7 @@
     "next-auth": "^4.24.13",
     "openai": "^6.7.0",
     "prisma": "^6.18.0",
+    "puppeteer": "^23.0.0",
     "puppeteer-core": "^24.29.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

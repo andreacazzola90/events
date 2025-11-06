@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import { getBrowser, closeBrowser } from '../../../lib/browser-vercel';
+import { FacebookAuth } from '../../../lib/facebook-auth';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -47,6 +48,13 @@ export async function POST(request: NextRequest) {
                     });
 
             const page = await browser.newPage();
+            
+            // Facebook Authentication - Login if it's a Facebook URL
+            const isAuthenticated = await FacebookAuth.authenticateIfNeeded(page, url);
+            if (FacebookAuth.isFacebookUrl(url) && !isAuthenticated) {
+                console.log('⚠️ Facebook authentication failed, proceeding without login...');
+            }
+            
             // Imposta user-agent e header realistici - questi verranno sovrascritti se il browser ha già impostazioni di default
             try {
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');

@@ -76,30 +76,37 @@ export async function POST(request: NextRequest) {
             
             console.log('Navigating to URL...');
             
-            // Strategia di retry per la navigazione
+            // Check if Facebook authentication already handled navigation
+            const isFacebookUrl = FacebookAuth.isFacebookUrl(url);
             let navigationSuccess = false;
             let lastError = null;
             const maxRetries = 3;
             
-            for (let retry = 0; retry < maxRetries; retry++) {
-                try {
-                    console.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
-                    
-                    // Prova diversi parametri di timeout e waiting
-                    const waitOptions = retry === 0 
-                        ? { waitUntil: 'networkidle2' as const, timeout: 30000 }
-                        : retry === 1 
-                        ? { waitUntil: 'domcontentloaded' as const, timeout: 20000 }
-                        : { waitUntil: 'load' as const, timeout: 15000 };
-                    
-                    // Simulate human-like behavior before navigation
-                    console.log('🔄 Navigating with human-like behavior...');
-                    
-                    // Add random delay before navigation (500ms - 2s)
-                    const preNavDelay = Math.floor(Math.random() * 1500) + 500;
-                    await new Promise(resolve => setTimeout(resolve, preNavDelay));
-                    
-                    await page.goto(url, waitOptions);
+            if (isFacebookUrl && isAuthenticated) {
+                // Facebook auth already navigated to the page
+                console.log('✅ Facebook navigation handled by authentication system');
+                navigationSuccess = true;
+            } else {
+                // Standard navigation for non-Facebook URLs or failed Facebook auth
+                for (let retry = 0; retry < maxRetries; retry++) {
+                    try {
+                        console.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
+                        
+                        // Prova diversi parametri di timeout e waiting
+                        const waitOptions = retry === 0 
+                            ? { waitUntil: 'networkidle2' as const, timeout: 30000 }
+                            : retry === 1 
+                            ? { waitUntil: 'domcontentloaded' as const, timeout: 20000 }
+                            : { waitUntil: 'load' as const, timeout: 15000 };
+                        
+                        // Simulate human-like behavior before navigation
+                        console.log('🔄 Navigating with human-like behavior...');
+                        
+                        // Add random delay before navigation (500ms - 2s)
+                        const preNavDelay = Math.floor(Math.random() * 1500) + 500;
+                        await new Promise(resolve => setTimeout(resolve, preNavDelay));
+                        
+                        await page.goto(url, waitOptions);
                     
                     // Simulate human reading time and random mouse movements
                     console.log('📖 Simulating human reading behavior...');
@@ -130,6 +137,7 @@ export async function POST(request: NextRequest) {
                     if (retry < maxRetries - 1) {
                         console.log('Retrying navigation in 1 second...');
                         await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
-import puppeteer from 'puppeteer';
+import { getBrowser, closeBrowser } from '../../../lib/browser-vercel';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -27,13 +27,18 @@ export async function POST(request: NextRequest) {
 
         // 1. Scrape della pagina con Puppeteer
         console.log('Launching browser...');
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        });
-        
+        let browser = null;
+        let finalImageUrl = null;
+        let pageText = '';
 
-        const page = await browser.newPage();
+        try {
+            browser = await getBrowser({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            });
+            
+
+            const page = await browser.newPage();
         // Imposta user-agent e header realistici
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         await page.setExtraHTTPHeaders({
@@ -153,8 +158,14 @@ export async function POST(request: NextRequest) {
             finalImageUrl = `data:image/jpeg;base64,${screenshotBase64}`;
         }
 
-        await browser.close();
-        console.log('Final image URL:', finalImageUrl ? 'Found' : 'Using screenshot');
+            await closeBrowser(browser);
+            console.log('Final image URL:', finalImageUrl ? 'Found' : 'Using screenshot');
+
+        } catch (browserError) {
+            console.error('Errore durante lo scraping:', browserError);
+            await closeBrowser(browser);
+            throw new Error('Errore durante l\'accesso alla pagina web: ' + (browserError instanceof Error ? browserError.message : 'Errore sconosciuto'));
+        }
 
         // 2. Usa Groq per estrarre le informazioni dell'evento
         console.log('Calling Groq API...');

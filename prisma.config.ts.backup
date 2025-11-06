@@ -1,0 +1,12 @@
+// Configurazione Prisma semplificata per compatibilità con Vercel
+// Le configurazioni principali sono nel schema.prisma
+
+import "dotenv/config";
+
+// Esporta una configurazione di base
+export default {
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  }
+};

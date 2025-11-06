@@ -1,0 +1,41 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "prisma generate && prisma db push --accept-data-loss && npm run seed && next build",
+  "installCommand": "npm install",
+  "functions": {
+    "app/api/process-link/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "app/api/test-browser/route.ts": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "app/api/debug-browser/route.ts": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
+    }
+  ]
+}

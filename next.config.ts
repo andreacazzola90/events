@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ["@sparticuz/chromium"],
+  // Enable output file tracing for better Vercel deployment
+  output: "standalone",
 };
 
 export default nextConfig;

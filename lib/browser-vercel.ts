@@ -27,38 +27,24 @@ export async function getBrowser(options: LaunchOptions = {}) {
     console.log('📦 Using serverless configuration with @sparticuz/chromium');
     
     try {
+      // Forza l'estrazione dei file Chromium
+      console.log('🔄 Forcing Chromium extraction...');
       const executablePath = await chromium.executablePath();
       console.log('🎯 Chromium executable path:', executablePath);
       
+      // Verifica che il file esista
+      const fs = require('fs');
+      if (!fs.existsSync(executablePath)) {
+        throw new Error(`Chromium executable not found at: ${executablePath}`);
+      }
+      
+      console.log('🚀 Launching browser with minimal args...');
       const browser = await puppeteer.launch({
-        args: [
-          ...chromium.args,
-          '--hide-scrollbars',
-          '--disable-web-security',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--deterministic-fetch',
-          '--disable-features=VizDisplayCompositor',
-          '--single-process',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--memory-pressure-off',
-          '--max_old_space_size=4096',
-          '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          ...(options.args || [])
-        ],
-        defaultViewport: { width: 1280, height: 720 },
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
         executablePath,
         headless: true,
         timeout: options.timeout || 30000,
-        ignoreDefaultArgs: ['--disable-extensions'],
       });
 
       const originalNewPage = browser.newPage.bind(browser);
@@ -83,6 +69,35 @@ export async function getBrowser(options: LaunchOptions = {}) {
       return browser;
     } catch (error) {
       console.error('❌ Failed to launch with @sparticuz/chromium:', error);
+      console.error('🔍 Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // Verifica specifica per l'errore dei file brotli
+      if (error instanceof Error && error.message.includes('brotli files')) {
+        console.log('🛠️ Attempting to resolve brotli files issue...');
+        
+        // Prova a reinstanziare chromium con un approccio diverso
+        try {
+          console.log('🔄 Attempting alternative Chromium setup...');
+          const alternativeExecutablePath = await chromium.executablePath();
+          
+          // Usa solo gli argomenti base essenziali
+          const browser = await puppeteer.launch({
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            executablePath: alternativeExecutablePath,
+            headless: true,
+            timeout: 60000, // Timeout più lungo per la prima volta
+          });
+          
+          console.log('✅ Alternative Chromium setup successful');
+          return browser;
+        } catch (alternativeError) {
+          console.error('❌ Alternative setup also failed:', alternativeError);
+        }
+      }
+      
       throw new Error(`Browser launch failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   } else {

@@ -27,12 +27,25 @@ export async function extractTextFromImage(imageFile: File): Promise<string> {
     }
 
     return response.data.ParsedResults[0].ParsedText;
-  } catch (error) {
-    // Fallback to Tesseract.js
-    const worker = await createWorker('ita');
-    const { data: { text } } = await worker.recognize(imageFile);
-    await worker.terminate();
-    return text;
+  } catch (ocrSpaceError) {
+    console.log('⚠️ OCR.space failed, trying Tesseract.js fallback...');
+    
+    try {
+      // Fallback to Tesseract.js with serverless configuration
+      const worker = await createWorker('ita');
+      const { data: { text } } = await worker.recognize(imageFile);
+      await worker.terminate();
+      console.log('✅ Tesseract.js OCR successful');
+      return text;
+    } catch (tesseractError) {
+      console.error('❌ Both OCR methods failed:', {
+        ocrSpace: ocrSpaceError instanceof Error ? ocrSpaceError.message : ocrSpaceError,
+        tesseract: tesseractError instanceof Error ? tesseractError.message : tesseractError
+      });
+      
+      // Final fallback - return error message with helpful info
+      throw new Error(`OCR processing failed. Both OCR.space and Tesseract.js are unavailable. Original errors: OCR.space: ${ocrSpaceError instanceof Error ? ocrSpaceError.message : 'Unknown error'}, Tesseract: ${tesseractError instanceof Error ? tesseractError.message : 'Unknown error'}`);
+    }
   }
 }
 
@@ -86,10 +99,21 @@ export function parseEventData(rawText: string): EventData {
 }
 
 async function createWorker(language: string) {
-  const worker = await tesseractCreateWorker();
-  await worker.load();
-  await worker.loadLanguage(language);
-  await worker.initialize(language);
-  return worker;
+  try {
+    const worker = await tesseractCreateWorker({
+      // Configure paths for serverless environment
+      workerPath: 'https://unpkg.com/tesseract.js@5.0.3/dist/worker.min.js',
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+      corePath: 'https://unpkg.com/tesseract.js-core@5.0.0/tesseract-core-simd.wasm.js',
+    });
+    
+    await worker.load();
+    await worker.loadLanguage(language);
+    await worker.initialize(language);
+    return worker;
+  } catch (error) {
+    console.error('❌ Tesseract.js worker creation failed:', error);
+    throw new Error('OCR fallback failed: Unable to initialize Tesseract.js worker');
+  }
 }
 

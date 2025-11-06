@@ -8,13 +8,13 @@ interface LaunchOptions {
 }
 
 export async function getBrowser(options: LaunchOptions = {}) {
-  const isProduction = !!process.env.AWS_REGION || 
-                       !!process.env.VERCEL || 
-                       !!process.env.VERCEL_ENV || 
-                       process.env.NODE_ENV === 'production';
+  // More precise detection: only use Vercel configuration when actually running on Vercel/AWS
+  const isServerlessEnvironment = !!process.env.AWS_REGION || 
+                                  !!process.env.VERCEL || 
+                                  !!process.env.VERCEL_ENV;
   
   console.log('🚀 Launching browser...', { 
-    isProduction, 
+    isServerlessEnvironment, 
     platform: process.platform,
     arch: process.arch,
     VERCEL: !!process.env.VERCEL,
@@ -23,8 +23,8 @@ export async function getBrowser(options: LaunchOptions = {}) {
     NODE_ENV: process.env.NODE_ENV
   });
 
-  if (isProduction) {
-    console.log('📦 Using Vercel/Production configuration with @sparticuz/chromium');
+  if (isServerlessEnvironment) {
+    console.log('📦 Using serverless configuration with @sparticuz/chromium');
     
     try {
       const executablePath = await chromium.executablePath();
@@ -89,10 +89,10 @@ export async function getBrowser(options: LaunchOptions = {}) {
     console.log('🏠 Using local development configuration');
     
     try {
-      const playwrightChromium = require('playwright-chromium');
-      console.log('✅ Found playwright-chromium, using it for local development');
+      const { chromium: playwrightChromium } = require('playwright');
+      console.log('✅ Found playwright, using it for local development');
       
-      const browser = await playwrightChromium.chromium.launch({
+      const browser = await playwrightChromium.launch({
         headless: options.headless !== false,
         args: options.args || ['--no-sandbox', '--disable-setuid-sandbox'],
       });
@@ -129,7 +129,7 @@ export async function getBrowser(options: LaunchOptions = {}) {
         },
       };
     } catch (playwrightError) {
-      console.log('⚠️ Playwright-chromium not available, trying local Chrome...');
+      console.log('⚠️ Playwright not available, trying local Chrome...');
       
       const commonPaths = [
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',

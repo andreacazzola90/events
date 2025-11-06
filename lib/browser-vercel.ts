@@ -11,7 +11,8 @@ export async function getBrowser(options: LaunchOptions = {}) {
   // More precise detection: only use Vercel configuration when actually running on Vercel/AWS
   const isServerlessEnvironment = !!process.env.AWS_REGION || 
                                   !!process.env.VERCEL || 
-                                  !!process.env.VERCEL_ENV;
+                                  !!process.env.VERCEL_ENV ||
+                                  !!process.env.AWS_LAMBDA_FUNCTION_NAME;
   
   console.log('🚀 Launching browser...', { 
     isServerlessEnvironment, 
@@ -27,28 +28,48 @@ export async function getBrowser(options: LaunchOptions = {}) {
     console.log('📦 Using serverless configuration with @sparticuz/chromium');
     
     try {
-      console.log('🔄 Getting Chromium executable path...');
+      // Set Chromium font configuration for serverless environment
+      console.log('🔧 Setting up Chromium for serverless environment...');
+      
+      console.log('�🔄 Getting Chromium executable path...');
       const executablePath = await chromium.executablePath();
       console.log('🎯 Chromium executable path:', executablePath);
       
-      // Enhanced args to prevent brotli and other serverless issues
+      // Args specifically designed for AWS Lambda/Vercel serverless environment
+      // These args help with missing shared libraries like libnss3.so
       const args = [
-        ...chromium.args,
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--disable-setuid-sandbox',
-        '--no-first-run',
         '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-extensions',
+        '--disable-gpu',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
+        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+        '--disable-extensions',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-first-run',
         '--disable-web-security',
-        '--disable-features=VizDisplayCompositor'
+        '--disable-features=VizDisplayCompositor',
+        '--disable-ipc-flooding-protection',
+        '--disable-background-networking',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-update',
+        '--disable-hang-monitor',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--disable-features=AudioServiceOutOfProcess'
       ];
       
       console.log('🚀 Launching browser with enhanced args...');
@@ -88,9 +109,15 @@ export async function getBrowser(options: LaunchOptions = {}) {
         stack: error instanceof Error ? error.stack : undefined
       });
       
-      // Verifica specifica per l'errore dei file brotli
-      if (error instanceof Error && (error.message.includes('brotli files') || error.message.includes('does not exist'))) {
-        console.log('🛠️ Attempting to resolve brotli/directory files issue...');
+      // Handle specific serverless environment errors
+      if (error instanceof Error && (
+        error.message.includes('brotli files') || 
+        error.message.includes('does not exist') ||
+        error.message.includes('libnss3.so') ||
+        error.message.includes('shared libraries') ||
+        error.message.includes('Code: 127')
+      )) {
+        console.log('🛠️ Attempting to resolve serverless environment library issue...');
         
         // Prova a reinstanziare chromium con un approccio diverso
         try {
@@ -99,7 +126,7 @@ export async function getBrowser(options: LaunchOptions = {}) {
           // Get the executable path again
           const alternativeExecutablePath = await chromium.executablePath();
           
-          // Use minimal essential args only
+          // Use ultra-minimal args for environments with missing shared libraries
           const minimalArgs = [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -107,7 +134,17 @@ export async function getBrowser(options: LaunchOptions = {}) {
             '--disable-gpu',
             '--single-process',
             '--no-zygote',
-            '--disable-extensions'
+            '--disable-extensions',
+            '--disable-software-rasterizer',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI,BlinkGenPropertyTrees,VizDisplayCompositor',
+            '--disable-accelerated-2d-canvas',
+            '--disable-web-security',
+            '--hide-scrollbars',
+            '--mute-audio',
+            '--no-first-run'
           ];
           
           const browser = await puppeteer.launch({

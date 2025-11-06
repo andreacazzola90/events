@@ -1,16 +1,20 @@
 {
   "functions": {
     "app/api/*/route.ts": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "memory": 1024
     }
   },
   "build": {
     "env": {
-      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+      "PUPPETEER_EXECUTABLE_PATH": "/opt/chrome/chrome"
     }
   },
   "env": {
     "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
-  }
+  },
+  "outputDirectory": ".next",
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci"
 }

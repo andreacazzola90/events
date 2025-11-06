@@ -84,10 +84,35 @@ export async function POST(request: NextRequest) {
                         ? { waitUntil: 'domcontentloaded' as const, timeout: 20000 }
                         : { waitUntil: 'load' as const, timeout: 15000 };
                     
+                    // Simulate human-like behavior before navigation
+                    console.log('🔄 Navigating with human-like behavior...');
+                    
+                    // Add random delay before navigation (500ms - 2s)
+                    const preNavDelay = Math.floor(Math.random() * 1500) + 500;
+                    await new Promise(resolve => setTimeout(resolve, preNavDelay));
+                    
                     await page.goto(url, waitOptions);
                     
-                    // Attendi un po' per essere sicuri che il contenuto sia caricato
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // Simulate human reading time and random mouse movements
+                    console.log('📖 Simulating human reading behavior...');
+                    
+                    // Random delay after page load (2-4 seconds)
+                    const postNavDelay = Math.floor(Math.random() * 2000) + 2000;
+                    await new Promise(resolve => setTimeout(resolve, postNavDelay));
+                    
+                    // Simulate mouse movements and scrolling
+                    try {
+                        await page.evaluate(() => {
+                            // Simulate random scrolling
+                            const scrollAmount = Math.floor(Math.random() * 500) + 200;
+                            window.scrollTo(0, scrollAmount);
+                        });
+                        
+                        // Small delay after scrolling
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    } catch (scrollError) {
+                        console.warn('⚠️ Could not simulate scrolling:', scrollError);
+                    }
                     navigationSuccess = true;
                     break;
                 } catch (navError) {

@@ -136,11 +136,18 @@ export default function CreaEvento() {
         setError(null);
 
         try {
+            // Create a fetch request with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 55000); // 55 second timeout
+            
             const response = await fetch('/api/process-link', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: linkUrl }),
+                signal: controller.signal,
             });
+            
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
@@ -161,7 +168,18 @@ export default function CreaEvento() {
             }
         } catch (error) {
             console.error('Error processing link:', error);
-            setError('Errore durante l\'elaborazione del link. Riprova.');
+            
+            if (error instanceof Error) {
+                if (error.name === 'AbortError') {
+                    setError('La richiesta ha impiegato troppo tempo. Il server potrebbe essere occupato, riprova tra qualche minuto.');
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_NETWORK_CHANGED')) {
+                    setError('Problema di connessione di rete. Controlla la connessione internet e riprova.');
+                } else {
+                    setError(error.message || 'Errore durante l\'elaborazione del link. Riprova.');
+                }
+            } else {
+                setError('Errore durante l\'elaborazione del link. Riprova.');
+            }
         } finally {
             setLoadingLink(false);
         }

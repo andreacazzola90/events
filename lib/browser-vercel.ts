@@ -78,7 +78,7 @@ export async function getBrowser(options: LaunchOptions = {}) {
         defaultViewport: chromium.defaultViewport,
         executablePath,
         headless: true,
-        timeout: options.timeout || 60000,
+        timeout: options.timeout || 45000, // Reduced from 60s to 45s
         ignoreDefaultArgs: ['--disable-extensions'],
       });
 

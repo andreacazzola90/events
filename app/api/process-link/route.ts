@@ -31,11 +31,20 @@ export async function POST(request: NextRequest) {
         let finalImageUrl = null;
         let pageText = '';
 
+        // Create a timeout promise for the entire scraping operation
+        const scrapingTimeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Scraping operation timed out after 50 seconds')), 50000);
+        });
+
         try {
-            browser = await getBrowser({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox'],
-            });
+            // Wrap the entire scraping process in a race with timeout
+            const scrapingResult = await Promise.race([
+                (async () => {
+                    browser = await getBrowser({
+                        headless: true,
+                        timeout: 25000, // 25 second timeout for browser launch
+                        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+                    });
 
             const page = await browser.newPage();
             // Imposta user-agent e header realistici - questi verranno sovrascritti se il browser ha già impostazioni di default
@@ -219,10 +228,28 @@ export async function POST(request: NextRequest) {
 
             await closeBrowser(browser);
             console.log('Final image URL:', finalImageUrl ? 'Found' : 'Using screenshot');
+            
+            return { pageText, finalImageUrl };
+                })(),
+                scrapingTimeout
+            ]);
+
+            // Extract results from scrapingResult
+            pageText = (scrapingResult as { pageText: string; finalImageUrl: string }).pageText;
+            finalImageUrl = (scrapingResult as { pageText: string; finalImageUrl: string }).finalImageUrl;
 
         } catch (browserError) {
             console.error('Errore durante lo scraping:', browserError);
             await closeBrowser(browser);
+            
+            // Check if it's a timeout error
+            if (browserError instanceof Error && browserError.message.includes('timed out')) {
+                return NextResponse.json(
+                    { error: 'La richiesta ha impiegato troppo tempo. Riprova più tardi.' },
+                    { status: 408 } // Request Timeout
+                );
+            }
+            
             throw new Error('Errore durante l\'accesso alla pagina web: ' + (browserError instanceof Error ? browserError.message : 'Errore sconosciuto'));
         }
 

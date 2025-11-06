@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@sparticuz/chromium"],
-  // Enable output file tracing for better Vercel deployment
-  output: "standalone",
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  // Only use standalone output for Vercel deployment, not for local development
+  ...(process.env.VERCEL && {
+    output: "standalone",
+  }),
 };
 
 export default nextConfig;

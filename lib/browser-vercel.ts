@@ -27,24 +27,38 @@ export async function getBrowser(options: LaunchOptions = {}) {
     console.log('📦 Using serverless configuration with @sparticuz/chromium');
     
     try {
-      // Forza l'estrazione dei file Chromium
-      console.log('🔄 Forcing Chromium extraction...');
+      console.log('🔄 Getting Chromium executable path...');
       const executablePath = await chromium.executablePath();
       console.log('🎯 Chromium executable path:', executablePath);
       
-      // Verifica che il file esista
-      const fs = require('fs');
-      if (!fs.existsSync(executablePath)) {
-        throw new Error(`Chromium executable not found at: ${executablePath}`);
-      }
+      // Enhanced args to prevent brotli and other serverless issues
+      const args = [
+        ...chromium.args,
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-setuid-sandbox',
+        '--no-first-run',
+        '--no-sandbox',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor'
+      ];
       
-      console.log('🚀 Launching browser with minimal args...');
+      console.log('🚀 Launching browser with enhanced args...');
       const browser = await puppeteer.launch({
-        args: chromium.args,
+        args,
         defaultViewport: chromium.defaultViewport,
         executablePath,
         headless: true,
-        timeout: options.timeout || 30000,
+        timeout: options.timeout || 60000,
+        ignoreDefaultArgs: ['--disable-extensions'],
       });
 
       const originalNewPage = browser.newPage.bind(browser);
@@ -75,26 +89,53 @@ export async function getBrowser(options: LaunchOptions = {}) {
       });
       
       // Verifica specifica per l'errore dei file brotli
-      if (error instanceof Error && error.message.includes('brotli files')) {
-        console.log('🛠️ Attempting to resolve brotli files issue...');
+      if (error instanceof Error && (error.message.includes('brotli files') || error.message.includes('does not exist'))) {
+        console.log('🛠️ Attempting to resolve brotli/directory files issue...');
         
         // Prova a reinstanziare chromium con un approccio diverso
         try {
-          console.log('🔄 Attempting alternative Chromium setup...');
+          console.log('🔄 Attempting minimal Chromium setup...');
+          
+          // Get the executable path again
           const alternativeExecutablePath = await chromium.executablePath();
           
-          // Usa solo gli argomenti base essenziali
+          // Use minimal essential args only
+          const minimalArgs = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+            '--no-zygote',
+            '--disable-extensions'
+          ];
+          
           const browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            args: minimalArgs,
             executablePath: alternativeExecutablePath,
             headless: true,
-            timeout: 60000, // Timeout più lungo per la prima volta
+            timeout: 120000, // Longer timeout for initialization
+            ignoreDefaultArgs: ['--disable-extensions']
           });
           
-          console.log('✅ Alternative Chromium setup successful');
+          console.log('✅ Minimal Chromium setup successful');
           return browser;
         } catch (alternativeError) {
           console.error('❌ Alternative setup also failed:', alternativeError);
+          console.log('🔄 Trying fallback to local Chromium detection...');
+          
+          // Fallback: try to use local chromium if available
+          try {
+            const browser = await puppeteer.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox'],
+              timeout: 60000
+            });
+            console.log('✅ Fallback to local Chromium successful');
+            return browser;
+          } catch (fallbackError) {
+            console.error('❌ All Chromium launch attempts failed');
+          }
         }
       }
       

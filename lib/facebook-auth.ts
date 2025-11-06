@@ -15,22 +15,89 @@ export class FacebookAuth {
     return url.includes('facebook.com') || url.includes('fb.com') || url.includes('m.facebook.com');
   }
 
+  static async waitForFacebookFullyLoaded(page: any, maxWaitTime: number = 30000): Promise<boolean> {
+    console.log('⏳ Ensuring Facebook is fully loaded before scanning...');
+    
+    const startTime = Date.now();
+    let attempts = 0;
+    const maxAttempts = 6;
+    
+    while (Date.now() - startTime < maxWaitTime && attempts < maxAttempts) {
+      attempts++;
+      console.log(`🔍 Loading check attempt ${attempts}/${maxAttempts}...`);
+      
+      try {
+        // Check for Facebook-specific indicators that the page is loaded
+        const isFullyLoaded = await page.evaluate(() => {
+          // Check for basic Facebook structure
+          const hasBasicStructure = !!(
+            document.querySelector('[role="main"]') ||
+            document.querySelector('#content') ||
+            document.querySelector('[data-pagelet]')
+          );
+          
+          // Check that we don't have loading spinners
+          const hasLoadingSpinners = !!(
+            document.querySelector('[role="progressbar"]') ||
+            document.querySelector('[aria-label="Loading"]') ||
+            document.querySelector('.loading') ||
+            document.querySelector('[data-testid="loading"]')
+          );
+          
+          // Check for content indicators
+          const hasContent = document.body.textContent && document.body.textContent.trim().length > 100;
+          
+          return hasBasicStructure && !hasLoadingSpinners && hasContent;
+        });
+        
+        if (isFullyLoaded) {
+          console.log('✅ Facebook page fully loaded and ready for scanning');
+          return true;
+        }
+        
+        // Wait before next check
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.warn(`⚠️ Error checking Facebook load state (attempt ${attempts}):`, error);
+      }
+    }
+    
+    console.log('⚠️ Facebook page may not be fully loaded, but proceeding with scan');
+    return false;
+  }
+
   static async loginWithCookies(page: any, cookies: FacebookCookie[]): Promise<boolean> {
     try {
       console.log('🍪 Setting Facebook cookies for authentication...');
       
       // Navigate to Facebook first to set the domain
-      await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 30000 });
+      console.log('🌐 Navigating to Facebook to set cookies...');
+      await page.goto('https://www.facebook.com', { 
+        waitUntil: 'networkidle2', 
+        timeout: 45000 
+      });
+      
+      // Wait for initial page load to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Set cookies
+      console.log(`🍪 Setting ${cookies.length} Facebook cookies...`);
       for (const cookie of cookies) {
         await page.setCookie(cookie);
       }
       
       console.log(`✅ Set ${cookies.length} Facebook cookies`);
       
-      // Refresh to apply cookies
-      await page.reload({ waitUntil: 'networkidle2' });
+      // Refresh to apply cookies with complete loading wait
+      console.log('🔄 Refreshing page to apply cookies...');
+      await page.reload({ 
+        waitUntil: 'networkidle2',
+        timeout: 45000
+      });
+      
+      // Additional wait for authenticated content to load
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       // Check if login was successful by looking for user-specific elements
       const isLoggedIn = await page.evaluate(() => {
@@ -61,11 +128,18 @@ export class FacebookAuth {
     try {
       console.log('🔐 Attempting Facebook login with credentials...');
       
-      // Navigate to Facebook login page
-      await page.goto('https://www.facebook.com/login', { waitUntil: 'networkidle2', timeout: 30000 });
+      // Navigate to Facebook login page with complete loading wait
+      console.log('🌐 Navigating to Facebook login page...');
+      await page.goto('https://www.facebook.com/login', { 
+        waitUntil: 'networkidle2', 
+        timeout: 45000 
+      });
+      
+      // Additional wait for Facebook's JS to fully initialize
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Wait for login form
-      await page.waitForSelector('#email', { timeout: 10000 });
+      await page.waitForSelector('#email', { timeout: 15000 });
       
       // Fill in credentials
       await page.type('#email', email, { delay: 100 });
@@ -220,24 +294,56 @@ export class FacebookAuth {
   }
 
   static async navigateToFacebookEvent(page: any, targetUrl: string): Promise<boolean> {
-    console.log('🔍 Navigating to Facebook event without login...');
+    console.log('🔍 Navigating to Facebook event with complete loading wait...');
     
     try {
-      // Navigate to the URL
+      console.log('🌐 Starting Facebook page navigation...');
+      
+      // Navigate to the URL with extended wait for networkidle2
       await page.goto(targetUrl, { 
         waitUntil: 'networkidle2', 
-        timeout: 30000 
+        timeout: 45000  // Extended timeout for Facebook's heavy JS loading
       });
       
-      // Handle modals and cookies
+      console.log('✅ Initial page load complete (networkidle2 achieved)');
+      
+      // Wait additional time for Facebook's dynamic content loading
+      console.log('⏱️ Waiting for Facebook dynamic content to stabilize...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Handle modals and cookies after initial load
       await this.handleFacebookModalsAndCookies(page);
       
-      // Try to scroll to load more content
-      await page.evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight / 3);
+      // Wait for any remaining network activity to settle
+      console.log('🔄 Checking for additional network activity...');
+      try {
+        await page.waitForLoadState?.('networkidle', { timeout: 10000 });
+      } catch (e) {
+        // waitForLoadState might not exist in puppeteer, that's ok
+      }
+      
+      // Progressive scrolling to trigger lazy loading
+      console.log('📜 Progressive scrolling to load all content...');
+      await page.evaluate(async () => {
+        // Scroll progressively to trigger all lazy loading
+        const scrollStep = window.innerHeight;
+        const maxScroll = Math.min(document.body.scrollHeight, window.innerHeight * 3);
+        
+        for (let i = 0; i < maxScroll; i += scrollStep) {
+          window.scrollTo(0, i);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        // Scroll back to top
+        window.scrollTo(0, 0);
       });
       
+      // Final wait for content stabilization after scrolling
+      console.log('⏳ Final wait for content stabilization...');
       await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Ensure Facebook is completely loaded before scanning
+      await this.waitForFacebookFullyLoaded(page, 15000);
       
       // Check if we can see event content
       const hasEventContent = await page.evaluate(() => {

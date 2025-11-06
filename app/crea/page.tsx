@@ -132,6 +132,17 @@ export default function CreaEvento() {
             return;
         }
 
+        // Check if it's a Facebook URL (including short links)
+        const isFacebookUrl = linkUrl.includes('facebook.com') ||
+            linkUrl.includes('fb.me') ||
+            linkUrl.includes('fb.com') ||
+            linkUrl.includes('m.facebook.com');
+
+        if (isFacebookUrl) {
+            alert('Gli eventi di Facebook non possono essere scansionati, prova a fare uno screenshot');
+            return;
+        }
+
         setLoadingLink(true);
         setError(null);
 
@@ -139,14 +150,14 @@ export default function CreaEvento() {
             // Create a fetch request with timeout
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 55000); // 55 second timeout
-            
+
             const response = await fetch('/api/process-link', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: linkUrl }),
                 signal: controller.signal,
             });
-            
+
             clearTimeout(timeoutId);
 
             if (!response.ok) {
@@ -168,7 +179,7 @@ export default function CreaEvento() {
             }
         } catch (error) {
             console.error('Error processing link:', error);
-            
+
             if (error instanceof Error) {
                 if (error.name === 'AbortError') {
                     setError('La richiesta ha impiegato troppo tempo. Il server potrebbe essere occupato, riprova tra qualche minuto.');

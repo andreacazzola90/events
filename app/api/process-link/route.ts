@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import { getBrowser, closeBrowser } from '../../../lib/browser-vercel';
-import { FacebookAuth } from '../../../lib/facebook-auth';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -10,12 +9,29 @@ const groq = new Groq({
 export async function POST(request: NextRequest) {
     try {
         const { url } = await request.json();
-
+        
         if (!url) {
-            return NextResponse.json({ error: 'URL richiesto' }, { status: 400 });
+            return NextResponse.json(
+                { error: 'URL mancante' },
+                { status: 400 }
+            );
         }
 
         console.log('Processing URL:', url);
+
+        // Check if it's a Facebook URL and reject it
+        const isFacebookUrl = url.includes('facebook.com') || 
+                             url.includes('fb.me') || 
+                             url.includes('fb.com') ||
+                             url.includes('m.facebook.com');
+
+        if (isFacebookUrl) {
+            console.log('🚫 Facebook URL detected, rejecting request');
+            return NextResponse.json(
+                { error: 'Gli eventi di Facebook non possono essere scansionati, prova a fare uno screenshot' },
+                { status: 400 }
+            );
+        }
 
         // Verifica che GROQ_API_KEY sia configurata
         if (!process.env.GROQ_API_KEY) {
@@ -49,12 +65,6 @@ export async function POST(request: NextRequest) {
 
             const page = await browser.newPage();
             
-            // Facebook Authentication - Login if it's a Facebook URL
-            const isAuthenticated = await FacebookAuth.authenticateIfNeeded(page, url);
-            if (FacebookAuth.isFacebookUrl(url) && !isAuthenticated) {
-                console.log('⚠️ Facebook authentication failed, proceeding without login...');
-            }
-            
             // Imposta user-agent e header realistici - questi verranno sovrascritti se il browser ha già impostazioni di default
             try {
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
@@ -76,28 +86,23 @@ export async function POST(request: NextRequest) {
             
             console.log('Navigating to URL...');
             
-            // Check if Facebook authentication already handled navigation
-            const isFacebookUrl = FacebookAuth.isFacebookUrl(url);
+            // Standard navigation
             let navigationSuccess = false;
             let lastError = null;
             const maxRetries = 3;
             
-            if (isFacebookUrl && isAuthenticated) {
-                // Facebook auth already navigated to the page
-                console.log('✅ Facebook navigation handled by authentication system');
-                navigationSuccess = true;
-            } else {
-                // Standard navigation for non-Facebook URLs or failed Facebook auth
+            {
+                // Navigate to the URL
                 for (let retry = 0; retry < maxRetries; retry++) {
                     try {
                         console.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
                         
-                        // Prova diversi parametri di timeout e waiting
+                        // Progressive timeouts for better reliability
                         const waitOptions = retry === 0 
-                            ? { waitUntil: 'networkidle2' as const, timeout: 30000 }
+                            ? { waitUntil: 'domcontentloaded' as const, timeout: 15000 }
                             : retry === 1 
-                            ? { waitUntil: 'domcontentloaded' as const, timeout: 20000 }
-                            : { waitUntil: 'load' as const, timeout: 15000 };
+                            ? { waitUntil: 'load' as const, timeout: 20000 }
+                            : { waitUntil: 'networkidle2' as const, timeout: 30000 };
                         
                         // Simulate human-like behavior before navigation
                         console.log('🔄 Navigating with human-like behavior...');
@@ -108,12 +113,12 @@ export async function POST(request: NextRequest) {
                         
                         await page.goto(url, waitOptions);
                     
-                    // Simulate human reading time and random mouse movements
-                    console.log('📖 Simulating human reading behavior...');
-                    
-                    // Random delay after page load (2-4 seconds)
-                    const postNavDelay = Math.floor(Math.random() * 2000) + 2000;
-                    await new Promise(resolve => setTimeout(resolve, postNavDelay));
+                        // Simulate human reading time and random mouse movements
+                        console.log('📖 Simulating human reading behavior...');
+                        
+                        // Random delay after page load (2-4 seconds)
+                        const postNavDelay = Math.floor(Math.random() * 2000) + 2000;
+                        await new Promise(resolve => setTimeout(resolve, postNavDelay));
                     
                     // Simulate mouse movements and scrolling
                     try {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
-import puppeteer from 'puppeteer';
+import { getBrowser, closeBrowser } from '../../../lib/browser-vercel';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -27,134 +27,204 @@ export async function POST(request: NextRequest) {
 
         // 1. Scrape della pagina con Puppeteer
         console.log('Launching browser...');
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        });
-        
+        let browser = null;
+        let finalImageUrl = null;
+        let pageText = '';
 
-        const page = await browser.newPage();
-        // Imposta user-agent e header realistici
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        await page.setExtraHTTPHeaders({
-            'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-            'Upgrade-Insecure-Requests': '1',
-        });
-        console.log('Navigating to URL...');
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-
-        // Estrai il testo della pagina
-        console.log('Extracting page text...');
-        const pageText = await page.evaluate(() => document.body.innerText);
-        
-
-        // Cerca immagini principali nella pagina (Facebook, og:image, twitter:image, itemprop, fallback)
-        console.log('Looking for images...');
-        const imageUrl = await page.evaluate(() => {
-
-            // 1. Facebook: img[data-imgperflogname]
-            const fbImg = document.querySelector('img[data-imgperflogname]');
-            if (fbImg && (fbImg as HTMLImageElement).src) return (fbImg as HTMLImageElement).src;
-
-
-            // 2. dice.fm: SOLO immagine evento reale (no icone)
-            if (window.location.hostname.includes('dice.fm')) {
-                // a. Immagine dentro il container layout evento
-                const container = document.querySelector('.EventDetailsLayout__Container-sc-e27c8822-0.jbWxWb.hide-in-purchase-flow');
-                if (container) {
-                    const img = container.querySelector('img');
-                    if (img && (img as HTMLImageElement).src && !(img as HTMLImageElement).src.includes('dice-fan-social.png') && !(img as HTMLImageElement).src.includes('favicon') && !(img as HTMLImageElement).src.includes('logo') && !(img as HTMLImageElement).src.includes('icon')) {
-                        return (img as HTMLImageElement).src;
-                    }
-                }
-                // b. Immagine con classe .EventDetailsImage__Image
-                const imgStrict = document.querySelector('img.EventDetailsImage__Image');
-                if (imgStrict && (imgStrict as HTMLImageElement).src && !(imgStrict as HTMLImageElement).src.includes('dice-fan-social.png') && !(imgStrict as HTMLImageElement).src.includes('favicon') && !(imgStrict as HTMLImageElement).src.includes('logo') && !(imgStrict as HTMLImageElement).src.includes('icon')) {
-                    return (imgStrict as HTMLImageElement).src;
-                }
-                // c. Immagine con classe che inizia per EventDetailsImage__Image-sc
-                const diceImgs = Array.from(document.querySelectorAll('img')).filter(img => {
-                    return Array.from(img.classList).some(cls => cls.startsWith('EventDetailsImage__Image-sc'));
-                });
-                const diceMainImg = diceImgs.find(img => (img as HTMLImageElement).src && !(img as HTMLImageElement).src.includes('dice-fan-social.png') && !(img as HTMLImageElement).src.includes('favicon') && !(img as HTMLImageElement).src.includes('logo') && !(img as HTMLImageElement).src.includes('icon'));
-                if (diceMainImg) return (diceMainImg as HTMLImageElement).src;
-                // d. Fallback: nessuna immagine evento trovata
-                return null;
-            }
-
-
-            // 3. og:image
-            const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
-            if (ogImage) return ogImage;
-
-            // 3b. og:image:secure_url
-            const ogImageSecure = document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content');
-            if (ogImageSecure) return ogImageSecure;
-
-            // 4. twitter:image
-            const twitterImage = document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
-            if (twitterImage) return twitterImage;
-
-            // 5. itemprop="image"
-            const itempropImage = document.querySelector('[itemprop="image"]')?.getAttribute('content') || document.querySelector('[itemprop="image"]')?.getAttribute('src');
-            if (itempropImage) return itempropImage;
-
-            // 6. Immagine più grande della pagina (escludi icone)
-            const images = Array.from(document.querySelectorAll('img'));
-            let biggestImg = null;
-            let maxArea = 0;
-            for (const img of images) {
-                const src = img.src || '';
-                if (!src || src.includes('dice-fan-social.png') || src.includes('favicon') || src.includes('logo') || src.includes('icon')) continue;
-                const area = img.naturalWidth * img.naturalHeight;
-                if (area > maxArea) {
-                    maxArea = area;
-                    biggestImg = img;
-                }
-            }
-            if (biggestImg) return biggestImg.src;
-
-            // 7. Immagine più vicina al titolo dell'evento (se presente)
-            const titleEl = document.querySelector('h1, .event-title, [data-testid="event-title"]');
-            if (titleEl) {
-                let closestImg = null;
-                let minDist = Infinity;
-                for (const img of images) {
-                    if (!img.src) continue;
-                    const dist = Math.abs(img.getBoundingClientRect().top - titleEl.getBoundingClientRect().top);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        closestImg = img;
-                    }
-                }
-                if (closestImg) return closestImg.src;
-            }
-
-            // 8. Prima immagine <img> visibile con src valido
-            const firstVisible = images.find(img => {
-                const rect = img.getBoundingClientRect();
-                return img.src && rect.width > 0 && rect.height > 0 && window.getComputedStyle(img).display !== 'none' && window.getComputedStyle(img).visibility !== 'hidden';
+        try {
+            browser = await getBrowser({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
             });
-            if (firstVisible) return firstVisible.src;
 
-            // 9. Prima immagine <img> con src valido
-            const firstImg = images.find(img => img.src);
-            if (firstImg) return firstImg.src;
+            const page = await browser.newPage();
+            // Imposta user-agent e header realistici - questi verranno sovrascritti se il browser ha già impostazioni di default
+            try {
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+                await page.setExtraHTTPHeaders({
+                    'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                    'Sec-Ch-Ua-Mobile': '?0',
+                    'Sec-Ch-Ua-Platform': '"Windows"',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1'
+                });
+            } catch (headerError) {
+                console.warn('Could not set headers (may already be set by browser):', headerError);
+            }
+            
+            console.log('Navigating to URL...');
+            
+            // Strategia di retry per la navigazione
+            let navigationSuccess = false;
+            let lastError = null;
+            const maxRetries = 3;
+            
+            for (let retry = 0; retry < maxRetries; retry++) {
+                try {
+                    console.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
+                    
+                    // Prova diversi parametri di timeout e waiting
+                    const waitOptions = retry === 0 
+                        ? { waitUntil: 'networkidle2' as const, timeout: 30000 }
+                        : retry === 1 
+                        ? { waitUntil: 'domcontentloaded' as const, timeout: 20000 }
+                        : { waitUntil: 'load' as const, timeout: 15000 };
+                    
+                    await page.goto(url, waitOptions);
+                    
+                    // Attendi un po' per essere sicuri che il contenuto sia caricato
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    navigationSuccess = true;
+                    break;
+                } catch (navError) {
+                    console.warn(`Navigation attempt ${retry + 1} failed:`, navError);
+                    lastError = navError;
+                    
+                    if (retry < maxRetries - 1) {
+                        console.log('Retrying navigation in 1 second...');
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+            }
+            
+            if (!navigationSuccess) {
+                throw new Error(`Failed to navigate to ${url} after ${maxRetries} attempts. Last error: ${lastError}`);
+            }
 
-            return null;
-        });
+            // Estrai il testo della pagina
+            console.log('Extracting page text...');
+            try {
+                pageText = await page.evaluate(() => {
+                    // Prova prima document.body.innerText, fallback su document.body.textContent
+                    return document.body?.innerText || document.body?.textContent || '';
+                });
+            } catch (textError) {
+                console.warn('Could not extract page text:', textError);
+                // Fallback: prova a prendere il titolo almeno
+                try {
+                    pageText = await page.evaluate(() => document.title || '');
+                } catch (titleError) {
+                    console.error('Could not extract even title:', titleError);
+                    pageText = 'Unable to extract page content';
+                }
+            }
+        
 
-        let finalImageUrl = imageUrl;
-        if (!finalImageUrl) {
-            console.log('No image found, taking screenshot...');
-            const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 80 });
-            const screenshotBase64 = Buffer.from(screenshotBuffer).toString('base64');
-            finalImageUrl = `data:image/jpeg;base64,${screenshotBase64}`;
+            // Cerca immagini principali nella pagina (Facebook, og:image, twitter:image, itemprop, fallback)
+            console.log('Looking for images...');
+            const imageUrl = await page.evaluate(() => {
+
+                // 1. Facebook: img[data-imgperflogname]
+                const fbImg = document.querySelector('img[data-imgperflogname]');
+                if (fbImg && (fbImg as HTMLImageElement).src) return (fbImg as HTMLImageElement).src;
+
+                // 2. dice.fm: SOLO immagine evento reale (no icone)
+                if (window.location.hostname.includes('dice.fm')) {
+                    // a. Immagine dentro il container layout evento
+                    const container = document.querySelector('.EventDetailsLayout__Container-sc-e27c8822-0.jbWxWb.hide-in-purchase-flow');
+                    if (container) {
+                        const img = container.querySelector('img');
+                        if (img && (img as HTMLImageElement).src && !(img as HTMLImageElement).src.includes('dice-fan-social.png') && !(img as HTMLImageElement).src.includes('favicon') && !(img as HTMLImageElement).src.includes('logo') && !(img as HTMLImageElement).src.includes('icon')) {
+                            return (img as HTMLImageElement).src;
+                        }
+                    }
+                    // b. Immagine con classe .EventDetailsImage__Image
+                    const imgStrict = document.querySelector('img.EventDetailsImage__Image');
+                    if (imgStrict && (imgStrict as HTMLImageElement).src && !(imgStrict as HTMLImageElement).src.includes('dice-fan-social.png') && !(imgStrict as HTMLImageElement).src.includes('favicon') && !(imgStrict as HTMLImageElement).src.includes('logo') && !(imgStrict as HTMLImageElement).src.includes('icon')) {
+                        return (imgStrict as HTMLImageElement).src;
+                    }
+                    // c. Immagine con classe che inizia per EventDetailsImage__Image-sc
+                    const diceImgs = Array.from(document.querySelectorAll('img')).filter(img => {
+                        return Array.from(img.classList).some(cls => cls.startsWith('EventDetailsImage__Image-sc'));
+                    });
+                    const diceMainImg = diceImgs.find(img => (img as HTMLImageElement).src && !(img as HTMLImageElement).src.includes('dice-fan-social.png') && !(img as HTMLImageElement).src.includes('favicon') && !(img as HTMLImageElement).src.includes('logo') && !(img as HTMLImageElement).src.includes('icon'));
+                    if (diceMainImg) return (diceMainImg as HTMLImageElement).src;
+                    // d. Fallback: nessuna immagine evento trovata
+                    return null;
+                }
+
+                // 3. og:image
+                const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+                if (ogImage) return ogImage;
+
+                // 3b. og:image:secure_url
+                const ogImageSecure = document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content');
+                if (ogImageSecure) return ogImageSecure;
+
+                // 4. twitter:image
+                const twitterImage = document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+                if (twitterImage) return twitterImage;
+
+                // 5. itemprop="image"
+                const itempropImage = document.querySelector('[itemprop="image"]')?.getAttribute('content') || document.querySelector('[itemprop="image"]')?.getAttribute('src');
+                if (itempropImage) return itempropImage;
+
+                // 6. Immagine più grande della pagina (escludi icone)
+                const images = Array.from(document.querySelectorAll('img'));
+                let biggestImg = null;
+                let maxArea = 0;
+                for (const img of images) {
+                    const src = img.src || '';
+                    if (!src || src.includes('dice-fan-social.png') || src.includes('favicon') || src.includes('logo') || src.includes('icon')) continue;
+                    const area = img.naturalWidth * img.naturalHeight;
+                    if (area > maxArea) {
+                        maxArea = area;
+                        biggestImg = img;
+                    }
+                }
+                if (biggestImg) return biggestImg.src;
+
+                // 7. Immagine più vicina al titolo dell'evento (se presente)
+                const titleEl = document.querySelector('h1, .event-title, [data-testid="event-title"]');
+                if (titleEl) {
+                    let closestImg = null;
+                    let minDist = Infinity;
+                    for (const img of images) {
+                        if (!img.src) continue;
+                        const dist = Math.abs(img.getBoundingClientRect().top - titleEl.getBoundingClientRect().top);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestImg = img;
+                        }
+                    }
+                    if (closestImg) return closestImg.src;
+                }
+
+                // 8. Prima immagine <img> visibile con src valido
+                const firstVisible = images.find(img => {
+                    const rect = img.getBoundingClientRect();
+                    return img.src && rect.width > 0 && rect.height > 0 && window.getComputedStyle(img).display !== 'none' && window.getComputedStyle(img).visibility !== 'hidden';
+                });
+                if (firstVisible) return firstVisible.src;
+
+                // 9. Prima immagine <img> con src valido
+                const firstImg = images.find(img => img.src);
+                if (firstImg) return firstImg.src;
+
+                return null;
+            });
+
+            finalImageUrl = imageUrl;
+            if (!finalImageUrl) {
+                console.log('No image found, taking screenshot...');
+                const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 80 });
+                const screenshotBase64 = Buffer.from(screenshotBuffer).toString('base64');
+                finalImageUrl = `data:image/jpeg;base64,${screenshotBase64}`;
+            }
+
+            await closeBrowser(browser);
+            console.log('Final image URL:', finalImageUrl ? 'Found' : 'Using screenshot');
+
+        } catch (browserError) {
+            console.error('Errore durante lo scraping:', browserError);
+            await closeBrowser(browser);
+            throw new Error('Errore durante l\'accesso alla pagina web: ' + (browserError instanceof Error ? browserError.message : 'Errore sconosciuto'));
         }
-
-        await browser.close();
-        console.log('Final image URL:', finalImageUrl ? 'Found' : 'Using screenshot');
 
         // 2. Usa Groq per estrarre le informazioni dell'evento
         console.log('Calling Groq API...');

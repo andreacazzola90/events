@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { CalendarIcon, ClockIcon, MapPinIcon } from "../../../components/EventIcons";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { extractIdFromSlug, generateUniqueSlug } from "../../../../lib/slug-utils";
 
 interface Event {
     id: number;
@@ -56,15 +57,20 @@ export default function EditEventPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (params && params.id) {
-            fetchEvent();
+        if (params && params.slug) {
+            const eventId = extractIdFromSlug(params.slug as string);
+            if (eventId) {
+                fetchEvent(eventId);
+            } else {
+                setError('Invalid event URL');
+                setLoading(false);
+            }
         }
-    }, [params?.id]);
+    }, [params?.slug]);
 
-    const fetchEvent = async () => {
-        if (!params || !params.id) return;
+    const fetchEvent = async (eventId: number) => {
         try {
-            const response = await fetch(`/api/events/${params.id}`);
+            const response = await fetch(`/api/events/${eventId}`);
             if (response.ok) {
                 const data = await response.json();
                 // Convert date to input format if needed
@@ -117,7 +123,7 @@ export default function EditEventPage() {
                     body: formData,
                 });
                 if (response.ok) {
-                    router.push(`/events/${event.id}`);
+                    router.push(`/events/${generateUniqueSlug(event.title, event.id)}`);
                 } else {
                     setError("Errore nel salvataggio dell'evento");
                 }
@@ -133,7 +139,7 @@ export default function EditEventPage() {
                     body: JSON.stringify(eventToSave),
                 });
                 if (response.ok) {
-                    router.push(`/events/${event.id}`);
+                    router.push(`/events/${generateUniqueSlug(event.title, event.id)}`);
                 } else {
                     setError("Errore nel salvataggio dell'evento");
                 }
@@ -303,7 +309,7 @@ export default function EditEventPage() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => router.push(`/events/${event.id}`)}
+                            onClick={() => router.push(`/events/${generateUniqueSlug(event.title, event.id)}`)}
                             className="px-6 py-2 rounded-full font-bold shadow-button bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all"
                         >
                             Annulla

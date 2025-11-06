@@ -197,19 +197,25 @@ export default function CreaEvento() {
     };
 
     return (
-        <main className="min-h-screen py-8 px-2 bg-light w-full">
-            <div className="container mx-auto px-8">
-                <div className="w-full space-y-8">
-                    <div className="w-full text-center space-y-4">
-                        <h1 className="text-4xl md:text-5xl font-extrabold text-primary drop-shadow-lg tracking-tight">
-                            {events.length > 0 ? 'Modifica Evento' : 'Crea Nuovo Evento'}
+        <main className="min-h-screen">
+            {/* Hero Section */}
+            <section className="hero-section">
+                <div className="max-w-4xl mx-auto px-6 py-16 text-center">
+                    <div className="animate-fadeInUp">
+                        <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
+                            {events.length > 0 ? (
+                                <>Edit your <span className="gradient-text">event</span></>
+                            ) : (
+                                <>Create something <span className="gradient-text">incredible</span></>
+                            )}
                         </h1>
-                        <p className="text-xl md:text-2xl text-dark/70 font-semibold">
+                        <p className="text-xl md:text-2xl text-gray-400 mb-8 max-w-2xl mx-auto leading-relaxed">
                             {events.length > 0
-                                ? 'Rivedi e modifica le informazioni estratte'
-                                : 'Carica l\'immagine di un evento e lascia che l\'AI estragga tutte le informazioni'
+                                ? 'Fine-tune the extracted information and make your event perfect'
+                                : 'Upload an event image or link and let our AI extract all the details for you'
                             }
                         </p>
+
                         {events.length > 0 && (
                             <button
                                 onClick={() => {
@@ -217,76 +223,97 @@ export default function CreaEvento() {
                                     setImageUrl(null);
                                     setError(null);
                                 }}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold transition-all"
+                                className="inline-flex items-center gap-2 bg-white/10 text-white px-6 py-3 rounded-lg font-semibold border border-white/20 transition-all duration-300 hover:bg-white/20 hover:scale-105"
                             >
-                                ← Carica Nuovo Evento
+                                ← Create New Event
                             </button>
                         )}
                     </div>
-                    <div className="space-y-8 w-full">
-                        {/* Mostra i form solo se non ci sono eventi estratti */}
-                        {events.length === 0 && (
-                            <>
-                                {/* Link Input Form */}
-                                <div className="bg-white rounded-2xl shadow-card p-8 border border-gray-200">
-                                    <h2 className="text-2xl font-bold text-primary mb-4">Estrai Evento da Link</h2>
-                                    <p className="text-gray-600 mb-6">Inserisci il link di un evento e l'AI estrarrà automaticamente tutte le informazioni</p>
-                                    <form onSubmit={handleLinkSubmit} className="flex flex-col md:flex-row gap-4">
-                                        <input
-                                            type="url"
-                                            placeholder="https://esempio.com/evento"
-                                            value={linkUrl}
-                                            onChange={(e) => setLinkUrl(e.target.value)}
-                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
-                                            disabled={loadingLink}
-                                        />
-                                        <button
-                                            type="submit"
-                                            disabled={loadingLink}
-                                            className="px-6 py-3 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary text-white hover:shadow-lg transition-all disabled:opacity-50"
-                                        >
-                                            {loadingLink ? 'Elaborazione...' : 'Estrai Evento'}
-                                        </button>
-                                    </form>
+                </div>
+            </section>
+
+            <div className="max-w-4xl mx-auto px-6 pb-16">
+                <div className="space-y-8">
+                    {/* Creation Methods - Only show if no events extracted */}
+                    {events.length === 0 && (
+                        <div className="grid md:grid-cols-2 gap-8">
+                            {/* Link Input Method */}
+                            <div className="glass-effect p-8 rounded-2xl border border-white/10">
+                                <div className="text-center mb-6">
+                                    <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <span className="text-2xl">🔗</span>
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white mb-2">Extract from Link</h2>
+                                    <p className="text-gray-400">Paste an event URL and let AI extract all the details</p>
                                 </div>
 
-                                {/* Divider */}
-                                <div className="flex items-center gap-4">
-                                    <div className="flex-1 h-px bg-gray-300"></div>
-                                    <span className="text-gray-500 font-semibold">OPPURE</span>
-                                    <div className="flex-1 h-px bg-gray-300"></div>
-                                </div>
-
-                                {/* Image Upload */}
-                                <div className="bg-white rounded-2xl shadow-card p-8 border border-gray-200">
-                                    <h2 className="text-2xl font-bold text-primary mb-4">Carica Immagine</h2>
-                                    <p className="text-gray-600 mb-6">Carica l'immagine di un evento e l'AI estrarrà tutte le informazioni</p>
-                                    <ImageUploader
-                                        onProcessed={(data: EventData) => handleNewEvents([data], '')}
-                                        onError={(message: string) => {
-                                            setError(message);
-                                            setEvents([]);
-                                            setImageUrl(null);
-                                        }}
+                                <form onSubmit={handleLinkSubmit} className="space-y-4">
+                                    <input
+                                        type="url"
+                                        placeholder="https://example.com/event"
+                                        value={linkUrl}
+                                        onChange={(e) => setLinkUrl(e.target.value)}
+                                        className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                        disabled={loadingLink}
                                     />
-                                </div>
-                            </>
-                        )}
-
-                        {error && (
-                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
-                                {error}
+                                    <button
+                                        type="submit"
+                                        disabled={loadingLink}
+                                        className="w-full bg-linear-to-r from-pink-500 to-purple-600 text-white py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25 disabled:opacity-50 disabled:hover:scale-100"
+                                    >
+                                        {loadingLink ? (
+                                            <div className="flex items-center justify-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                Processing...
+                                            </div>
+                                        ) : (
+                                            '✨ Extract Event'
+                                        )}
+                                    </button>
+                                </form>
                             </div>
-                        )}
-                        {events.length > 1 ? (
-                            <MultipleEventsEditor
-                                events={events}
-                                onSaveAll={handleSaveAll}
-                            />
-                        ) : events.length === 1 ? (
-                            <EventDisplay eventData={events[0]} onSave={handleSaveSingle} />
-                        ) : null}
-                    </div>
+
+                            {/* Image Upload Method */}
+                            <div className="glass-effect p-8 rounded-2xl border border-white/10">
+                                <div className="text-center mb-6">
+                                    <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <span className="text-2xl">📸</span>
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white mb-2">Upload Image</h2>
+                                    <p className="text-gray-400">Upload an event poster and AI will scan all the details</p>
+                                </div>
+
+                                <ImageUploader
+                                    onProcessed={(data: EventData) => handleNewEvents([data], '')}
+                                    onError={(message: string) => {
+                                        setError(message);
+                                        setEvents([]);
+                                        setImageUrl(null);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Error Display */}
+                    {error && (
+                        <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
+                            <div className="flex items-center gap-3">
+                                <span className="text-red-400 text-xl">⚠️</span>
+                                <p className="text-red-300">{error}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Event Editing Interface */}
+                    {events.length > 1 ? (
+                        <MultipleEventsEditor
+                            events={events}
+                            onSaveAll={handleSaveAll}
+                        />
+                    ) : events.length === 1 ? (
+                        <EventDisplay eventData={events[0]} onSave={handleSaveSingle} />
+                    ) : null}
                 </div>
             </div>
         </main>

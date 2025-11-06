@@ -4,89 +4,113 @@ import { usePathname } from 'next/navigation';
 import UserMenu from './UserMenu';
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { TransitionLink } from './TransitionLink';
 
 
 export default function Header() {
     const pathname = usePathname() || '';
     const [mobileOpen, setMobileOpen] = useState(false);
     const { data: session } = useSession();
-    const [showProfile, setShowProfile] = useState(false);
 
     // Profilo: se loggato vai su /account, altrimenti su /auth
     const navLinks = [
-        { href: '/', label: 'Eventi' },
-        { href: session ? '/account' : '/auth', label: 'Profilo', isProfile: true },
-        { href: '/mappa', label: 'Mappa' },
-        { href: '/crea', label: 'Crea Evento' },
+        { href: '/', label: 'Eventi', icon: '🎵' },
+        { href: session ? '/account' : '/auth', label: 'Profilo', icon: '👤', isProfile: true },
+        { href: '/mappa', label: 'Mappa', icon: '🗺️' },
+        { href: '/crea', label: 'Crea', icon: '✨' },
     ];
 
     return (
-        <header className="w-full bg-linear-to-r from-primary via-accent to-secondary shadow-card">
-            <div className="container mx-auto px-8 py-6 flex items-center justify-between md:justify-between flex-row-reverse md:flex-row gap-8">
-                {/* Logo / Brand */}
-                <Link href="/" className="flex items-center gap-2 group">
-                    <div className="text-3xl md:text-4xl font-extrabold text-white drop-shadow-lg tracking-tight transition-transform group-hover:scale-105">📅 EventScanner</div>
-                </Link>
+        <header className="fixed top-0 left-0 right-0 z-50 glass-effect border-b border-white/10">
+            <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+                {/* Logo / Brand - Dice.fm Style */}
+                <TransitionLink href="/" className="flex items-center gap-3 group">
+                    <div className="w-10 h-10 rounded-full bg-linear-to-br from-pink-500 to-purple-600 flex items-center justify-center text-xl">
+                        🎯
+                    </div>
+                    <span className="text-2xl font-bold gradient-text tracking-tight group-hover:scale-105 transition-transform">
+                        EventScanner
+                    </span>
+                </TransitionLink>
 
-                {/* Desktop Navigation */}
-                <nav className="hidden md:flex items-center gap-14">
+                {/* Desktop Navigation - Dice Style */}
+                <nav className="hidden md:flex items-center gap-8">
                     {navLinks.map(link => {
                         const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
-                        if (link.isProfile) {
-                            return (
-                                <div key={link.href} className="relative">
-                                    <Link
-                                        href={link.href}
-                                        className={`px-6 py-2 text-lg font-bold bg-transparent border-none text-white transition-all duration-200 ${isActive ? 'underline underline-offset-8' : 'opacity-80 hover:opacity-100'}`}
-                                        aria-label={link.label}
-                                    >
-                                        {link.label}
-                                    </Link>
-                                </div>
-                            );
-                        }
                         return (
-                            <div key={link.href} className="relative">
-                                <Link
-                                    href={link.href}
-                                    className={`px-6 py-2 text-lg font-bold bg-transparent border-none text-white transition-all duration-200 ${isActive ? 'underline underline-offset-8' : 'opacity-80 hover:opacity-100'}`}
-                                    aria-label={link.label}
-                                >
-                                    {link.label}
-                                </Link>
-                            </div>
+                            <TransitionLink
+                                key={link.href}
+                                href={link.href}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${isActive
+                                    ? 'bg-white/10 text-white border border-white/20'
+                                    : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                    }`}
+                            >
+                                <span className="text-lg">{link.icon}</span>
+                                {link.label}
+                            </TransitionLink>
                         );
                     })}
                 </nav>
 
-                {/* Mobile Hamburger */}
+                {/* CTA Button - Dice Style */}
+                <div className="hidden md:block">
+                    <TransitionLink
+                        href="/crea"
+                        className="inline-flex items-center gap-2 bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-2 rounded-full font-semibold text-sm transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
+                    >
+                        ✨ Crea Evento
+                    </TransitionLink>
+                </div>
+
+                {/* Mobile Hamburger - Dice Style */}
                 <button
-                    className="md:hidden flex items-center text-4xl text-white drop-shadow-lg focus:outline-none transition-transform hover:scale-110 ml-4"
+                    className="md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-white/10 text-white focus:outline-none transition-all hover:bg-white/20"
                     onClick={() => setMobileOpen(v => !v)}
-                    aria-label="Apri menu"
+                    aria-label="Menu"
                 >
-                    {mobileOpen ? '✖️' : '☰'}
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {mobileOpen ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                        )}
+                    </svg>
                 </button>
             </div>
 
-            {/* Mobile Menu */}
+            {/* Mobile Menu - Dice Style */}
             {mobileOpen && (
-                <nav className="md:hidden bg-linear-to-r from-primary via-accent to-secondary border-t border-primary/30 shadow-2xl px-6 py-8 flex flex-col gap-8 z-50 items-end justify-end text-right animate-fadeIn">
-                    {navLinks.map(link => {
-                        const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
-                        return (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                className={`w-full text-right px-6 py-4 text-xl font-bold bg-transparent border-none text-white transition-all duration-200 ${isActive ? 'underline underline-offset-8' : 'opacity-80 hover:opacity-100'}`}
-                                aria-label={link.label}
-                                onClick={() => setMobileOpen(false)}
-                            >
-                                {link.label}
-                            </Link>
-                        );
-                    })}
-                </nav>
+                <div className="md:hidden absolute top-full left-0 right-0 glass-effect border-t border-white/10 animate-fadeInUp">
+                    <nav className="p-6 space-y-4">
+                        {navLinks.map(link => {
+                            const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
+                            return (
+                                <TransitionLink
+                                    key={link.href}
+                                    href={link.href}
+                                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all duration-200 ${isActive
+                                        ? 'bg-white/10 text-white border border-white/20'
+                                        : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                        }`}
+                                    onClick={() => setMobileOpen(false)}
+                                >
+                                    <span className="text-xl">{link.icon}</span>
+                                    {link.label}
+                                </TransitionLink>
+                            );
+                        })}
+
+                        {/* Mobile CTA */}
+                        <TransitionLink
+                            href="/crea"
+                            className="flex items-center justify-center gap-2 bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold text-base transition-all duration-200 hover:scale-105 mt-4"
+                            onClick={() => setMobileOpen(false)}
+                        >
+                            ✨ Crea Evento
+                        </TransitionLink>
+                    </nav>
+                </div>
             )}
         </header>
     );

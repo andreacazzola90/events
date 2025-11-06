@@ -20,18 +20,42 @@ export default function AuthPage() {
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center bg-light py-8 px-2 w-full">
-            <div className="container mx-auto px-8">
-                <div className="bg-white rounded-2xl shadow-card p-8 md:p-12 flex flex-col md:flex-row gap-12 mx-auto">
-                    {/* Login a sinistra */}
-                    <div className="flex-1 border-r border-gray-200 pr-0 md:pr-8">
-                        <h2 className="text-2xl font-bold mb-6 text-primary">Accedi</h2>
-                        <LoginForm />
+        <main className="min-h-screen flex items-center justify-center">
+            <div className="hero-section w-full">
+                <div className="max-w-4xl mx-auto px-6 py-16">
+                    <div className="text-center mb-12">
+                        <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
+                            Join the <span className="gradient-text">community</span>
+                        </h1>
+                        <p className="text-xl md:text-2xl text-gray-400 mb-8 max-w-2xl mx-auto">
+                            Sign in to create incredible events and connect with your audience
+                        </p>
                     </div>
-                    {/* Registrazione a destra */}
-                    <div className="flex-1 pt-12 md:pt-0 md:pl-8">
-                        <h2 className="text-2xl font-bold mb-6 text-primary">Registrati</h2>
-                        <RegisterForm />
+
+                    <div className="glass-effect rounded-3xl p-8 md:p-12 grid md:grid-cols-2 gap-12">
+                        {/* Login Section */}
+                        <div className="space-y-6">
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-2xl">🔑</span>
+                                </div>
+                                <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
+                                <p className="text-gray-400">Sign in to your account</p>
+                            </div>
+                            <LoginForm />
+                        </div>
+
+                        {/* Register Section */}
+                        <div className="space-y-6 border-l border-white/10 pl-0 md:pl-8">
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-2xl">✨</span>
+                                </div>
+                                <h2 className="text-2xl font-bold text-white mb-2">Get Started</h2>
+                                <p className="text-gray-400">Create your new account</p>
+                            </div>
+                            <RegisterForm />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -75,13 +99,20 @@ function LoginForm() {
 
     return (
         <form className="space-y-6" onSubmit={handleSubmit}>
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded font-semibold">{error}</div>}
+            {error && (
+                <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <span className="text-red-400 text-xl">⚠️</span>
+                        <p className="text-red-300">{error}</p>
+                    </div>
+                </div>
+            )}
             <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Email</label>
+                <label className="block text-sm font-semibold mb-2 text-white">Email</label>
                 <input
                     type="email"
-                    placeholder="tua@email.com"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                    placeholder="your@email.com"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
@@ -89,11 +120,11 @@ function LoginForm() {
                 />
             </div>
             <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Password</label>
+                <label className="block text-sm font-semibold mb-2 text-white">Password</label>
                 <input
                     type="password"
                     placeholder="••••••••"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
@@ -102,10 +133,17 @@ function LoginForm() {
             </div>
             <button
                 type="submit"
-                className="w-full bg-linear-to-r from-primary via-accent to-secondary text-white font-bold py-3 rounded-full shadow-button hover:shadow-lg transition-all disabled:opacity-50"
+                className="w-full bg-linear-to-r from-pink-500 to-purple-600 text-white font-bold py-3 rounded-lg transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25 disabled:opacity-50 disabled:hover:scale-100"
                 disabled={loading}
             >
-                {loading ? 'Accesso in corso...' : 'Accedi'}
+                {loading ? (
+                    <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Signing in...
+                    </div>
+                ) : (
+                    '🔑 Sign In'
+                )}
             </button>
         </form>
     );
@@ -153,14 +191,28 @@ function RegisterForm() {
 
     return (
         <form className="space-y-6" onSubmit={handleSubmit}>
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded font-semibold">{error}</div>}
-            {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded font-semibold">{success}</div>}
+            {error && (
+                <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <span className="text-red-400 text-xl">⚠️</span>
+                        <p className="text-red-300">{error}</p>
+                    </div>
+                </div>
+            )}
+            {success && (
+                <div className="glass-effect border-green-500/50 bg-green-500/10 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <span className="text-green-400 text-xl">✅</span>
+                        <p className="text-green-300">{success}</p>
+                    </div>
+                </div>
+            )}
             <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Email</label>
+                <label className="block text-sm font-semibold mb-2 text-white">Email</label>
                 <input
                     type="email"
-                    placeholder="tua@email.com"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                    placeholder="your@email.com"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white/20 transition-all"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
@@ -168,11 +220,11 @@ function RegisterForm() {
                 />
             </div>
             <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Password</label>
+                <label className="block text-sm font-semibold mb-2 text-white">Password</label>
                 <input
                     type="password"
                     placeholder="••••••••"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white/20 transition-all"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
@@ -180,11 +232,11 @@ function RegisterForm() {
                 />
             </div>
             <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Conferma Password</label>
+                <label className="block text-sm font-semibold mb-2 text-white">Confirm Password</label>
                 <input
                     type="password"
                     placeholder="••••••••"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white/20 transition-all"
                     value={confirm}
                     onChange={e => setConfirm(e.target.value)}
                     required
@@ -193,10 +245,17 @@ function RegisterForm() {
             </div>
             <button
                 type="submit"
-                className="w-full bg-linear-to-r from-secondary via-accent to-primary text-white font-bold py-3 rounded-full shadow-button hover:shadow-lg transition-all disabled:opacity-50"
+                className="w-full bg-linear-to-r from-purple-500 to-pink-600 text-white font-bold py-3 rounded-lg transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50 disabled:hover:scale-100"
                 disabled={loading}
             >
-                {loading ? 'Registrazione in corso...' : 'Registrati'}
+                {loading ? (
+                    <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Creating account...
+                    </div>
+                ) : (
+                    '✨ Create Account'
+                )}
             </button>
         </form>
     );

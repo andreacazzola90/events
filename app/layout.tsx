@@ -5,6 +5,9 @@ import "leaflet/dist/leaflet.css";
 import Header from './components/Header';
 import Providers from './components/Providers';
 import InstallPrompt from './components/InstallPrompt';
+import { PageTransitionProvider } from './lib/PageTransitionContext';
+import { LoadingIndicator } from './components/LoadingIndicator';
+import { PageTransitionWrapper } from './components/PageTransition';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -46,11 +49,16 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} antialiased`}>
         <Providers>
-          <Header />
-          <main className="min-h-screen">
-            {children}
-          </main>
-          <InstallPrompt />
+          <PageTransitionProvider>
+            <LoadingIndicator />
+            <Header />
+            <main className="min-h-screen pt-16">
+              <PageTransitionWrapper>
+                {children}
+              </PageTransitionWrapper>
+            </main>
+            <InstallPrompt />
+          </PageTransitionProvider>
         </Providers>
         <script dangerouslySetInnerHTML={{
           __html: `

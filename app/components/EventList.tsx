@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EventData } from '@/types/event';
+import { generateUniqueSlug } from '../../lib/slug-utils';
+import { TransitionLink } from './TransitionLink';
 
 interface Event {
     id: number;
@@ -97,94 +99,151 @@ export default function EventList() {
     }
 
     return (
-        <div className="space-y-12">
-            {/* Filters */}
-            <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
+        <div className="space-y-8">
+            {/* Filters - Dice.fm Style */}
+            <div className="glass-effect p-6 rounded-2xl border border-white/10">
                 <form
-                    className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 w-full"
+                    className="flex flex-col lg:flex-row gap-4 items-center"
                     onSubmit={e => { e.preventDefault(); handleFilterChange(); }}
                 >
-                    <input
-                        type="text"
-                        placeholder="Cerca per titolo o descrizione"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-56"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Categoria"
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-40"
-                    />
-                    <input
-                        type="date"
-                        placeholder="Data da"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-40"
-                        disabled={onlyToday}
-                    />
-                    <input
-                        type="date"
-                        placeholder="Data a"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        className="p-2 border rounded focus:ring-2 focus:ring-blue-500 w-full md:w-40"
-                        disabled={onlyToday}
-                    />
-                    <label className="flex items-center gap-2 text-base font-medium whitespace-nowrap select-none">
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <input
-                            type="checkbox"
-                            checked={onlyToday}
-                            onChange={e => setOnlyToday(e.target.checked)}
-                            className="accent-blue-600 w-5 h-5"
+                            type="text"
+                            placeholder="Search events..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                         />
-                        Solo oggi
-                    </label>
-                    <button
-                        type="submit"
-                        className="px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400 text-white transition-all"
-                    >
-                        Applica filtri
-                    </button>
+                        <input
+                            type="text"
+                            placeholder="Category"
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                        />
+                        <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                            disabled={onlyToday}
+                        />
+                        <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                            disabled={onlyToday}
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 text-white font-medium cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={onlyToday}
+                                onChange={e => setOnlyToday(e.target.checked)}
+                                className="w-4 h-4 text-pink-500 bg-white/10 border-white/20 rounded focus:ring-pink-500 focus:ring-2"
+                            />
+                            Today only
+                        </label>
+                        <button
+                            type="submit"
+                            className="bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
+                        >
+                            Filter
+                        </button>
+                    </div>
                 </form>
             </div>
 
-            {/* Event List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mt-8">
+            {/* Event Grid - Dice.fm Style */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredEvents.length === 0 ? (
-                    <div className="col-span-full text-center py-8 text-gray-500">Nessun evento trovato</div>
+                    <div className="col-span-full text-center py-16">
+                        <div className="text-6xl mb-4">🎵</div>
+                        <h3 className="text-2xl font-bold text-white mb-2">No events found</h3>
+                        <p className="text-gray-400">Try adjusting your search filters or create a new event</p>
+                    </div>
                 ) : (
                     filteredEvents.map((event) => (
-                        <div
+                        <TransitionLink
                             key={event.id}
-                            className="bg-white p-8 rounded-2xl shadow-md border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow flex flex-col gap-6 min-h-80"
-                            onClick={() => router.push(`/events/${event.id}`)}
+                            href={`/events/${generateUniqueSlug(event.title, event.id)}`}
+                            className="event-card cursor-pointer group block"
                         >
-                            {event.imageUrl && (
-                                <img
-                                    src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
-                                    alt={event.title}
-                                    className="w-full h-40 object-cover rounded-xl mb-4"
-                                />
-                            )}
-                            <div className="flex flex-col gap-3 flex-1">
-                                <h3 className="text-2xl font-bold leading-tight">{event.title}</h3>
-                                <p className="text-gray-700 text-lg">{event.description.slice(0, 100)}...</p>
-                                <div className="mt-2 space-y-2 text-base text-gray-500">
-                                    <p className="flex items-center gap-2">📅 {event.date}</p>
-                                    <p className="flex items-center gap-2">🕐 {event.time}</p>
-                                    <p className="flex items-center gap-2">📍 {event.location}</p>
-                                    {event.category && <p className="flex items-center gap-2">🏷️ {event.category}</p>}
-                                </div>
+                            {/* Event Image */}
+                            <div className="relative overflow-hidden">
+                                {event.imageUrl ? (
+                                    <img
+                                        src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
+                                        alt={event.title}
+                                        className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
+                                    />
+                                ) : (
+                                    <div className="w-full h-48 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
+                                        <div className="text-4xl opacity-50">🎵</div>
+                                    </div>
+                                )}
+
+                                {/* Price Badge */}
+                                {event.price && (
+                                    <div className="absolute top-3 right-3 bg-black/80 text-white px-2 py-1 rounded-lg text-sm font-semibold">
+                                        {event.price}
+                                    </div>
+                                )}
                             </div>
-                        </div>
+
+                            {/* Event Details */}
+                            <div className="p-5 space-y-3">
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
+                                        {event.title}
+                                    </h3>
+                                    <p className="text-gray-400 text-sm line-clamp-2">
+                                        {event.description}
+                                    </p>
+                                </div>
+
+                                <div className="space-y-1 text-sm">
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                        <span className="w-4">📅</span>
+                                        <span>{new Date(event.date).toLocaleDateString('it-IT', {
+                                            weekday: 'short',
+                                            day: 'numeric',
+                                            month: 'short'
+                                        })}</span>
+                                        {event.time && <span className="text-gray-500">• {event.time}</span>}
+                                    </div>
+
+                                    {event.location && (
+                                        <div className="flex items-center gap-2 text-gray-300 line-clamp-1">
+                                            <span className="w-4">�</span>
+                                            <span className="truncate">{event.location}</span>
+                                        </div>
+                                    )}
+
+                                    {event.organizer && (
+                                        <div className="flex items-center gap-2 text-gray-300 line-clamp-1">
+                                            <span className="w-4">�</span>
+                                            <span className="truncate">{event.organizer}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Category Badge */}
+                                {event.category && (
+                                    <div className="pt-2">
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                                            {event.category}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        </TransitionLink>
                     ))
                 )}
             </div>
-
         </div>
     );
 }

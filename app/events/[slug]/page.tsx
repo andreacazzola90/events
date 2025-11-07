@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react';
 import { useParams, useRouter } from 'next/navigation';
 import { extractIdFromSlug, generateUniqueSlug } from '../../../lib/slug-utils';
 import { TransitionLink } from '../../components/TransitionLink';
+import { trackEventView, trackGTMEvent } from '../../lib/gtm';
+import { trackEventInteraction } from '../../lib/analytics';
 
 interface Event {
     id: number;
@@ -65,6 +67,11 @@ export default function EventDetailPage() {
             if (response.ok) {
                 const data = await response.json();
                 setEvent(data);
+
+                // Track event view
+                trackEventView(data);
+                trackEventInteraction('event_view', data);
+
                 // Fetch eventi dello stesso giorno
                 fetchSameDayEvents(data.date, eventId);
             } else {

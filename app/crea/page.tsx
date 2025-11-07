@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { trackEventCreate, trackGTMEvent } from '../lib/gtm';
+import { trackEvent } from '../lib/analytics';
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
     // Normalizza data: accetta YYYY-MM-DD, DD/MM/YYYY, ecc.
@@ -93,6 +95,11 @@ export default function CreaEvento() {
                     if (!saveResponse.ok) {
                         throw new Error(`Failed to save event: ${eventData.title}`);
                     }
+
+                    // Track event creation
+                    const savedEvent = await saveResponse.json();
+                    trackEventCreate(savedEvent);
+                    trackEvent('event_create', 'Events', eventData.title);
                 } else {
                     // No image upload needed, use regular JSON
                     const response = await fetch('/api/events', {
@@ -105,6 +112,11 @@ export default function CreaEvento() {
                     if (!response.ok) {
                         throw new Error(`Failed to save event: ${eventData.title}`);
                     }
+
+                    // Track event creation
+                    const savedEvent = await response.json();
+                    trackEventCreate(savedEvent);
+                    trackEvent('event_create', 'Events', eventData.title);
                 }
             }
             console.log(`Successfully saved ${eventsToSave.length} events`);

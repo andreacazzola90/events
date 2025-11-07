@@ -8,6 +8,8 @@ import InstallPrompt from './components/InstallPrompt';
 import { PageTransitionProvider } from './lib/PageTransitionContext';
 import { LoadingIndicator } from './components/LoadingIndicator';
 import { PageTransitionWrapper } from './components/PageTransition';
+import { GoogleAnalytics } from './lib/analytics';
+import { GoogleTagManager } from './lib/gtm';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -46,6 +48,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="EventScanner" />
+
+        {/* Google Analytics */}
+        <GoogleAnalytics />
+
+        {/* Google Tag Manager */}
+        <GoogleTagManager />
       </head>
       <body className={`${inter.variable} antialiased`}>
         <Providers>

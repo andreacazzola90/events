@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { EventData } from '@/types/event';
 import { generateUniqueSlug } from '../../lib/slug-utils';
 import { TransitionLink } from './TransitionLink';
+import { trackSearch, trackGTMEvent } from '../lib/gtm';
+import { trackEvent } from '../lib/analytics';
 
 interface Event {
     id: number;
@@ -69,6 +71,10 @@ export default function EventList() {
                 event.title.toLowerCase().includes(search.toLowerCase()) ||
                 event.description.toLowerCase().includes(search.toLowerCase())
             );
+
+            // Track search
+            trackSearch(search, category, filtered.length);
+            trackEvent('search', 'Events', search, filtered.length);
         }
 
         if (category) {

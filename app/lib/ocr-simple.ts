@@ -9,10 +9,32 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
   console.log('🔍 Starting OCR text extraction...');
   
   try {
-    // Convert File to base64 for API
-    const base64 = await fileToBase64(imageFile);
+    // Check if we're in server environment (Vercel)
+    if (typeof window === 'undefined') {
+      console.log('🖥️ Using server-side OCR route...');
+      
+      // Use our API route for server-side processing
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      
+      const response = await fetch('/api/ocr', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Server OCR failed');
+      }
+      
+      return data.text;
+    }
     
-    // Try OCR.space API with base64
+    // Client-side: use direct OCR.space API with base64
+    console.log('🌐 Using client-side OCR...');
+    
+    const base64 = await fileToBase64(imageFile);
     const formData = new FormData();
     formData.append('base64Image', `data:${imageFile.type};base64,${base64}`);
     formData.append('apikey', 'K83907440988957');
@@ -20,9 +42,9 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
     formData.append('isOverlayRequired', 'false');
     formData.append('detectOrientation', 'true');
     formData.append('scale', 'true');
-    formData.append('OCREngine', '2'); // Use engine 2 for better results
+    formData.append('OCREngine', '2');
     
-    console.log('📡 Calling OCR.space API...');
+    console.log('📡 Calling OCR.space API directly...');
     
     const response = await axios.post<OCRResponse>(
       'https://api.ocr.space/parse/image',
@@ -31,7 +53,7 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
         headers: {
           'apikey': 'K83907440988957',
         },
-        timeout: 30000, // 30 second timeout
+        timeout: 30000,
       }
     );
 
@@ -70,20 +92,32 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
 }
 
 /**
- * Convert File to base64 string
+ * Convert File to base64 string - works both client and server side
  */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Remove data:image/...;base64, prefix
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+async function fileToBase64(file: File): Promise<string> {
+  // Check if we're in browser environment
+  if (typeof window !== 'undefined' && window.FileReader) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data:image/...;base64, prefix
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  } else {
+    // Server-side: convert File/Blob to base64 using Buffer
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return buffer.toString('base64');
+    } catch (error) {
+      throw new Error('Failed to convert file to base64 in server environment');
+    }
+  }
 }
 
 /**

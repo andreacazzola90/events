@@ -50,25 +50,25 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
 
     function EditableField({ label, field }: { label: string; field: keyof EventData }) {
         let icon = null;
-        if (field === 'date') icon = <CalendarIcon className="w-5 h-5 text-blue-500" />;
-        if (field === 'time') icon = <ClockIcon className="w-5 h-5 text-blue-500" />;
-        if (field === 'location') icon = <MapPinIcon className="w-5 h-5 text-blue-500" />;
-        if (field === 'category') icon = <CategoryIcon className="w-5 h-5 text-blue-500" />;
-        if (field === 'organizer') icon = <UserIcon className="w-5 h-5 text-blue-500" />;
-        if (field === 'price') icon = <PriceIcon className="w-5 h-5 text-blue-500" />;
+        if (field === 'date') icon = <CalendarIcon className="field-icon date-icon w-5 h-5 text-blue-500" />;
+        if (field === 'time') icon = <ClockIcon className="field-icon time-icon w-5 h-5 text-blue-500" />;
+        if (field === 'location') icon = <MapPinIcon className="field-icon location-icon w-5 h-5 text-blue-500" />;
+        if (field === 'category') icon = <CategoryIcon className="field-icon category-icon w-5 h-5 text-blue-500" />;
+        if (field === 'organizer') icon = <UserIcon className="field-icon organizer-icon w-5 h-5 text-blue-500" />;
+        if (field === 'price') icon = <PriceIcon className="field-icon price-icon w-5 h-5 text-blue-500" />;
         return (
-            <div className="flex items-start space-x-4">
-                {icon && <span className="mt-2">{icon}</span>}
-                {!icon && <span className="text-gray-600 w-24 mt-2">{label}:</span>}
+            <div className={`editable-field field-${field} flex items-start space-x-4`}>
+                {icon && <span className="field-icon-wrapper mt-2">{icon}</span>}
+                {!icon && <span className="field-label text-gray-600 w-24 mt-2">{label}:</span>}
                 {isEditing ? (
                     <input
                         type="text"
                         name={field}
                         defaultValue={eventData[field] as string || ''}
-                        className="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className={`field-input field-${field}-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
                     />
                 ) : (
-                    <span className="flex-1 py-2">{eventData[field] || ''}</span>
+                    <span className={`field-display field-${field}-display flex-1 py-2`}>{eventData[field] || ''}</span>
                 )}
             </div>
         );
@@ -94,24 +94,24 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
         setIsEditing(false);
     };
     return (
-        <div className="space-y-6">
-            <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }}>
-                <div className="flex flex-row gap-8">
-                    <div className="rounded-lg overflow-hidden shadow-lg min-w-[220px] max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
+        <div className="event-display-container space-y-6">
+            <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }} className="event-form">
+                <div className="event-main-layout flex flex-row gap-8">
+                    <div className="event-image-section rounded-lg overflow-hidden shadow-lg min-w-[220px] max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
                                 alt="Immagine evento"
-                                className="w-full h-auto object-cover mb-2"
+                                className="event-image w-full h-auto object-cover mb-2"
                             />
                         ) : (
-                            <div className="w-full h-[220px] flex items-center justify-center text-gray-400">Nessuna immagine</div>
+                            <div className="event-image-placeholder w-full h-[220px] flex items-center justify-center text-gray-400">Nessuna immagine</div>
                         )}
                         {isEditing && (
                             <input
                                 type="file"
                                 accept="image/*"
-                                className="mt-2 text-sm"
+                                className="event-image-upload mt-2 text-sm"
                                 onChange={e => {
                                     const file = e.target.files?.[0];
                                     if (file) {
@@ -122,21 +122,21 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                             />
                         )}
                     </div>
-                    <div className="flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-6">
-                        <div className="flex justify-between items-center mb-4 gap-2">
-                            <h2 className="text-2xl font-bold">
+                    <div className="event-details-section text-black flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-6">
+                        <div className="event-header flex justify-between items-center mb-4 gap-2">
+                            <h2 className="event-title text-2xl font-bold">
                                 {isEditing ? (
                                     <input
                                         type="text"
                                         name="title"
                                         defaultValue={eventData.title}
-                                        className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="event-title-input w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 ) : (
                                     eventData.title
                                 )}
                             </h2>
-                            <div className="flex gap-2">
+                            <div className="event-actions flex gap-2">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -146,7 +146,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                             setIsEditing(true);
                                         }
                                     }}
-                                    className={`px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white ${isEditing
+                                    className={`event-edit-save-button px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white ${isEditing
                                         ? 'bg-linear-to-r from-green-400 via-green-500 to-green-600 hover:from-green-500 hover:to-green-700'
                                         : 'bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400'
                                         }`}
@@ -196,7 +196,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                                 }
                                             }
                                         }}
-                                        className="px-4 py-2 rounded-full font-bold shadow-button bg-blue-500 hover:bg-blue-600 text-white transition-all"
+                                        className="event-add-button px-4 py-2 rounded-full font-bold shadow-button bg-blue-500 hover:bg-blue-600 text-white transition-all"
                                     >
                                         Aggiungi evento
                                     </button>
@@ -241,10 +241,10 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                                 alert('Errore nel salvataggio evento.');
                                             }
                                         }}
-                                        className="px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-red-500 via-pink-500 to-yellow-400 hover:from-red-600 hover:to-yellow-500 text-white transition-all flex items-center"
+                                        className="event-calendar-button px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-red-500 via-pink-500 to-yellow-400 hover:from-red-600 hover:to-yellow-500 text-white transition-all flex items-center"
                                         title="Aggiungi a Google Calendar"
                                     >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="calendar-icon w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                         </svg>
                                         Salva nel calendario
@@ -252,42 +252,52 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                 )}
                             </div>
                         </div>
-                        <div className="space-y-3">
-                            <EditableField label="Data" field="date" />
-                            <EditableField label="Ora" field="time" />
-                            <div className="flex items-start space-x-4">
-                                <MapPinIcon className="w-5 h-5 text-blue-500 mt-2" />
+                        <div className="event-fields-container space-y-3">
+                            <div className="event-field-date">
+                                <EditableField label="Data" field="date" />
+                            </div>
+                            <div className="event-field-time">
+                                <EditableField label="Ora" field="time" />
+                            </div>
+                            <div className="event-field-location flex items-start space-x-4">
+                                <MapPinIcon className="location-icon w-5 h-5 text-blue-500 mt-2" />
                                 {isEditing ? (
                                     <input
                                         type="text"
                                         name="location"
                                         defaultValue={eventData.location || ''}
-                                        className="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="event-location-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 ) : (
                                     <a
                                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(eventData.location || '')}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex-1 py-2 text-blue-600 hover:text-blue-800 underline"
+                                        className="event-location-link flex-1 py-2 text-blue-600 hover:text-blue-800 underline"
                                     >
                                         {eventData.location || ''}
                                     </a>
                                 )}
                             </div>
-                            <EditableField label="Categoria" field="category" />
-                            <EditableField label="Organizzatore" field="organizer" />
-                            <EditableField label="Prezzo" field="price" />
-                            <div className="flex items-start space-x-4">
-                                <span className="text-gray-600 w-24 mt-2">Descrizione:</span>
+                            <div className="event-field-category">
+                                <EditableField label="Categoria" field="category" />
+                            </div>
+                            <div className="event-field-organizer">
+                                <EditableField label="Organizzatore" field="organizer" />
+                            </div>
+                            <div className="event-field-price">
+                                <EditableField label="Prezzo" field="price" />
+                            </div>
+                            <div className="event-field-description flex items-start space-x-4">
+                                <span className="description-label text-gray-600 w-24 mt-2">Descrizione:</span>
                                 {isEditing ? (
                                     <textarea
                                         name="description"
                                         defaultValue={eventData.description}
-                                        className="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[100px]"
+                                        className="event-description-textarea flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[100px]"
                                     />
                                 ) : (
-                                    <span className="flex-1 py-2">{eventData.description}</span>
+                                    <span className="event-description-text flex-1 py-2">{eventData.description}</span>
                                 )}
                             </div>
                         </div>

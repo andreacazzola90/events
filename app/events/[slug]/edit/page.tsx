@@ -176,7 +176,7 @@ export default function EditEventPage() {
                             name="title"
                             value={event.title}
                             onChange={handleChange}
-                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                             required
                         />
                     </div>
@@ -186,7 +186,7 @@ export default function EditEventPage() {
                             name="description"
                             value={event.description}
                             onChange={handleChange}
-                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                             rows={4}
                             required
                         />
@@ -202,7 +202,7 @@ export default function EditEventPage() {
                                 name="date"
                                 value={event.date}
                                 onChange={handleChange}
-                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                                 required
                                 aria-label="Data"
                             />
@@ -217,7 +217,7 @@ export default function EditEventPage() {
                                 name="time"
                                 value={event.time}
                                 onChange={handleChange}
-                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                                 required
                                 aria-label="Ora"
                             />
@@ -233,7 +233,7 @@ export default function EditEventPage() {
                             name="location"
                             value={event.location}
                             onChange={handleChange}
-                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                             required
                             aria-label="Luogo"
                         />
@@ -246,7 +246,7 @@ export default function EditEventPage() {
                                 name="category"
                                 value={event.category}
                                 onChange={handleChange}
-                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                             />
                         </div>
                         <div>
@@ -256,7 +256,7 @@ export default function EditEventPage() {
                                 name="price"
                                 value={event.price}
                                 onChange={handleChange}
-                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                             />
                         </div>
                     </div>
@@ -267,7 +267,7 @@ export default function EditEventPage() {
                             name="organizer"
                             value={event.organizer}
                             onChange={handleChange}
-                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                         />
                     </div>
                     <div>
@@ -276,7 +276,7 @@ export default function EditEventPage() {
                             name="rawText"
                             value={event.rawText}
                             onChange={handleChange}
-                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
                             rows={2}
                         />
                     </div>
@@ -295,7 +295,7 @@ export default function EditEventPage() {
                                 accept="image/*"
                                 ref={fileInputRef}
                                 onChange={handleImageChange}
-                                className="block mt-2"
+                                className="block mt-2 text-black"
                             />
                         </div>
                     </div>

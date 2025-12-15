@@ -230,32 +230,36 @@ export async function POST(request: NextRequest) {
                         const isVisitSchio = window.location.hostname.includes('visitschio.it');
                         if (isVisitSchio) {
                             console.log('[visitSchio] Using specific selectors for visitSchio.it');
-                            const mainContainer = document.querySelector('#main.container-fluid');
+                            
+                            // Usa solo #event_description perché contiene già tutte le info dell'evento
                             const eventDescription = document.querySelector('#event_description');
                             
-                            if (mainContainer || eventDescription) {
-                                // Crea un contenitore temporaneo per combinare i contenuti
-                                const combinedContent = document.createElement('div');
+                            if (eventDescription) {
+                                const descClone = eventDescription.cloneNode(true) as HTMLElement;
                                 
-                                if (mainContainer) {
-                                    const mainClone = mainContainer.cloneNode(true) as HTMLElement;
-                                    // Rimuovi elementi indesiderati dal clone
-                                    const navbar = mainClone.querySelector('#navbar-event-show');
-                                    if (navbar) navbar.remove();
-                                    const eventInterest = mainClone.querySelector('#event_interest');
-                                    if (eventInterest) eventInterest.remove();
-                                    combinedContent.appendChild(mainClone);
-                                }
+                                // Rimuovi elementi indesiderati dal clone
+                                const eventInterest = descClone.querySelector('#event_interest');
+                                if (eventInterest) eventInterest.remove();
                                 
-                                if (eventDescription) {
-                                    const descClone = eventDescription.cloneNode(true) as HTMLElement;
-                                    // Rimuovi #event_interest anche da event_description se presente
-                                    const eventInterest = descClone.querySelector('#event_interest');
-                                    if (eventInterest) eventInterest.remove();
-                                    combinedContent.appendChild(descClone);
-                                }
+                                const navbar = descClone.querySelector('#navbar-event-show');
+                                if (navbar) navbar.remove();
                                 
-                                return combinedContent;
+                                return descClone;
+                            }
+                            
+                            // Fallback a #main.container-fluid solo se #event_description non esiste
+                            const mainContainer = document.querySelector('#main.container-fluid');
+                            if (mainContainer) {
+                                const mainClone = mainContainer.cloneNode(true) as HTMLElement;
+                                
+                                // Rimuovi elementi indesiderati dal clone
+                                const navbar = mainClone.querySelector('#navbar-event-show');
+                                if (navbar) navbar.remove();
+                                
+                                const eventInterest = mainClone.querySelector('#event_interest');
+                                if (eventInterest) eventInterest.remove();
+                                
+                                return mainClone;
                             }
                         }
                         

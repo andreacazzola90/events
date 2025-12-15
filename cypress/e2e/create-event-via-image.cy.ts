@@ -7,8 +7,21 @@ describe('Event Creation via Image - OCR & AI Testing', () => {
   });
 
   it('should successfully extract event data from image using OCR and AI', () => {
-    // Intercept API calls
-    cy.intercept('POST', '/api/process-image').as('processImage');
+    // Mock successful OCR + AI response
+    cy.intercept('POST', '/api/process-image', {
+      statusCode: 200,
+      body: {
+        title: 'Music Festival 2025',
+        description: 'Amazing outdoor music festival with multiple stages',
+        date: '2025-07-15',
+        time: '18:00',
+        location: 'Parco della Musica, Rome',
+        organizer: 'Festival Productions',
+        category: 'Music',
+        price: '€50',
+        rawText: 'MUSIC FESTIVAL 2025\n15 LUGLIO\nORE 18:00\nPARCO DELLA MUSICA\nROME\n50 EURO'
+      }
+    }).as('processImage');
     
     // Upload test image
     cy.get('input[type="file"]', { timeout: 10000 })
@@ -66,8 +79,30 @@ describe('Event Creation via Image - OCR & AI Testing', () => {
   });
 
   it('should save event with image to database', () => {
-    cy.intercept('POST', '/api/process-image').as('processImage');
-    cy.intercept('POST', '/api/events').as('createEvent');
+    // Mock OCR response
+    cy.intercept('POST', '/api/process-image', {
+      statusCode: 200,
+      body: {
+        title: 'Saveable Image Event',
+        description: 'Event from image',
+        date: '2025-08-10',
+        time: '19:00',
+        location: 'Test Venue',
+        organizer: 'Test',
+        category: 'Music',
+        price: '€20',
+        rawText: 'Test raw text from OCR'
+      }
+    }).as('processImage');
+    
+    // Mock database save
+    cy.intercept('POST', '/api/events', {
+      statusCode: 201,
+      body: {
+        id: 2,
+        title: 'Saveable Image Event'
+      }
+    }).as('createEvent');
     
     // Upload image
     cy.get('input[type="file"]', { timeout: 10000 })

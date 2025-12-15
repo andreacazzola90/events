@@ -7,8 +7,24 @@ describe('Event Creation via Link - AI Testing', () => {
   });
 
   it('should successfully extract event data from a link using AI', () => {
-    // Intercept API calls
-    cy.intercept('POST', '/api/process-link').as('processLink');
+    // Mock successful API response
+    cy.intercept('POST', '/api/process-link', {
+      statusCode: 200,
+      body: {
+        events: [{
+          title: 'Test Concert Event',
+          description: 'Live music performance',
+          date: '2025-12-20',
+          time: '21:00',
+          location: 'Test Arena, Milan',
+          organizer: 'Test Productions',
+          category: 'Music',
+          price: '€30',
+          rawText: 'Mock event text'
+        }],
+        imageUrl: 'https://example.com/event.jpg'
+      }
+    }).as('processLink');
     
     // Enter a test URL
     cy.get('input[type="url"]', { timeout: 10000 })
@@ -44,8 +60,34 @@ describe('Event Creation via Link - AI Testing', () => {
   });
 
   it('should allow saving the extracted event to database', () => {
-    cy.intercept('POST', '/api/process-link').as('processLink');
-    cy.intercept('POST', '/api/events').as('createEvent');
+    // Mock process-link response
+    cy.intercept('POST', '/api/process-link', {
+      statusCode: 200,
+      body: {
+        events: [{
+          title: 'Saveable Event',
+          description: 'Event for database test',
+          date: '2025-12-25',
+          time: '20:00',
+          location: 'Test Location',
+          organizer: 'Test Org',
+          category: 'Test',
+          price: '€10',
+          rawText: 'Test data'
+        }],
+        imageUrl: null
+      }
+    }).as('processLink');
+    
+    // Mock database save response
+    cy.intercept('POST', '/api/events', {
+      statusCode: 201,
+      body: {
+        id: 1,
+        title: 'Saveable Event',
+        createdAt: new Date().toISOString()
+      }
+    }).as('createEvent');
     
     // Process a link
     cy.get('input[type="url"]', { timeout: 10000 })

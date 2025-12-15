@@ -325,7 +325,19 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Usa Groq per estrarre le informazioni dell'evento
-        console.log('Calling Groq API...');
+        console.log('=== GROQ API CALL ===');
+        console.log('Environment check:');
+        console.log('- GROQ_API_KEY configured:', !!process.env.GROQ_API_KEY);
+        console.log('- GROQ_API_KEY length:', process.env.GROQ_API_KEY?.length || 0);
+        console.log('- Page text length:', pageText.length);
+        console.log('- Page text preview:', pageText.slice(0, 200).replace(/\s+/g, ' '));
+        console.log('- Platform:', process.env.VERCEL ? 'Vercel' : 'Local');
+        
+        if (!pageText || pageText.length < 50) {
+            console.error('⚠️ WARNING: Page text is too short or empty!');
+            console.log('Full pageText:', pageText);
+        }
+        
         const prompt = `Estrai le informazioni dell'evento dal seguente testo di una pagina web.
 Rispondi SOLO con un oggetto JSON valido nel seguente formato:
 {
@@ -344,6 +356,9 @@ ${pageText.slice(0, 8000)}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
+        console.log('Calling Groq API with model: llama-3.3-70b-versatile');
+        const groqStartTime = Date.now();
+        
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -356,9 +371,14 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
             max_tokens: 1000,
         });
 
+        const groqDuration = Date.now() - groqStartTime;
+        console.log(`Groq API responded in ${groqDuration}ms`);
 
         const responseText = completion.choices[0]?.message?.content || '';
-        console.log('Groq response:', responseText);
+        console.log('=== GROQ RESPONSE ===');
+        console.log('Response length:', responseText.length);
+        console.log('Response preview:', responseText.slice(0, 300));
+        console.log('Full response:', responseText);
 
         // Migliora parsing: estrai la prima e l'ultima parentesi graffa
         let jsonStr = '';

@@ -54,11 +54,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Use Groq AI to parse the extracted text into structured event data
-    console.log('🤖 Usando Groq AI per analizzare il testo estratto...');
+    console.log('=== GROQ API CALL (IMAGE) ===');
+    console.log('Environment check:');
+    console.log('- GROQ_API_KEY configured:', !!process.env.GROQ_API_KEY);
+    console.log('- GROQ_API_KEY length:', process.env.GROQ_API_KEY?.length || 0);
+    console.log('- Raw text length:', rawText.length);
+    console.log('- Raw text preview:', rawText.slice(0, 200).replace(/\s+/g, ' '));
+    console.log('- Platform:', process.env.VERCEL ? 'Vercel' : 'Local');
     
     if (!process.env.GROQ_API_KEY) {
-      console.error('GROQ_API_KEY non configurata');
-      throw new Error('API non configurata correttamente');
+      console.error('❌ GROQ_API_KEY non configurata!');
+      throw new Error('API non configurata correttamente - GROQ_API_KEY mancante');
     }
 
     const prompt = `Analizza attentamente il seguente testo estratto da un'immagine di un evento e estrai TUTTE le informazioni disponibili.
@@ -92,6 +98,9 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido in questo formato esatto (NON
 
 IMPORTANTE: Se un campo non è trovato nel testo, usa una stringa vuota "", NON usare null o undefined.`;
 
+    console.log('Calling Groq API with model: llama-3.3-70b-versatile');
+    const groqStartTime = Date.now();
+
     const completion = await groq.chat.completions.create({
       messages: [
         {
@@ -108,8 +117,14 @@ IMPORTANTE: Se un campo non è trovato nel testo, usa una stringa vuota "", NON 
       max_tokens: 1500,
     });
 
+    const groqDuration = Date.now() - groqStartTime;
+    console.log(`Groq API responded in ${groqDuration}ms`);
+
     const responseText = completion.choices[0]?.message?.content || '';
-    console.log('🤖 Groq AI response:', responseText.substring(0, 300) + '...');
+    console.log('=== GROQ RESPONSE (IMAGE) ===');
+    console.log('Response length:', responseText.length);
+    console.log('Response preview:', responseText.substring(0, 300));
+    console.log('Full response:', responseText);
 
     // Parse JSON from response
     let eventData = null;

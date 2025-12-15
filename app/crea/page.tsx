@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { trackEventCreate, trackGTMEvent } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
+import LoadingAnimation from '../components/LoadingAnimation';
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
     // Normalizza data: accetta YYYY-MM-DD, DD/MM/YYYY, ecc.
@@ -61,16 +62,22 @@ export default function CreaEvento() {
         };
     }, [imageUrl]);
 
-    const handleNewEvents = (newEvents: EventData[], newImageUrl: string) => {
+    const handleNewEvents = (newEventsOrSingle: EventData | EventData[], newImageUrl: string) => {
         // Cleanup previous image URL if it exists
         if (imageUrl) {
             URL.revokeObjectURL(imageUrl);
         }
+
+        // Converti in array se è un singolo evento
+        const newEvents = Array.isArray(newEventsOrSingle) ? newEventsOrSingle : [newEventsOrSingle];
+
         // Normalizza e aggiungi imageUrl
         const eventsWithImage = newEvents.map(ev => normalizeEventFields({
             ...ev,
             imageUrl: ev.imageUrl || newImageUrl
         }));
+
+        console.log(`[handleNewEvents] Processati ${eventsWithImage.length} eventi`);
         setEvents(eventsWithImage);
         setImageUrl(newImageUrl);
         setError(null);
@@ -212,7 +219,7 @@ export default function CreaEvento() {
         <main className="min-h-screen">
             {/* Hero Section */}
             <section className="hero-section">
-                <div className="max-w-4xl mx-auto px-6 py-16 text-center">
+                <div className="max-w-6xl mx-auto px-6 py-16 text-center">
                     <div className="animate-fadeInUp">
                         <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
                             {events.length > 0 ? (
@@ -244,7 +251,7 @@ export default function CreaEvento() {
                 </div>
             </section>
 
-            <div className="max-w-4xl mx-auto px-6 pb-16">
+            <div className="max-w-6xl mx-auto px-6 pb-16">
                 <div className="space-y-8">
                     {/* Creation Methods - Only show if no events extracted */}
                     {events.length === 0 && (
@@ -260,28 +267,27 @@ export default function CreaEvento() {
                                 </div>
 
                                 <form onSubmit={handleLinkSubmit} className="space-y-4">
-                                    <input
-                                        type="url"
-                                        placeholder="https://example.com/event"
-                                        value={linkUrl}
-                                        onChange={(e) => setLinkUrl(e.target.value)}
-                                        className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                                        disabled={loadingLink}
-                                    />
-                                    <button
-                                        type="submit"
-                                        disabled={loadingLink}
-                                        className="w-full bg-linear-to-r from-pink-500 to-purple-600 text-white py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25 disabled:opacity-50 disabled:hover:scale-100"
-                                    >
-                                        {loadingLink ? (
-                                            <div className="flex items-center justify-center gap-2">
-                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                                Processing...
-                                            </div>
-                                        ) : (
-                                            '✨ Extract Event'
-                                        )}
-                                    </button>
+                                    {loadingLink ? (
+                                        <LoadingAnimation message="Processing link" />
+                                    ) : (
+                                        <>
+                                            <input
+                                                type="url"
+                                                placeholder="https://example.com/event"
+                                                value={linkUrl}
+                                                onChange={(e) => setLinkUrl(e.target.value)}
+                                                className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                                disabled={loadingLink}
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={loadingLink}
+                                                className="w-full bg-linear-to-r from-pink-500 to-purple-600 text-white py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25 disabled:opacity-50 disabled:hover:scale-100"
+                                            >
+                                                ✨ Extract Event
+                                            </button>
+                                        </>
+                                    )}
                                 </form>
                             </div>
 
@@ -296,7 +302,7 @@ export default function CreaEvento() {
                                 </div>
 
                                 <ImageUploader
-                                    onProcessed={(data: EventData) => handleNewEvents([data], '')}
+                                    onProcessed={(data, imgUrl) => handleNewEvents(data, imgUrl)}
                                     onError={(message: string) => {
                                         setError(message);
                                         setEvents([]);
@@ -311,7 +317,7 @@ export default function CreaEvento() {
                     {error && (
                         <div className="glass-effect border-red-500/50 bg-red-500/10 p-6 rounded-xl animate-fadeInUp">
                             <div className="flex items-start gap-4">
-                                <span className="text-red-400 text-3xl flex-shrink-0">⚠️</span>
+                                <span className="text-red-400 text-3xl shrink-0">⚠️</span>
                                 <div className="flex-1">
                                     <h3 className="text-red-300 font-semibold text-lg mb-2">Si è verificato un errore</h3>
                                     <p className="text-red-200 leading-relaxed">{error}</p>

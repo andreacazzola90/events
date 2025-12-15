@@ -3,9 +3,10 @@
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { EventData } from '@/types/event';
+import LoadingAnimation from './LoadingAnimation';
 
 interface ImageUploaderProps {
-    onProcessed: (data: EventData) => void;
+    onProcessed: (data: EventData | EventData[], imageUrl: string) => void;
     onError: (error: string) => void;
 }
 
@@ -40,20 +41,37 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             }
 
             const data = await response.json();
+            console.log('[ImageUploader] 📦 Received data:', data);
 
             // Verifica se c'è un errore nel body anche con status 200
             if (data.error) {
+                console.error('[ImageUploader] ❌ Error in response body:', data.error);
                 throw new Error(data.error);
             }
 
             // Create a temporary URL for the image
             const imageUrl = URL.createObjectURL(file);
-            onProcessed({ ...data, imageUrl });
+
+            // Gestisci sia evento singolo che eventi multipli
+            if (data.events && Array.isArray(data.events)) {
+                // Risposta con array di eventi
+                console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi multipli`);
+                console.log('[ImageUploader] Eventi:', data.events.map((e: EventData) => e.title));
+                onProcessed(data.events, imageUrl);
+            } else {
+                // Evento singolo (retrocompatibilità)
+                console.log('[ImageUploader] ✅ Ricevuto 1 evento singolo');
+                console.log('[ImageUploader] Evento:', data.title);
+                onProcessed(data, imageUrl);
+            }
         } catch (error) {
             const errorMessage = error instanceof Error
                 ? error.message
                 : 'Impossibile elaborare l\'immagine';
-            console.error('[ImageUploader] Error:', errorMessage);
+            console.error('[ImageUploader] ❌ Error:', errorMessage);
+            if (error instanceof Error && error.stack) {
+                console.error('[ImageUploader] Stack:', error.stack);
+            }
             onError(errorMessage);
         } finally {
             setIsProcessing(false);
@@ -73,15 +91,12 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             {...getRootProps()}
             className={`p-10 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors
         ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
-        ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}
+        ${isProcessing ? 'pointer-events-none' : ''}`}
         >
             <input {...getInputProps()} />
             <div className="space-y-4">
                 {isProcessing ? (
-                    <div className="flex flex-col items-center space-y-2">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                        <p>Processing image...</p>
-                    </div>
+                    <LoadingAnimation message="Processing your image" />
                 ) : (
                     <>
                         <div className="text-4xl">📸</div>

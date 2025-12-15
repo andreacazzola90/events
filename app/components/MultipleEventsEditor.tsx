@@ -31,12 +31,34 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
 
     return (
         <div className="space-y-8">
+            {/* Pulsanti in alto */}
+            <div className="flex gap-4 sticky top-4 z-10 p-4 rounded-lg shadow-md ">
+                <button
+                    onClick={handleSaveAll}
+                    disabled={saving}
+                    className="px-6 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary text-white transition-all disabled:opacity-60"
+                >
+                    {saving ? 'Salvataggio...' : 'Aggiungi tutti gli eventi'}
+                </button>
+                {onCancel && (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-6 py-2 rounded-full font-bold shadow-button bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all"
+                    >
+                        Annulla
+                    </button>
+                )}
+            </div>
+
             {events.map((event, idx) => (
                 <div key={idx} className="border rounded-lg p-4 bg-white shadow">
                     <EventDisplay eventData={event} onSave={updated => handleEventChange(idx, updated)} />
                 </div>
             ))}
             {error && <div className="text-red-500 font-semibold">{error}</div>}
+
+            {/* Pulsanti in basso */}
             <div className="flex gap-4 mt-6">
                 <button
                     onClick={handleSaveAll}

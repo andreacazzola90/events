@@ -31,7 +31,6 @@ const CategoryIcon = (props: any) => <svg {...props} fill="none" stroke="current
 const UserIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-7 8-7s8 3 8 7" /></svg>;
 const PriceIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 8v8m0 0a4 4 0 1 1 0-8 4 4 0 1 1 0 8zm0 0h4m-4 0H8" /></svg>;
 import { useState, useEffect, useRef } from 'react';
-import SaveAnimation from './SaveAnimation';
 
 interface EventDisplayProps {
     eventData: EventData;
@@ -43,7 +42,6 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
     const [copySuccess, setCopySuccess] = useState<'formatted' | 'raw' | null>(null);
     const [showOcr, setShowOcr] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
-    const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const formRef = useRef<HTMLFormElement>(null);
 
     useEffect(() => {
@@ -150,7 +148,6 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                     onClick={async () => {
                                         // Salva su DB
                                         if (imageUrl && imageUrl.startsWith('blob:')) {
-                                            setSaveAnimationStatus('saving');
                                             try {
                                                 const response = await fetch(imageUrl);
                                                 const blob = await response.blob();
@@ -162,18 +159,15 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                                     body: formData,
                                                 });
                                                 if (saveResponse.ok) {
-                                                    setSaveAnimationStatus('success');
+                                                    alert('Evento aggiunto al database!');
                                                 } else {
-                                                    setSaveAnimationStatus('hidden');
                                                     alert('Errore nel salvataggio evento.');
                                                 }
                                             } catch (error) {
-                                                setSaveAnimationStatus('hidden');
                                                 alert('Errore nel salvataggio evento.');
                                             }
                                         } else {
                                             // No new image, use regular JSON
-                                            setSaveAnimationStatus('saving');
                                             try {
                                                 console.log('[EventDisplay] Saving event with JSON:', eventData);
                                                 const saveResponse = await fetch('/api/events', {
@@ -184,9 +178,8 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                                 console.log('[EventDisplay] Save response status:', saveResponse.status);
 
                                                 if (saveResponse.ok) {
-                                                    setSaveAnimationStatus('success');
+                                                    alert('Evento aggiunto al database!');
                                                 } else {
-                                                    setSaveAnimationStatus('hidden');
                                                     const responseText = await saveResponse.text();
                                                     console.error('[EventDisplay] Save failed, response text:', responseText);
 
@@ -201,7 +194,6 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                                     }
                                                 }
                                             } catch (error) {
-                                                setSaveAnimationStatus('hidden');
                                                 console.error('[EventDisplay] Network or other error:', error);
                                                 alert('Errore nel salvataggio evento: ' + (error instanceof Error ? error.message : 'Unknown error'));
                                             }
@@ -229,8 +221,141 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                 )}
                             </h2>
                         </div>
-                        {/* Campi dell'evento */}
-                        <div className="event-fields space-y-4">
+                                        : 'bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400'
+                                        }`}
+                                >
+                                    {isEditing ? 'Salva' : 'Modifica'}
+                                </button>
+                                {/* Pulsante aggiungi evento: salva solo su DB */}
+                                {!isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            // Salva su DB
+                                            if (imageUrl && imageUrl.startsWith('blob:')) {
+                                                try {
+                                                    const response = await fetch(imageUrl);
+                                                    const blob = await response.blob();
+                                                    const formData = new FormData();
+                                                    formData.append('eventData', JSON.stringify(eventData));
+                                                    formData.append('image', blob, 'event-image.jpg');
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        body: formData,
+                                                    });
+                                                    if (saveResponse.ok) {
+                                                        alert('Evento aggiunto al database!');
+                                                    } else {
+                                                        alert('Errore nel salvataggio evento.');
+                                                    }
+                                                } catch (error) {
+                                                    alert('Errore nel salvataggio evento.');
+                                                }
+                                            } else {
+                                                // No new image, use regular JSON
+                                                try {
+                                                    console.log('[EventDisplay] Saving event with JSON:', eventData);
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(eventData),
+                                                    });
+                                                    console.log('[EventDisplay] Save response status:', saveResponse.status);
+
+                                                    if (saveResponse.ok) {
+                                                        alert('Evento aggiunto al database!');
+                                                    } else {
+                                                        const responseText = await saveResponse.text();
+                                                        console.error('[EventDisplay] Save failed, response text:', responseText);
+
+                                                        let errorData;
+                                                        try {
+                                                            errorData = JSON.parse(responseText);
+                                                        } catch {
+                                                            errorData = { error: 'Invalid JSON response', text: responseText };
+                                                        }
+
+                                                        console.error('[EventDisplay] Save failed, parsed error:', errorData);
+                                                        alert('Errore nel salvataggio evento: ' + (errorData.details || errorData.error || 'Errore sconosciuto'));
+                                                    }
+                                                } catch (error) {
+                                                    console.error('[EventDisplay] Save error:', error);
+                                                    alert('Errore nel salvataggio evento.');
+                                                }
+                                            }
+                                        }}
+                                        className="event-add-button px-4 py-2 rounded-full font-bold shadow-button bg-blue-500 hover:bg-blue-600 text-white transition-all"
+                                    >
+                                        Aggiungi evento
+                                    </button>
+                                )}
+                                {/* Pulsante aggiungi a calendario: salva su DB e poi apre Google Calendar */}
+                                {!isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            // Salva su DB
+                                            let saveOk = false;
+                                            if (imageUrl && imageUrl.startsWith('blob:')) {
+                                                try {
+                                                    const response = await fetch(imageUrl);
+                                                    const blob = await response.blob();
+                                                    const formData = new FormData();
+                                                    formData.append('eventData', JSON.stringify(eventData));
+                                                    formData.append('image', blob, 'event-image.jpg');
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        body: formData,
+                                                    });
+                                                    saveOk = saveResponse.ok;
+                                                } catch (error) {
+                                                    saveOk = false;
+                                                }
+                                            } else {
+                                                try {
+                                                    console.log('[EventDisplay Calendar] Saving event with JSON:', eventData);
+                                                    const saveResponse = await fetch('/api/events', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(eventData),
+                                                    });
+                                                    console.log('[EventDisplay Calendar] Save response status:', saveResponse.status);
+                                                    saveOk = saveResponse.ok;
+
+                                                    if (!saveOk) {
+                                                        const responseText = await saveResponse.text();
+                                                        console.error('[EventDisplay Calendar] Save failed, response:', responseText);
+
+                                                        try {
+                                                            const errorData = JSON.parse(responseText);
+                                                            console.error('[EventDisplay Calendar] Error details:', errorData);
+                                                        } catch {
+                                                            console.error('[EventDisplay Calendar] Could not parse error response');
+                                                        }
+                                                    }
+                                                } catch (error) {
+                                                    console.error('[EventDisplay Calendar] Save error:', error);
+                                                    saveOk = false;
+                                                }
+                                            }
+                                            if (saveOk) {
+                                                openGoogleCalendar(eventData);
+                                            } else {
+                                                alert('Errore nel salvataggio evento.');
+                                            }
+                                        }}
+                                        className="event-calendar-button px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-red-500 via-pink-500 to-yellow-400 hover:from-red-600 hover:to-yellow-500 text-white transition-all flex items-center"
+                                        title="Aggiungi a Google Calendar"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="calendar-icon w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        Salva nel calendario
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="event-fields-container space-y-3">
                             <div className="event-field-date">
                                 <EditableField label="Data" field="date" />
                             </div>
@@ -282,12 +407,6 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                     </div>
                 </div>
             </form>
-
-            {/* SaveAnimation overlay */}
-            <SaveAnimation
-                status={saveAnimationStatus}
-                onComplete={() => setSaveAnimationStatus('hidden')}
-            />
         </div>
     );
 }

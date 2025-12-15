@@ -17,7 +17,7 @@
   "dependencies": {
     "@prisma/client": "^6.18.0",
     "@sparticuz/chromium": "^131.0.0",
-    "@supabase/supabase-js": "^2.79.0",
+    "@supabase/supabase-js": "^2.87.2",
     "@types/bcrypt": "^6.0.0",
     "@types/leaflet": "^1.9.21",
     "@types/tesseract.js": "^0.0.2",
@@ -27,6 +27,7 @@
     "form-data": "^4.0.4",
     "groq-sdk": "^0.34.0",
     "leaflet": "^1.9.4",
+    "lottie-react": "^2.4.1",
     "next": "16.0.10",
     "next-auth": "^4.24.13",
     "openai": "^6.7.0",
@@ -37,6 +38,7 @@
     "react-dom": "^19.2.0",
     "react-dropzone": "^14.3.8",
     "react-leaflet": "^5.0.0",
+    "sharp": "^0.34.5",
     "tesseract.js": "^4.1.4"
   },
   "devDependencies": {
@@ -45,6 +47,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "canvas": "^3.2.0",
     "cypress": "^15.7.1",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",

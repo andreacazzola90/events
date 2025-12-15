@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import { getBrowser, closeBrowser } from '../../../lib/browser-vercel';
+import { EventData } from '../../types/event';
+import { extractTextFromImageSimple } from '../../lib/ocr-simple';
+import { extractTextFromImage } from '../../lib/ocr';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
         // 1. Scrape della pagina con Puppeteer
         console.log('Launching browser...');
         let browser = null;
-        let finalImageUrl = null;
+        let finalImageUrl: string | null = null;
         let pageText = '';
 
         // Create a timeout promise for the entire scraping operation
@@ -155,9 +158,133 @@ export async function POST(request: NextRequest) {
             console.log('Extracting page text...');
             try {
                 pageText = await page.evaluate(() => {
-                    // Prova prima document.body.innerText, fallback su document.body.textContent
-                    return document.body?.innerText || document.body?.textContent || '';
+                    // Funzione per rimuovere elementi non correlati all'evento principale
+                    const removeUnwantedElements = () => {
+                        // Selettori di elementi da rimuovere (eventi correlati, sidebar, footer, header, nav, ads)
+                        const unwantedSelectors = [
+                            'header', 
+                            'nav', 
+                            'footer', 
+                            '.sidebar', 
+                            '.related-events', 
+                            '.similar-events', 
+                            '.recommended-events',
+                            '.upcoming-events',
+                            '.other-events',
+                            '.more-events',
+                            '.event-list',
+                            '.events-list',
+                            '[class*="sidebar"]',
+                            '[class*="related"]',
+                            '[class*="similar"]',
+                            '[class*="recommended"]',
+                            '[class*="upcoming"]',
+                            '[id*="sidebar"]',
+                            '[id*="related"]',
+                            '[id*="similar"]',
+                            '[id*="recommended"]',
+                            'aside',
+                            '.advertisement',
+                            '.ad',
+                            '[class*="ad-"]',
+                            '[class*="banner"]',
+                            '.cookie-notice',
+                            '.cookie-banner',
+                            '[role="complementary"]'
+                        ];
+                        
+                        // Selettori specifici per visitSchio
+                        const isVisitSchio = window.location.hostname.includes('visitschio.it');
+                        if (isVisitSchio) {
+                            // Aggiungi selettori specifici per visitSchio
+                            unwantedSelectors.push(
+                                '#navbar-event-show',
+                                '.related_events',
+                                '.altri-eventi',
+                                '.eventi-correlati',
+                                '[class*="eventi-correlati"]',
+                                '[class*="related_events"]',
+                                '[id*="eventi-correlati"]',
+                                '[id*="related_events"]',
+                                '.event-sidebar',
+                                '.eventi-simili',
+                                '.prossimi-eventi'
+                            );
+                        }
+                        
+                        // Clona il body per non modificare il DOM originale
+                        const bodyClone = document.body.cloneNode(true) as HTMLElement;
+                        
+                        // Rimuovi elementi indesiderati
+                        unwantedSelectors.forEach(selector => {
+                            const elements = bodyClone.querySelectorAll(selector);
+                            elements.forEach(el => el.remove());
+                        });
+                        
+                        return bodyClone;
+                    };
+                    
+                    // Estrai il contenuto principale
+                    const getMainContent = () => {
+                        // Logica specifica per visitSchio
+                        const isVisitSchio = window.location.hostname.includes('visitschio.it');
+                        if (isVisitSchio) {
+                            console.log('[visitSchio] Using specific selectors for visitSchio.it');
+                            const mainContainer = document.querySelector('#main.container-fluid');
+                            const eventDescription = document.querySelector('#event_description');
+                            
+                            if (mainContainer || eventDescription) {
+                                // Crea un contenitore temporaneo per combinare i contenuti
+                                const combinedContent = document.createElement('div');
+                                
+                                if (mainContainer) {
+                                    const mainClone = mainContainer.cloneNode(true) as HTMLElement;
+                                    // Rimuovi elementi indesiderati dal clone
+                                    const navbar = mainClone.querySelector('#navbar-event-show');
+                                    if (navbar) navbar.remove();
+                                    combinedContent.appendChild(mainClone);
+                                }
+                                
+                                if (eventDescription) {
+                                    combinedContent.appendChild(eventDescription.cloneNode(true));
+                                }
+                                
+                                return combinedContent;
+                            }
+                        }
+                        
+                        // Cerca il contenuto principale in ordine di priorità (per altri siti)
+                        const mainSelectors = [
+                            'main',
+                            '[role="main"]',
+                            '.main-content',
+                            '.event-details',
+                            '.event-info',
+                            '.event-content',
+                            '[class*="event-detail"]',
+                            '[class*="event-info"]',
+                            '[id*="event-detail"]',
+                            '[id*="event-info"]',
+                            'article',
+                            '[itemtype*="Event"]'
+                        ];
+                        
+                        for (const selector of mainSelectors) {
+                            const element = document.querySelector(selector);
+                            if (element && element.textContent && element.textContent.trim().length > 100) {
+                                return element;
+                            }
+                        }
+                        
+                        // Fallback: usa body pulito
+                        return removeUnwantedElements();
+                    };
+                    
+                    const mainContent = getMainContent();
+                    return mainContent?.innerText || mainContent?.textContent || document.body?.innerText || document.body?.textContent || '';
                 });
+                
+                console.log(`📄 Extracted ${pageText.length} characters from main content`);
             } catch (textError) {
                 console.warn('Could not extract page text:', textError);
                 // Fallback: prova a prendere il titolo almeno
@@ -324,21 +451,227 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // 1b. Estrai testo dall'immagine con OCR se disponibile
+        let imageText = '';
+        if (finalImageUrl) {
+            try {
+                console.log('🔍 Analizzando l\'immagine con OCR...');
+                
+                // Scarica l'immagine se è un URL esterno
+                let imageBlob: Blob;
+                if (finalImageUrl.startsWith('data:')) {
+                    // È già un data URL (screenshot)
+                    const base64Data = finalImageUrl.split(',')[1];
+                    const buffer = Buffer.from(base64Data, 'base64');
+                    imageBlob = new Blob([buffer], { type: 'image/jpeg' });
+                } else {
+                    // Scarica l'immagine dall'URL
+                    const imageResponse = await fetch(finalImageUrl);
+                    imageBlob = await imageResponse.blob();
+                }
+
+                // Converti Blob in File per l'OCR
+                const imageFile = new File([imageBlob], 'event-image.jpg', { type: imageBlob.type });
+
+                // Prova OCR semplificato
+                try {
+                    console.log('🔄 Trying simplified OCR on webpage image...');
+                    imageText = await extractTextFromImageSimple(imageFile);
+                    console.log('✅ OCR semplificato riuscito, testo estratto:', imageText.substring(0, 200));
+                } catch (simpleOcrError) {
+                    console.log('⚠️ OCR semplificato fallito, provo Tesseract...');
+                    
+                    try {
+                        imageText = await extractTextFromImage(imageFile);
+                        console.log('✅ Tesseract OCR riuscito');
+                    } catch (tesseractError) {
+                        console.warn('⚠️ OCR fallito su entrambi i metodi:', {
+                            simple: simpleOcrError instanceof Error ? simpleOcrError.message : simpleOcrError,
+                            tesseract: tesseractError instanceof Error ? tesseractError.message : tesseractError
+                        });
+                        // Non è fatale, continua senza testo dall'immagine
+                    }
+                }
+            } catch (ocrError) {
+                console.warn('⚠️ Impossibile processare l\'immagine con OCR:', ocrError);
+                // Non è fatale, continua con solo il testo della pagina
+            }
+        }
+
+        // Combina testo pagina + testo immagine
+        let combinedText = pageText;
+        if (imageText && imageText.trim().length > 10) {
+            console.log(`📝 Testo dall'immagine trovato (${imageText.length} caratteri), combinando con testo pagina...`);
+            combinedText = `TESTO DALLA PAGINA WEB:\n${pageText}\n\nTESTO DALL'IMMAGINE (OCR):\n${imageText}`;
+        } else {
+            console.log('📝 Nessun testo utile dall\'immagine, uso solo testo pagina');
+        }
+
         // 2. Usa Groq per estrarre le informazioni dell'evento
         console.log('=== GROQ API CALL ===');
         console.log('Environment check:');
         console.log('- GROQ_API_KEY configured:', !!process.env.GROQ_API_KEY);
         console.log('- GROQ_API_KEY length:', process.env.GROQ_API_KEY?.length || 0);
-        console.log('- Page text length:', pageText.length);
-        console.log('- Page text preview:', pageText.slice(0, 200).replace(/\s+/g, ' '));
+        console.log('- Combined text length:', combinedText.length);
+        console.log('- Combined text preview:', combinedText.slice(0, 200).replace(/\s+/g, ' '));
         console.log('- Platform:', process.env.VERCEL ? 'Vercel' : 'Local');
         
-        if (!pageText || pageText.length < 50) {
-            console.error('⚠️ WARNING: Page text is too short or empty!');
-            console.log('Full pageText:', pageText);
+        if (!combinedText || combinedText.length < 50) {
+            console.error('⚠️ WARNING: Combined text is too short or empty!');
+            console.log('Full combinedText:', combinedText);
         }
         
-        const prompt = `Estrai le informazioni dell'evento dal seguente testo di una pagina web.
+        // Determina se ci sono eventi multipli analizzando il testo in modo intelligente
+        const textLines = combinedText.split(/\n+/).filter(s => s.trim().length > 0);
+        const dateMatches = combinedText.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/g) || [];
+        const uniqueDates = [...new Set(dateMatches)];
+        const timeMatches = combinedText.match(/\d{1,2}:\d{2}/g) || [];
+        
+        // Cerca indicatori di eventi multipli
+        const lowerText = combinedText.toLowerCase();
+        const hasLineup = lowerText.includes('lineup') || lowerText.includes('line up') || lowerText.includes('line-up');
+        const hasProgramma = lowerText.includes('programma') || lowerText.includes('program');
+        const hasMultipleDays = lowerText.includes('giorno 1') || lowerText.includes('day 1') || 
+                               lowerText.includes('sabato') && lowerText.includes('domenica');
+        const hasVsOrWith = (combinedText.match(/\s+vs\s+/gi) || []).length > 0 || 
+                           (combinedText.match(/\s+with\s+/gi) || []).length > 0 ||
+                           (combinedText.match(/\s+&\s+/g) || []).length > 2;
+        
+        // Rileva cicli/rassegne: date diverse + stesso orario ripetuto
+        const hasCyclePattern = uniqueDates.length >= 3 && timeMatches.length >= 3;
+        
+        // Rileva titoli in maiuscolo ripetuti (tipico di rassegne)
+        const upperCaseTitles = combinedText.match(/^[A-Z\s]{3,}$/gm) || [];
+        const hasMultipleTitles = upperCaseTitles.length >= 3;
+        
+        // Cerca parole chiave di cicli
+        const hasCiclo = lowerText.includes('ciclo') || lowerText.includes('rassegna') || 
+                         lowerText.includes('stagione') || lowerText.includes('incontri');
+        
+        // Determina se ci sono eventi multipli
+        const hasMultipleEvents = (dateMatches.length > 1 && timeMatches.length > 1) || 
+                                  textLines.length > 30 ||
+                                  hasLineup || 
+                                  hasProgramma ||
+                                  hasMultipleDays ||
+                                  (hasVsOrWith && (dateMatches.length > 1 || timeMatches.length > 2)) ||
+                                  hasCyclePattern ||
+                                  (hasCiclo && uniqueDates.length >= 2) ||
+                                  hasMultipleTitles;
+        
+        console.log('🔍 Analisi eventi multipli:', {
+            dateMatches: dateMatches.length,
+            uniqueDates: uniqueDates.length,
+            timeMatches: timeMatches.length,
+            textLines: textLines.length,
+            upperCaseTitles: upperCaseTitles.length,
+            hasLineup,
+            hasProgramma,
+            hasMultipleDays,
+            hasVsOrWith,
+            hasCyclePattern,
+            hasCiclo,
+            hasMultipleTitles,
+            conclusion: hasMultipleEvents ? 'EVENTI MULTIPLI' : 'EVENTO SINGOLO'
+        });
+
+        const currentDate = new Date().toISOString().split('T')[0];
+
+        const prompt = hasMultipleEvents ? 
+        // PROMPT PER EVENTI MULTIPLI
+        `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
+
+PASSO 1 - IDENTIFICAZIONE:
+Prima di tutto, CONTA quanti eventi distinti vedi NEL CONTENUTO PRINCIPALE (ignora eventi correlati/simili in sidebar).
+Cerca SOLO nel contenuto principale:
+- Nomi di artisti/band diversi
+- Date diverse (anche se stesso orario e luogo - tipico di CICLI/RASSEGNE)
+- Orari diversi nello stesso giorno
+- Titoli di spettacoli/concerti diversi
+- Divisioni visive (linee, box, sezioni ripetute)
+- CICLI/RASSEGNE: eventi con date diverse ma stesso luogo/orario (es: "I Sabati dell'Arte")
+
+IMPORTANTE: IGNORA completamente:
+- Sezioni "Altri eventi", "Eventi correlati", "Ti potrebbe interessare"
+- Sidebar con lista di eventi
+- Eventi in date future non correlati
+- Banner pubblicitari di altri eventi
+
+ATTENZIONE CICLI E RASSEGNE:
+Se vedi parole come "ciclo", "rassegna", "stagione", "incontri", "appuntamenti":
+- OGNI DATA è un EVENTO SEPARATO
+- Anche se hanno stesso orario e luogo
+- Esempio: "29 novembre - Cleopatra", "6 dicembre - Ritratti", "13 dicembre - Giuditta" = 3 EVENTI
+
+PASSO 2 - ESTRAZIONE DETTAGLIATA:
+Per OGNI evento identificato, estrai TUTTE le informazioni disponibili:
+
+ISTRUZIONI CRITICHE:
+1. NON raggruppare eventi diversi insieme
+2. OGNI evento DEVE avere il suo titolo unico
+3. Se vedi "Artista A vs Artista B" o "Artista A & Artista B" nello stesso slot, è UN evento
+4. Se vedi artisti in slot orari diversi, sono eventi SEPARATI
+5. Se non sei sicuro, preferisci creare più eventi separati piuttosto che meno
+
+REGOLE PER OGNI EVENTO:
+- TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
+  * Esempi CORRETTI: "Marco Carola DJ Set", "Teatro: Amleto", "Rock Night con The Beatles"
+  * Esempi SBAGLIATI: "Evento 1", "Concerto", "Spettacolo"
+- DESCRIZIONE: Crea una descrizione DETTAGLIATA e UNICA
+  * Includi: artisti/ospiti, genere musicale/tipo, dettagli specifici, ospiti speciali
+  * NON copiare l'intero testo grezzo
+  * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground."
+- DATA e ORARIO: SPECIFICI per ogni evento
+  * CONVERTI sempre in YYYY-MM-DD e HH:MM
+  * Se manca l'anno, usa ${new Date().getFullYear()}
+- LOCATION: Indirizzo completo (se uguale per tutti, ripetilo)
+- PREZZO: Specifico per evento (se unico per tutti, applicalo a tutti)
+- ORGANIZER: Se presente e condiviso, ripetilo
+- CATEGORY: Dedotta dal tipo (musica/rock, musica/techno, teatro/commedia, sport/calcio, ecc.)
+
+GESTIONE DATE:
+- Data corrente di riferimento: ${currentDate}
+- Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
+- Converti SEMPRE in formato YYYY-MM-DD
+
+CONTENUTO DA ANALIZZARE:
+${combinedText.slice(0, 12000)}
+
+Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
+{
+  "eventCount": 2,
+  "events": [
+    {
+      "title": "Nome specifico evento 1",
+      "description": "Descrizione dettagliata e unica per evento 1 con info specifiche",
+      "date": "YYYY-MM-DD",
+      "time": "HH:MM",
+      "location": "Luogo completo",
+      "organizer": "Organizzatore",
+      "category": "Categoria specifica",
+      "price": "Prezzo"
+    },
+    {
+      "title": "Nome specifico evento 2",
+      "description": "Descrizione dettagliata e unica per evento 2 con info specifiche",
+      "date": "YYYY-MM-DD",
+      "time": "HH:MM",
+      "location": "Luogo completo",
+      "organizer": "Organizzatore",
+      "category": "Categoria specifica",
+      "price": "Prezzo"
+    }
+  ]
+}
+
+IMPORTANTE: 
+- Se c'è UN SOLO evento, restituisci eventCount: 1 con un solo oggetto nell'array
+- Ogni evento DEVE avere titolo e descrizione UNICI e SPECIFICI
+- Se un campo non è trovato, usa "" (stringa vuota)
+- NON usare null o undefined`
+        : 
+        // PROMPT PER SINGOLO EVENTO
+        `Estrai le informazioni dell'evento dal seguente testo di una pagina web.
 Rispondi SOLO con un oggetto JSON valido nel seguente formato:
 {
   "title": "Titolo evento",
@@ -351,8 +684,13 @@ Rispondi SOLO con un oggetto JSON valido nel seguente formato:
   "price": "Prezzo (es: Gratis, 10€, etc.)"
 }
 
-Testo della pagina:
-${pageText.slice(0, 8000)}
+GESTIONE DATE:
+- Data corrente di riferimento: ${currentDate}
+- Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
+- Converti SEMPRE in formato YYYY-MM-DD
+
+CONTENUTO DA ANALIZZARE:
+${combinedText.slice(0, 12000)}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
@@ -362,13 +700,32 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         const completion = await groq.chat.completions.create({
             messages: [
                 {
+                    role: 'system',
+                    content: `Sei un assistente AI esperto in analisi ed estrazione di informazioni da eventi.
+
+CAPACITÀ:
+- Comprensione del linguaggio naturale in italiano e inglese
+- Riconoscimento di pattern di date, orari, prezzi
+- Inferenza di informazioni da contesto visivo e testuale
+- Gestione di formati multipli (pagine web, lineup, programmi)
+
+REGOLE:
+- Sii ESTREMAMENTE preciso nell'estrazione
+- Per eventi multipli, crea descrizioni UNICHE per ogni evento
+- NON inventare informazioni non presenti nel testo
+- Usa il contesto per inferire solo quando c'è alta probabilità
+- Formatta SEMPRE le date in YYYY-MM-DD
+- Formatta SEMPRE gli orari in HH:MM
+- Restituisci SOLO JSON valido, senza markdown o testo aggiuntivo`
+                },
+                {
                     role: 'user',
                     content: prompt,
                 },
             ],
             model: 'llama-3.3-70b-versatile',
             temperature: 0.1,
-            max_tokens: 1000,
+            max_tokens: 4000,
         });
 
         const groqDuration = Date.now() - groqStartTime;
@@ -380,27 +737,81 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         console.log('Response preview:', responseText.slice(0, 300));
         console.log('Full response:', responseText);
 
-        // Migliora parsing: estrai la prima e l'ultima parentesi graffa
-        let jsonStr = '';
-        const first = responseText.indexOf('{');
-        const last = responseText.lastIndexOf('}');
-        if (first !== -1 && last !== -1 && last > first) {
-            jsonStr = responseText.slice(first, last + 1);
-        }
+        // Parse JSON from response - cerca sia oggetto che array JSON
         let eventData = null;
+        let first = responseText.indexOf('{');
+        let last = responseText.lastIndexOf('}');
+        
+        // Se non trova oggetto, cerca array
+        if (first === -1 || last === -1 || last <= first) {
+            first = responseText.indexOf('[');
+            last = responseText.lastIndexOf(']');
+        }
+        
+        if (first === -1 || last === -1 || last <= first) {
+            console.error('❌ No valid JSON found in response');
+            throw new Error('Groq AI non ha restituito un JSON valido. Riprova.');
+        }
+        
+        const jsonStr = responseText.slice(first, last + 1);
+        console.log('🔍 Extracted JSON string (first 500 chars):', jsonStr.substring(0, 500));
+        
         try {
-            eventData = JSON.parse(jsonStr);
+            const parsedData = JSON.parse(jsonStr);
+            console.log('📦 Parsed data structure:', JSON.stringify(parsedData, null, 2));
+            
+            // Gestisci sia evento singolo che eventi multipli
+            if (parsedData.events && Array.isArray(parsedData.events)) {
+                // Eventi multipli
+                console.log(`✅ Estratti ${parsedData.eventCount} eventi`);
+                console.log('Eventi estratti:', parsedData.events.map((e: { title: string }) => e.title));
+                
+                // Aggiungi imageUrl a ogni evento
+                const eventsWithImage = parsedData.events.map((event: EventData) => ({
+                    ...event,
+                    imageUrl: finalImageUrl
+                }));
+                
+                // Se c'è un solo evento, ritorna come oggetto singolo per retrocompatibilità
+                if (eventsWithImage.length === 1) {
+                    eventData = eventsWithImage[0];
+                    console.log('📤 Returning single event from array');
+                } else {
+                    // Più eventi, ritorna con formato {events: [...]}
+                    eventData = { events: eventsWithImage };
+                    console.log(`📤 Returning ${eventsWithImage.length} events as array`);
+                }
+            } else {
+                // Evento singolo (formato vecchio)
+                eventData = parsedData;
+                console.log('✅ Dati evento singolo estratti con successo');
+            }
+            
+            console.log('📤 Final eventData:', JSON.stringify(eventData, null, 2));
         } catch (err) {
-            console.error('Errore parsing JSON Groq:', err, 'Testo:', responseText);
-            throw new Error('Nessun JSON valido nella risposta di Groq. Risposta completa: ' + responseText);
+            console.error('❌ ERRORE CRITICO nel parsing JSON!');
+            console.error('❌ Errore:', err);
+            console.error('❌ Tipo errore:', err instanceof Error ? err.message : 'Unknown');
+            console.error('❌ JSON string completo:', jsonStr);
+            
+            throw new Error('Impossibile interpretare i dati dell\'evento. Riprova.');
         }
 
-        // 3. Restituisci i dati dell'evento, assicurando che imageUrl sia associato
-        const eventWithImage = { ...eventData, imageUrl: finalImageUrl };
-        return NextResponse.json({
-            events: [eventWithImage],
-            imageUrl: finalImageUrl,
-        });
+        // 3. Restituisci i dati dell'evento
+        // Se eventData contiene già un array di eventi, restituiscili direttamente
+        // Altrimenti, wrappa il singolo evento in un array
+        if (eventData.events && Array.isArray(eventData.events)) {
+            return NextResponse.json({
+                events: eventData.events,
+                imageUrl: finalImageUrl,
+            });
+        } else {
+            const eventWithImage = { ...eventData, imageUrl: finalImageUrl };
+            return NextResponse.json({
+                events: [eventWithImage],
+                imageUrl: finalImageUrl,
+            });
+        }
 
     } catch (error) {
         console.error('Error processing link:', error);

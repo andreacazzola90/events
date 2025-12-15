@@ -8,6 +8,28 @@ import { TransitionLink } from './TransitionLink';
 import { trackSearch, trackGTMEvent } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 
+// Funzione per pulire il testo da caratteri strani
+function cleanText(text: string): string {
+    if (!text) return '';
+    return text
+        // Rimuove caratteri di controllo e non stampabili
+        .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+        // Sostituisce caratteri di encoding problematici
+        .replace(/â€™/g, "'")
+        .replace(/â€œ/g, '"')
+        .replace(/â€/g, '"')
+        .replace(/â€"/g, '—')
+        .replace(/Ã /g, 'à')
+        .replace(/Ã¨/g, 'è')
+        .replace(/Ã©/g, 'é')
+        .replace(/Ã¬/g, 'ì')
+        .replace(/Ã²/g, 'ò')
+        .replace(/Ã¹/g, 'ù')
+        // Normalizza spazi multipli
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 interface Event {
     id: number;
     title: string;
@@ -204,34 +226,46 @@ export default function EventList() {
                             <div className="p-5 space-y-3">
                                 <div className="space-y-2">
                                     <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 transition-colors">
-                                        {event.title}
+                                        {cleanText(event.title)}
                                     </h3>
                                     <p className="text-gray-400 text-sm line-clamp-2">
-                                        {event.description}
+                                        {cleanText(event.description)}
                                     </p>
                                 </div>
 
                                 <div className="space-y-1 text-sm">
                                     <div className="flex items-center gap-2 text-gray-300">
                                         <span className="w-4">📅</span>
-                                        <span>{new Date(event.date).toLocaleDateString('it-IT', {
-                                            weekday: 'short',
-                                            day: 'numeric',
-                                            month: 'short'
-                                        })}</span>
+                                        <span>{(() => {
+                                            // Gestisce sia formato YYYY-MM-DD che DD/MM/YYYY
+                                            let dateObj: Date;
+                                            if (event.date.includes('/')) {
+                                                // Formato DD/MM/YYYY
+                                                const [day, month, year] = event.date.split('/');
+                                                dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                            } else {
+                                                // Formato YYYY-MM-DD
+                                                dateObj = new Date(event.date);
+                                            }
+                                            return dateObj.toLocaleDateString('it-IT', {
+                                                weekday: 'short',
+                                                day: 'numeric',
+                                                month: 'short'
+                                            });
+                                        })()}</span>
                                         {event.time && <span className="text-gray-500">• {event.time}</span>}
                                     </div>
 
                                     {event.location && (
                                         <div className="flex items-center gap-2 text-gray-300 line-clamp-1">
-                                            <span className="w-4">�</span>
+                                            <span className="w-4">📍</span>
                                             <span className="truncate">{event.location}</span>
                                         </div>
                                     )}
 
                                     {event.organizer && (
                                         <div className="flex items-center gap-2 text-gray-300 line-clamp-1">
-                                            <span className="w-4">�</span>
+                                            <span className="w-4">👤</span>
                                             <span className="truncate">{event.organizer}</span>
                                         </div>
                                     )}

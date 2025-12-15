@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
 import { prisma } from '@/lib/prisma';
+import { uploadImageToSupabase } from '../../lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +15,23 @@ export async function POST(request: NextRequest) {
       eventData = await request.json();
       console.log('[API /events POST] JSON body received:', JSON.stringify(eventData, null, 2));
       imageUrl = eventData.imageUrl;
+      
+      // Se c'è un URL di immagine esterno, scaricalo e caricalo su Supabase
+      if (imageUrl && !imageUrl.includes('supabase.co')) {
+        try {
+          console.log('[API /events POST] Downloading external image:', imageUrl);
+          const imageResponse = await fetch(imageUrl);
+          const imageBlob = await imageResponse.blob();
+          const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
+          
+          console.log('[API /events POST] Uploading external image to Supabase...');
+          imageUrl = await uploadImageToSupabase(imageBuffer, 'events');
+          console.log('[API /events POST] External image uploaded to Supabase:', imageUrl);
+        } catch (uploadError) {
+          console.warn('[API /events POST] Failed to upload external image, keeping original URL:', uploadError);
+          // Mantieni l'URL originale se il caricamento fallisce
+        }
+      }
     } else if (contentType.includes('multipart/form-data')) {
       // Handle multipart/form-data
       const formData = await request.formData();
@@ -23,24 +39,11 @@ export async function POST(request: NextRequest) {
       imageFile = formData.get('image') as File | null;
       imageUrl = eventData.imageUrl;
 
-      // Save image if provided
+      // Upload image to Supabase if provided
       if (imageFile) {
-        const bytes = await imageFile.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-
-        // Create unique filename
-        const timestamp = Date.now();
-        const filename = `${timestamp}-${imageFile.name}`;
-        const filepath = join(process.cwd(), 'public', 'uploads', 'events', filename);
-
-        // Ensure directory exists
-        await mkdir(join(process.cwd(), 'public', 'uploads', 'events'), { recursive: true });
-
-        // Write file
-        await writeFile(filepath, buffer);
-
-        // Set URL for database
-        imageUrl = `/uploads/events/${filename}`;
+        console.log('[API /events POST] Uploading image to Supabase...');
+        imageUrl = await uploadImageToSupabase(imageFile, 'events');
+        console.log('[API /events POST] Image uploaded to Supabase:', imageUrl);
       }
     } else {
       return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });

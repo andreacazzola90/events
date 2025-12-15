@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
                     };
                     
                     const mainContent = getMainContent();
-                    return mainContent?.innerText || mainContent?.textContent || document.body?.innerText || document.body?.textContent || '';
+                    return (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
                 });
                 
                 console.log(`📄 Extracted ${pageText.length} characters from main content`);

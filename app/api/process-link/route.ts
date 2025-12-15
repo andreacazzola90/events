@@ -242,11 +242,17 @@ export async function POST(request: NextRequest) {
                                     // Rimuovi elementi indesiderati dal clone
                                     const navbar = mainClone.querySelector('#navbar-event-show');
                                     if (navbar) navbar.remove();
+                                    const eventInterest = mainClone.querySelector('#event_interest');
+                                    if (eventInterest) eventInterest.remove();
                                     combinedContent.appendChild(mainClone);
                                 }
                                 
                                 if (eventDescription) {
-                                    combinedContent.appendChild(eventDescription.cloneNode(true));
+                                    const descClone = eventDescription.cloneNode(true) as HTMLElement;
+                                    // Rimuovi #event_interest anche da event_description se presente
+                                    const eventInterest = descClone.querySelector('#event_interest');
+                                    if (eventInterest) eventInterest.remove();
+                                    combinedContent.appendChild(descClone);
                                 }
                                 
                                 return combinedContent;

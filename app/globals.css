@@ -74,6 +74,16 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Rimuovi underline dalle card degli eventi */
+.event-card:hover {
+  text-decoration: none !important;
+}
+
+.no-underline,
+.no-underline:hover {
+  text-decoration: none !important;
+}
+
 /* Buttons - Dice.fm Style */
 button,
 .btn {

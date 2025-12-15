@@ -176,7 +176,7 @@ export default function EventList() {
                         <TransitionLink
                             key={event.id}
                             href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                            className="event-card cursor-pointer group block"
+                            className="event-card cursor-pointer group block no-underline"
                         >
                             {/* Event Image */}
                             <div className="relative overflow-hidden">
@@ -203,7 +203,7 @@ export default function EventList() {
                             {/* Event Details */}
                             <div className="p-5 space-y-3">
                                 <div className="space-y-2">
-                                    <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
+                                    <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 transition-colors">
                                         {event.title}
                                     </h3>
                                     <p className="text-gray-400 text-sm line-clamp-2">

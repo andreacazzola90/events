@@ -33,15 +33,28 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             });
 
             if (!response.ok) {
-                throw new Error('Failed to process image');
+                // Estrai il messaggio di errore dal response body
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.error || 'Impossibile elaborare l\'immagine';
+                throw new Error(errorMessage);
             }
 
             const data = await response.json();
+
+            // Verifica se c'è un errore nel body anche con status 200
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
             // Create a temporary URL for the image
             const imageUrl = URL.createObjectURL(file);
             onProcessed({ ...data, imageUrl });
         } catch (error) {
-            onError(error instanceof Error ? error.message : 'Failed to process image');
+            const errorMessage = error instanceof Error
+                ? error.message
+                : 'Impossibile elaborare l\'immagine';
+            console.error('[ImageUploader] Error:', errorMessage);
+            onError(errorMessage);
         } finally {
             setIsProcessing(false);
         }

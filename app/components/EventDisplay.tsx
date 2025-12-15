@@ -181,17 +181,32 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                             } else {
                                                 // No new image, use regular JSON
                                                 try {
+                                                    console.log('[EventDisplay] Saving event with JSON:', eventData);
                                                     const saveResponse = await fetch('/api/events', {
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify(eventData),
                                                     });
+                                                    console.log('[EventDisplay] Save response status:', saveResponse.status);
+
                                                     if (saveResponse.ok) {
                                                         alert('Evento aggiunto al database!');
                                                     } else {
-                                                        alert('Errore nel salvataggio evento.');
+                                                        const responseText = await saveResponse.text();
+                                                        console.error('[EventDisplay] Save failed, response text:', responseText);
+
+                                                        let errorData;
+                                                        try {
+                                                            errorData = JSON.parse(responseText);
+                                                        } catch {
+                                                            errorData = { error: 'Invalid JSON response', text: responseText };
+                                                        }
+
+                                                        console.error('[EventDisplay] Save failed, parsed error:', errorData);
+                                                        alert('Errore nel salvataggio evento: ' + (errorData.details || errorData.error || 'Errore sconosciuto'));
                                                     }
                                                 } catch (error) {
+                                                    console.error('[EventDisplay] Save error:', error);
                                                     alert('Errore nel salvataggio evento.');
                                                 }
                                             }
@@ -225,13 +240,28 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                                 }
                                             } else {
                                                 try {
+                                                    console.log('[EventDisplay Calendar] Saving event with JSON:', eventData);
                                                     const saveResponse = await fetch('/api/events', {
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify(eventData),
                                                     });
+                                                    console.log('[EventDisplay Calendar] Save response status:', saveResponse.status);
                                                     saveOk = saveResponse.ok;
+
+                                                    if (!saveOk) {
+                                                        const responseText = await saveResponse.text();
+                                                        console.error('[EventDisplay Calendar] Save failed, response:', responseText);
+
+                                                        try {
+                                                            const errorData = JSON.parse(responseText);
+                                                            console.error('[EventDisplay Calendar] Error details:', errorData);
+                                                        } catch {
+                                                            console.error('[EventDisplay Calendar] Could not parse error response');
+                                                        }
+                                                    }
                                                 } catch (error) {
+                                                    console.error('[EventDisplay Calendar] Save error:', error);
                                                     saveOk = false;
                                                 }
                                             }

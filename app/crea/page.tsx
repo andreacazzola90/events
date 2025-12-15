@@ -309,10 +309,13 @@ export default function CreaEvento() {
 
                     {/* Error Display */}
                     {error && (
-                        <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
-                            <div className="flex items-center gap-3">
-                                <span className="text-red-400 text-xl">⚠️</span>
-                                <p className="text-red-300">{error}</p>
+                        <div className="glass-effect border-red-500/50 bg-red-500/10 p-6 rounded-xl animate-fadeInUp">
+                            <div className="flex items-start gap-4">
+                                <span className="text-red-400 text-3xl flex-shrink-0">⚠️</span>
+                                <div className="flex-1">
+                                    <h3 className="text-red-300 font-semibold text-lg mb-2">Si è verificato un errore</h3>
+                                    <p className="text-red-200 leading-relaxed">{error}</p>
+                                </div>
                             </div>
                         </div>
                     )}

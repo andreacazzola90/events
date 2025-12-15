@@ -1,0 +1,13 @@
+{
+  "testEvent": {
+    "title": "Test Event",
+    "description": "This is a test event created by Cypress",
+    "date": "2025-12-20",
+    "time": "18:00",
+    "location": "Test Location",
+    "category": "Test",
+    "organizer": "Cypress Test",
+    "price": "Free"
+  },
+  "testLink": "https://www.example.com/event-page"
+}

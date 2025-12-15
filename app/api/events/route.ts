@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,9 +10,11 @@ export async function POST(request: NextRequest) {
     let imageUrl: string | undefined = undefined;
 
     const contentType = request.headers.get('content-type') || '';
+    console.log('[API /events POST] Request received, Content-Type:', contentType);
     if (contentType.includes('application/json')) {
       // Handle JSON body
       eventData = await request.json();
+      console.log('[API /events POST] JSON body received:', JSON.stringify(eventData, null, 2));
       imageUrl = eventData.imageUrl;
     } else if (contentType.includes('multipart/form-data')) {
       // Handle multipart/form-data
@@ -46,29 +46,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });
     }
 
-    // Ensure rawText is always present (required by schema)
-    if (typeof eventData.rawText !== 'string') {
-      eventData.rawText = '';
-    }
+    // Ensure all fields are present with proper defaults
+    const eventDataToSave = {
+      title: eventData.title || '',
+      description: eventData.description || '',
+      date: eventData.date || '',
+      time: eventData.time || '',
+      location: eventData.location || '',
+      organizer: eventData.organizer || '',
+      category: eventData.category || '',
+      price: eventData.price || '',
+      rawText: typeof eventData.rawText === 'string' ? eventData.rawText : '',
+      imageUrl: imageUrl || null,
+    };
+
+    console.log('[API /events POST] Saving event with data:', JSON.stringify(eventDataToSave, null, 2));
+
     const event = await prisma.event.create({
-      data: {
-        title: eventData.title,
-        description: eventData.description,
-        date: eventData.date,
-        time: eventData.time,
-        location: eventData.location,
-        organizer: eventData.organizer,
-        category: eventData.category,
-        price: eventData.price,
-        rawText: eventData.rawText,
-        imageUrl: imageUrl,
-      },
+      data: eventDataToSave,
     });
 
+    console.log('[API /events POST] Event saved successfully, ID:', event.id);
     return NextResponse.json(event, { status: 201 });
   } catch (error) {
-    console.error('Error saving event:', error);
-    return NextResponse.json({ error: 'Failed to save event' }, { status: 500 });
+    console.error('[API /events POST] Error saving event:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ 
+      error: 'Failed to save event', 
+      details: errorMessage 
+    }, { status: 500 });
   }
 }
 

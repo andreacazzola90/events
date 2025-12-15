@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "vercel-build": "npm run vercel-build"
+    "vercel-build": "npm run vercel-build",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run",
+    "test:e2e": "cypress run",
+    "test:e2e:link": "cypress run --spec 'cypress/e2e/create-event-via-link.cy.ts'",
+    "test:e2e:image": "cypress run --spec 'cypress/e2e/create-event-via-image.cy.ts'"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
@@ -35,10 +40,12 @@
     "tesseract.js": "^4.1.4"
   },
   "devDependencies": {
+    "@cypress/webpack-dev-server": "^5.4.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cypress": "^15.7.1",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
     "playwright": "^1.56.1",

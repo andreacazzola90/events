@@ -700,7 +700,7 @@ ${combinedText.slice(0, 12000)}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
-        console.log('Calling Groq API with model: llama-3.3-70b-versatile');
+        console.log('Calling Groq API with model: llama-3.1-8b-instant');
         const groqStartTime = Date.now();
         
         const completion = await groq.chat.completions.create({
@@ -729,7 +729,7 @@ REGOLE:
                     content: prompt,
                 },
             ],
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant',
             temperature: 0.1,
             max_tokens: 4000,
         });

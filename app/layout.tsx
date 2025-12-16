@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import Header from './components/Header';
 import Providers from './components/Providers';
 import InstallPrompt from './components/InstallPrompt';
+import PWAHandler from './components/PWAHandler';
 import { PageTransitionProvider } from './lib/PageTransitionContext';
 import { LoadingIndicator } from './components/LoadingIndicator';
 import { PageTransitionWrapper } from './components/PageTransition';
@@ -43,6 +44,7 @@ export default function RootLayout({
     <html lang="it">
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
         <meta name="theme-color" content="#2563eb" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -58,6 +60,7 @@ export default function RootLayout({
       <body className={`${inter.variable} antialiased`}>
         <Providers>
           <PageTransitionProvider>
+            <PWAHandler />
             <LoadingIndicator />
             <Header />
             <main className="min-h-screen pt-16">
@@ -68,16 +71,6 @@ export default function RootLayout({
             <InstallPrompt />
           </PageTransitionProvider>
         </Providers>
-        <script dangerouslySetInnerHTML={{
-          __html: `
-          if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-              navigator.serviceWorker.register('/sw.js')
-                .then(reg => console.log('Service Worker registered'))
-                .catch(err => console.log('Service Worker registration failed', err));
-            });
-          }
-        `}} />
       </body>
     </html>
   );

@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "vercel-build": "npm run vercel-build",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run",
+    "test:e2e": "cypress run",
+    "test:e2e:link": "cypress run --spec 'cypress/e2e/create-event-via-link.cy.ts'",
+    "test:e2e:image": "cypress run --spec 'cypress/e2e/create-event-via-image.cy.ts'",
+    "pwa:icons": "node scripts/generate-pwa-icons.js",
+    "pwa:test": "npm run build && npm run start",
+    "pwa:lighthouse": "lhci autorun --collect.url=http://localhost:3000"
+  }
+}

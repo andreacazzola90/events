@@ -45,7 +45,9 @@ async function compressImageForOCR(file: File): Promise<File> {
       })
       .toBuffer();
     
-    const compressedFile = new File([compressedBuffer], file.name, {
+    // Convert Buffer to Blob then to File
+    const blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/jpeg' });
+    const compressedFile = new File([blob], file.name, {
       type: 'image/jpeg',
       lastModified: Date.now(),
     });

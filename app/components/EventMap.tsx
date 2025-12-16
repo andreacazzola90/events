@@ -24,6 +24,7 @@ interface EventData {
     category: string;
     price: string;
     imageUrl?: string;
+    sourceUrl?: string;
 }
 
 interface EventWithCoordinates extends EventData {

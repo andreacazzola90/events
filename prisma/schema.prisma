@@ -19,6 +19,7 @@ model Event {
   price       String
   rawText     String
   imageUrl    String?
+  sourceUrl   String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   createdById Int?

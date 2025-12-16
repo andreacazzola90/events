@@ -785,7 +785,8 @@ REGOLE:
                 // Aggiungi imageUrl a ogni evento
                 const eventsWithImage = parsedData.events.map((event: EventData) => ({
                     ...event,
-                    imageUrl: finalImageUrl
+                    imageUrl: finalImageUrl,
+                    sourceUrl: url
                 }));
                 
                 // Se c'è un solo evento, ritorna come oggetto singolo per retrocompatibilità
@@ -822,7 +823,7 @@ REGOLE:
                 imageUrl: finalImageUrl,
             });
         } else {
-            const eventWithImage = { ...eventData, imageUrl: finalImageUrl };
+            const eventWithImage = { ...eventData, imageUrl: finalImageUrl, sourceUrl: url };
             return NextResponse.json({
                 events: [eventWithImage],
                 imageUrl: finalImageUrl,

@@ -9,6 +9,7 @@ export interface EventData {
   price: string;
   rawText: string;
   imageUrl?: string;
+  sourceUrl?: string;
 }
 
 export interface OCRResponse {

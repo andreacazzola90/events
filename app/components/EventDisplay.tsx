@@ -278,6 +278,19 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                     <span className="event-description-text flex-1 py-2">{eventData.description}</span>
                                 )}
                             </div>
+                            {eventData.sourceUrl && (
+                                <div className="event-field-source flex items-start space-x-4">
+                                    <span className="source-label text-gray-600 w-24 mt-2">Link:</span>
+                                    <a
+                                        href={eventData.sourceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="event-source-link flex-1 py-2 text-blue-600 hover:text-blue-800 underline break-all"
+                                    >
+                                        {eventData.sourceUrl}
+                                    </a>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,146 @@
-import axios from 'axios';
 import { EventData, OCRResponse } from '@/types/event';
+
+/**
+ * Compress image if it exceeds the size limit
+ * Target: under 1MB for OCR.space API
+ */
+async function compressImage(file: File, maxSizeKB: number = 900): Promise<File> {
+  const fileSizeKB = file.size / 1024;
+  console.log(`📏 Image size: ${fileSizeKB.toFixed(2)} KB`);
+  
+  // If file is already small enough, return as is
+  if (fileSizeKB <= maxSizeKB) {
+    console.log('✅ Image size OK, no compression needed');
+    return file;
+  }
+  
+  console.log(`🗜️ Compressing image from ${fileSizeKB.toFixed(2)} KB to ~${maxSizeKB} KB...`);
+  
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const img = new Image();
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Calculate new dimensions to reduce file size
+        // Reduce dimensions progressively based on how much we need to compress
+        const compressionRatio = Math.sqrt(maxSizeKB / fileSizeKB);
+        width = Math.floor(width * compressionRatio);
+        height = Math.floor(height * compressionRatio);
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        // Draw image with high quality
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob with quality adjustment
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Failed to compress image'));
+              return;
+            }
+            
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            
+            const newSizeKB = compressedFile.size / 1024;
+            console.log(`✅ Compressed to ${newSizeKB.toFixed(2)} KB (${width}x${height})`);
+            resolve(compressedFile);
+          },
+          'image/jpeg',
+          0.85 // Quality: 85%
+        );
+      };
+      
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = e.target?.result as string;
+    };
+    
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Core OCR function that calls OCR.space API directly
+ * Can be used both server-side and client-side
+ */
+async function performOCR(imageFile: File): Promise<string> {
+  console.log('📡 Calling OCR.space API directly...');
+  
+  // Compress image if needed (OCR.space has 1MB limit)
+  let processedFile = imageFile;
+  
+  // Check if we're in browser environment for compression
+  if (typeof window !== 'undefined' && typeof Image !== 'undefined') {
+    try {
+      processedFile = await compressImage(imageFile, 900); // Target 900KB to be safe
+    } catch (compressionError) {
+      console.warn('⚠️ Image compression failed, trying with original:', compressionError);
+      // Continue with original file if compression fails
+    }
+  }
+  
+  // Convert file to buffer
+  const bytes = await processedFile.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+
+  // Create FormData for OCR.space API
+  const ocrFormData = new FormData();
+  const blob = new Blob([buffer], { type: imageFile.type });
+  ocrFormData.append('file', blob, imageFile.name);
+  ocrFormData.append('apikey', 'K83907440988957');
+  ocrFormData.append('language', 'ita');
+  ocrFormData.append('isOverlayRequired', 'false');
+  ocrFormData.append('detectOrientation', 'true');
+  ocrFormData.append('scale', 'true');
+  ocrFormData.append('OCREngine', '2');
+
+  const response = await fetch('https://api.ocr.space/parse/image', {
+    method: 'POST',
+    headers: {
+      'apikey': 'K83907440988957',
+    },
+    body: ocrFormData,
+  });
+
+  const data = await response.json();
+
+  console.log('📊 OCR.space response:', {
+    isErrored: data.IsErroredOnProcessing,
+    hasResults: !!data.ParsedResults?.[0],
+  });
+
+  if (data.IsErroredOnProcessing) {
+    throw new Error(`OCR processing error: ${data.ErrorMessage || 'Unknown error'}`);
+  }
+
+  if (!data.ParsedResults?.[0]?.ParsedText) {
+    throw new Error('OCR returned no text results');
+  }
+
+  const extractedText = data.ParsedResults[0].ParsedText.trim();
+  console.log('✅ OCR text extraction successful');
+  
+  return extractedText;
+}
 
 /**
  * Simplified OCR function that relies primarily on OCR.space API
@@ -9,68 +150,12 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
   console.log('🔍 Starting OCR text extraction...');
   
   try {
-    // Check if we're in server environment (Vercel)
-    if (typeof window === 'undefined') {
-      console.log('🖥️ Using server-side OCR route...');
-      
-      // Use our API route for server-side processing
-      const formData = new FormData();
-      formData.append('image', imageFile);
-      
-      const response = await fetch('/api/ocr', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Server OCR failed');
-      }
-      
-      return data.text;
+    // Call OCR.space API directly (works both server-side and client-side)
+    const extractedText = await performOCR(imageFile);
+    
+    if (!extractedText || extractedText.trim().length === 0) {
+      throw new Error('No text extracted from image');
     }
-    
-    // Client-side: use direct OCR.space API with base64
-    console.log('🌐 Using client-side OCR...');
-    
-    const base64 = await fileToBase64(imageFile);
-    const formData = new FormData();
-    formData.append('base64Image', `data:${imageFile.type};base64,${base64}`);
-    formData.append('apikey', 'K83907440988957');
-    formData.append('language', 'ita');
-    formData.append('isOverlayRequired', 'false');
-    formData.append('detectOrientation', 'true');
-    formData.append('scale', 'true');
-    formData.append('OCREngine', '2');
-    
-    console.log('📡 Calling OCR.space API directly...');
-    
-    const response = await axios.post<OCRResponse>(
-      'https://api.ocr.space/parse/image',
-      formData,
-      {
-        headers: {
-          'apikey': 'K83907440988957',
-        },
-        timeout: 30000,
-      }
-    );
-
-    console.log('📊 OCR.space response:', {
-      isErrored: response.data.IsErroredOnProcessing,
-      hasResults: !!response.data.ParsedResults?.[0],
-    });
-
-    if (response.data.IsErroredOnProcessing) {
-      throw new Error(`OCR.space processing error: ${response.data.ErrorMessage || 'Unknown error'}`);
-    }
-
-    if (!response.data.ParsedResults?.[0]?.ParsedText) {
-      throw new Error('OCR.space returned no text results');
-    }
-
-    const extractedText = response.data.ParsedResults[0].ParsedText.trim();
     
     if (extractedText.length < 10) {
       console.warn('⚠️ OCR extracted very little text:', extractedText);

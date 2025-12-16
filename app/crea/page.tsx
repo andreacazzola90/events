@@ -168,7 +168,7 @@ export default function CreaEvento() {
         try {
             // Create a fetch request with timeout
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 55000); // 55 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondi - ottimizzato
 
             const response = await fetch('/api/process-link', {
                 method: 'POST',

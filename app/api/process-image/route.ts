@@ -2,10 +2,63 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractTextFromImageSimple } from '../../lib/ocr-simple';
 import { extractTextFromImage } from '../../lib/ocr';
 import Groq from 'groq-sdk';
+import sharp from 'sharp';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
+
+/**
+ * Compress image for OCR processing (max 1MB for OCR.space)
+ */
+async function compressImageForOCR(file: File): Promise<File> {
+  const fileSizeKB = file.size / 1024;
+  console.log(`📏 Original image size: ${fileSizeKB.toFixed(2)} KB`);
+  
+  // If already small enough, return as is
+  if (fileSizeKB <= 900) {
+    console.log('✅ Image size OK, no compression needed');
+    return file;
+  }
+  
+  console.log(`🗜️ Compressing image from ${fileSizeKB.toFixed(2)} KB...`);
+  
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    
+    // Get image metadata
+    const metadata = await sharp(buffer).metadata();
+    
+    // Calculate target dimensions (reduce by sqrt of size ratio)
+    const compressionRatio = Math.sqrt(900 / fileSizeKB);
+    const targetWidth = metadata.width ? Math.floor(metadata.width * compressionRatio) : undefined;
+    
+    // Compress with Sharp
+    const compressedBuffer = await sharp(buffer)
+      .resize(targetWidth, undefined, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({
+        quality: 85,
+        progressive: true
+      })
+      .toBuffer();
+    
+    const compressedFile = new File([compressedBuffer], file.name, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+    
+    const newSizeKB = compressedFile.size / 1024;
+    console.log(`✅ Compressed to ${newSizeKB.toFixed(2)} KB`);
+    
+    return compressedFile;
+  } catch (error) {
+    console.warn('⚠️ Compression failed, using original:', error);
+    return file;
+  }
+}
 
 
 export async function POST(request: NextRequest) {
@@ -24,18 +77,21 @@ export async function POST(request: NextRequest) {
     // Log per debug
     console.log('Ricevuto file:', file.name, 'Size:', file.size, 'Type:', file.type);
 
+    // Compress image if needed before OCR
+    const processedFile = await compressImageForOCR(file);
+
     let rawText = '';
 
     // Step 1: Extract text from image using OCR
     try {
       console.log('🔄 Trying simplified OCR approach...');
-      rawText = await extractTextFromImageSimple(file);
+      rawText = await extractTextFromImageSimple(processedFile);
       console.log('✅ Simplified OCR successful');
     } catch (simpleOcrError) {
       console.log('⚠️ Simplified OCR failed, trying Tesseract fallback...');
       
       try {
-        rawText = await extractTextFromImage(file);
+        rawText = await extractTextFromImage(processedFile);
         console.log('✅ Tesseract OCR successful');
       } catch (tesseractError) {
         console.error('❌ Both OCR methods failed:', {

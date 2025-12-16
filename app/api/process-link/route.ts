@@ -297,7 +297,43 @@ export async function POST(request: NextRequest) {
                     };
                     
                     const mainContent = getMainContent();
-                    return (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
+                    
+                    // ESTRAZIONE SPECIFICA PER VISITSCHIO: Data Inizio/Fine e Luogo
+                    let visitSchioDateTime = '';
+                    const isVisitSchio = window.location.hostname.includes('visitschio.it');
+                    if (isVisitSchio) {
+                        // Cerca il blocco con "Data Inizio" e "Fine"
+                        const bodyText = document.body.innerText || document.body.textContent || '';
+                        const dataInizioMatch = bodyText.match(/Data Inizio:\s*(\d{1,2}\s+\w+\s+\d{2}:\d{2})/i);
+                        const dataFineMatch = bodyText.match(/Fine:\s*(\d{1,2}\s+\w+\s+\d{2}:\d{2})/i);
+                        
+                        // Cerca il luogo - pattern per "Teatro X via Y, Schio"
+                        const luogoMatch = bodyText.match(/(Teatro\s+[^\n,]+)\s+via\s+([^,\n]+),\s*Schio/i);
+                        
+                        if (dataInizioMatch || luogoMatch) {
+                            visitSchioDateTime = `\n\n[VISITCHIO EVENT INFO]\n`;
+                            
+                            if (dataInizioMatch) {
+                                visitSchioDateTime += `Data Inizio: ${dataInizioMatch[1]}`;
+                                if (dataFineMatch) {
+                                    visitSchioDateTime += `\nFine: ${dataFineMatch[1]}`;
+                                }
+                                visitSchioDateTime += '\n';
+                            }
+                            
+                            if (luogoMatch) {
+                                const nomeTeatro = luogoMatch[1].trim();
+                                const via = luogoMatch[2].trim();
+                                visitSchioDateTime += `Luogo: ${nomeTeatro}, via ${via}, Schio\n`;
+                            }
+                            
+                            visitSchioDateTime += `[END VISITCHIO INFO]\n\n`;
+                            console.log('[visitSchio] Extracted event info:', visitSchioDateTime);
+                        }
+                    }
+                    
+                    const mainText = (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
+                    return visitSchioDateTime + mainText;
                 });
                 
                 console.log(`📄 Extracted ${pageText.length} characters from main content`);
@@ -638,8 +674,15 @@ REGOLE PER OGNI EVENTO:
   * NON copiare l'intero testo grezzo
   * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground."
 - DATA e ORARIO: SPECIFICI per ogni evento
+  * ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
+  * Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
+  * Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
+  * REGOLA ANNO: Se l'anno non è specificato, calcola l'anno in base alla data corrente (${currentDate})
+    - Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
+    - Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
+    - Esempio: oggi è 16 dic 2025, "23 gen" → 2026 (gennaio è passato nel 2025)
+    - Esempio: oggi è 16 dic 2025, "20 dic" → 2025 (20 dicembre è ancora futuro)
   * CONVERTI sempre in YYYY-MM-DD e HH:MM
-  * Se manca l'anno, usa ${new Date().getFullYear()}
 - LOCATION: Indirizzo completo (se uguale per tutti, ripetilo)
 - PREZZO: Specifico per evento (se unico per tutti, applicalo a tutti)
 - ORGANIZER: Se presente e condiviso, ripetilo
@@ -647,7 +690,13 @@ REGOLE PER OGNI EVENTO:
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
+- REGOLA ANNO: Se l'anno non è specificato, calcola l'anno in base alla data corrente:
+  * Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
+  * Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
+  * Esempio: oggi è ${currentDate}, "23 gen" → ${new Date().getFullYear() + 1} (gennaio è passato)
+  * Esempio: oggi è ${currentDate}, "20 dic" → ${new Date().getFullYear()} (dicembre ancora futuro)
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
+- PRIORITÀ: Usa sempre i dati da [VISITCHIO DATE TIME INFO] se presenti
 - Converti SEMPRE in formato YYYY-MM-DD
 
 CONTENUTO DA ANALIZZARE:
@@ -702,6 +751,15 @@ Rispondi SOLO con un oggetto JSON valido nel seguente formato:
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
+- ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
+- Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
+- Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
+- REGOLA ANNO: Se l'anno non è specificato, calcola l'anno in base alla data corrente:
+  * Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
+  * Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
+  * Esempio: oggi è ${currentDate}, "23 gen" → ${new Date().getFullYear() + 1} (gennaio è passato)
+  * Esempio: oggi è ${currentDate}, "20 dic" → ${new Date().getFullYear()} (dicembre ancora futuro)
+- PRIORITÀ: Usa sempre i dati da [VISITCHIO DATE TIME INFO] se presenti
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
 - Converti SEMPRE in formato YYYY-MM-DD
 
@@ -741,7 +799,7 @@ REGOLE:
             ],
             model: 'llama-3.1-8b-instant',
             temperature: 0.1,
-            max_tokens: 4000,
+            max_tokens: 5000,
         });
 
         const groqDuration = Date.now() - groqStartTime;
@@ -812,6 +870,244 @@ REGOLE:
             console.error('❌ JSON string completo:', jsonStr);
             
             throw new Error('Impossibile interpretare i dati dell\'evento. Riprova.');
+        }
+
+        // 3a. Controlla se ci sono informazioni mancanti e fai una seconda scansione
+        const checkMissingFields = (event: EventData) => {
+            const missing: string[] = [];
+            if (!event.date || event.date === '') missing.push('data');
+            if (!event.time || event.time === '') missing.push('orario');
+            if (!event.location || event.location === '') missing.push('luogo');
+            if (!event.price || event.price === '') missing.push('prezzo');
+            if (!event.organizer || event.organizer === '') missing.push('organizzatore');
+            return missing;
+        };
+
+        const enrichEventWithMissingData = async (event: EventData, missingFields: string[]) => {
+            console.log(`🔄 Tentativo di recuperare i campi mancanti: ${missingFields.join(', ')}`);
+            
+            const enrichmentPrompt = `Analizza nuovamente il testo seguente e cerca SOLO le informazioni mancanti per questo evento.
+
+EVENTO: ${event.title}
+
+INFORMAZIONI MANCANTI:
+${missingFields.map(field => `- ${field}`).join('\n')}
+
+TESTO DA ANALIZZARE:
+${combinedText.slice(0, 5000)}
+
+Restituisci SOLO un oggetto JSON con i campi mancanti nel formato:
+{
+  "date": "YYYY-MM-DD" (se mancante),
+  "time": "HH:MM" (se mancante),
+  "location": "indirizzo completo" (se mancante),
+  "price": "prezzo" (se mancante),
+  "organizer": "nome organizzatore" (se mancante)
+}
+
+IMPORTANTE: 
+- Includi SOLO i campi che trovi nel testo
+- Se non trovi un campo, NON includerlo nel JSON
+- Data corrente di riferimento: ${currentDate}
+- Restituisci SOLO JSON valido, senza markdown`;
+
+            try {
+                const enrichmentCompletion = await groq.chat.completions.create({
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'Sei un esperto in estrazione di informazioni da eventi. Rispondi SOLO con JSON valido.'
+                        },
+                        {
+                            role: 'user',
+                            content: enrichmentPrompt
+                        }
+                    ],
+                    model: 'llama-3.1-8b-instant',
+                    temperature: 0.1,
+                    max_tokens: 500
+                });
+
+                const enrichmentResponse = enrichmentCompletion.choices[0]?.message?.content || '';
+                console.log('🔍 Enrichment response:', enrichmentResponse);
+
+                const enrichFirst = enrichmentResponse.indexOf('{');
+                const enrichLast = enrichmentResponse.lastIndexOf('}');
+                
+                if (enrichFirst !== -1 && enrichLast !== -1 && enrichLast > enrichFirst) {
+                    const enrichJsonStr = enrichmentResponse.slice(enrichFirst, enrichLast + 1);
+                    const enrichedData = JSON.parse(enrichJsonStr);
+                    
+                    // Aggiorna solo i campi trovati
+                    if (enrichedData.date) event.date = enrichedData.date;
+                    if (enrichedData.time) event.time = enrichedData.time;
+                    if (enrichedData.location) event.location = enrichedData.location;
+                    if (enrichedData.price) event.price = enrichedData.price;
+                    if (enrichedData.organizer) event.organizer = enrichedData.organizer;
+                    
+                    console.log('✅ Campi arricchiti:', Object.keys(enrichedData).join(', '));
+                }
+            } catch (enrichError) {
+                console.warn('⚠️ Impossibile arricchire i dati mancanti:', enrichError);
+                // Non è fatale, continua con i dati esistenti
+            }
+            
+            return event;
+        };
+
+        const validateEventData = async (event: EventData) => {
+            console.log(`🔍 Validazione dati per evento: ${event.title}`);
+            
+            const validationPrompt = `Verifica la correttezza delle seguenti informazioni estratte per questo evento.
+
+EVENTO: ${event.title}
+DESCRIZIONE: ${event.description}
+
+DATI ESTRATTI DA VERIFICARE:
+- Data: ${event.date || 'NON TROVATA'}
+- Orario: ${event.time || 'NON TROVATO'}
+- Luogo: ${event.location || 'NON TROVATO'}
+- Prezzo: ${event.price || 'NON TROVATO'}
+- Organizzatore: ${event.organizer || 'NON TROVATO'}
+- Categoria: ${event.category || 'NON TROVATA'}
+
+TESTO ORIGINALE DA CONFRONTARE:
+${combinedText.slice(0, 6000)}
+
+Data corrente di riferimento: ${currentDate}
+
+Analizza attentamente e restituisci un oggetto JSON con:
+1. I campi che sono CORRETTI (mantieni il valore)
+2. I campi che sono ERRATI (fornisci il valore corretto)
+3. Usa "" (stringa vuota) se un campo non è presente nel testo
+
+Formato JSON:
+{
+  "date": "YYYY-MM-DD o valore corretto",
+  "time": "HH:MM o valore corretto",
+  "location": "luogo corretto",
+  "price": "prezzo corretto",
+  "organizer": "organizzatore corretto",
+  "category": "categoria corretta",
+  "corrections": ["lista di campi corretti, es: data, orario"]
+}
+
+IMPORTANTE: Restituisci SOLO JSON valido, senza markdown o spiegazioni.`;
+
+            try {
+                const validationCompletion = await groq.chat.completions.create({
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'Sei un esperto validatore di informazioni. Verifica accuratamente i dati e correggi eventuali errori. Rispondi SOLO con JSON valido.'
+                        },
+                        {
+                            role: 'user',
+                            content: validationPrompt
+                        }
+                    ],
+                    model: 'llama-3.1-8b-instant',
+                    temperature: 0.05,  // Temperatura più bassa per maggiore precisione
+                    max_tokens: 800
+                });
+
+                const validationResponse = validationCompletion.choices[0]?.message?.content || '';
+                console.log('🔍 Validation response:', validationResponse);
+
+                const valFirst = validationResponse.indexOf('{');
+                const valLast = validationResponse.lastIndexOf('}');
+                
+                if (valFirst !== -1 && valLast !== -1 && valLast > valFirst) {
+                    const valJsonStr = validationResponse.slice(valFirst, valLast + 1);
+                    const validatedData = JSON.parse(valJsonStr);
+                    
+                    // Applica le correzioni solo se ci sono cambiamenti significativi
+                    const corrections: string[] = validatedData.corrections || [];
+                    
+                    if (validatedData.date && validatedData.date !== event.date) {
+                        event.date = validatedData.date;
+                        corrections.push('data');
+                    }
+                    if (validatedData.time && validatedData.time !== event.time) {
+                        event.time = validatedData.time;
+                        corrections.push('orario');
+                    }
+                    if (validatedData.location && validatedData.location !== event.location) {
+                        event.location = validatedData.location;
+                        corrections.push('luogo');
+                    }
+                    if (validatedData.price && validatedData.price !== event.price) {
+                        event.price = validatedData.price;
+                        corrections.push('prezzo');
+                    }
+                    if (validatedData.organizer && validatedData.organizer !== event.organizer) {
+                        event.organizer = validatedData.organizer;
+                        corrections.push('organizzatore');
+                    }
+                    if (validatedData.category && validatedData.category !== event.category) {
+                        event.category = validatedData.category;
+                        corrections.push('categoria');
+                    }
+                    
+                    if (corrections.length > 0) {
+                        console.log(`✅ Correzioni applicate: ${corrections.join(', ')}`);
+                    } else {
+                        console.log('✅ Tutti i dati confermati corretti');
+                    }
+                }
+            } catch (validationError) {
+                console.warn('⚠️ Impossibile validare i dati:', validationError);
+                // Non è fatale, continua con i dati esistenti
+            }
+            
+            return event;
+        };
+
+        // Controlla se ci sono campi critici mancanti (solo data e location sono critici)
+        const hasCriticalMissing = (event: EventData) => {
+            return !event.date || event.date === '' || !event.location || event.location === '';
+        };
+
+        // Applica l'arricchimento e la validazione a eventi singoli o multipli
+        if (eventData.events && Array.isArray(eventData.events)) {
+            // Eventi multipli
+            for (let i = 0; i < eventData.events.length; i++) {
+                const event = eventData.events[i];
+                
+                // Step 1: Arricchimento SOLO se mancano campi
+                const missing = checkMissingFields(event);
+                if (missing.length > 0) {
+                    console.log(`📋 Evento "${event.title}": campi mancanti rilevati (${missing.join(', ')})`);
+                    eventData.events[i] = await enrichEventWithMissingData(event, missing);
+                }
+                
+                // Step 2: Validazione SOLO se mancano campi critici (data o location)
+                if (hasCriticalMissing(eventData.events[i])) {
+                    console.log(`🔍 Validazione evento "${eventData.events[i].title}" (campi critici mancanti)...`);
+                    eventData.events[i] = await validateEventData(eventData.events[i]);
+                } else {
+                    console.log(`✅ Evento "${eventData.events[i].title}" ha tutti i campi critici, skip validazione`);
+                }
+            }
+        } else if (eventData) {
+            // Evento singolo
+            
+            // Step 1: Arricchimento SOLO se mancano campi
+            const missing = checkMissingFields(eventData);
+            if (missing.length > 0) {
+                console.log(`📋 Evento singolo: campi mancanti rilevati (${missing.join(', ')})`);
+                eventData = await enrichEventWithMissingData(eventData, missing);
+            }
+            
+            // Step 2: Validazione SOLO se mancano campi critici (data o location)
+            if (hasCriticalMissing(eventData)) {
+                console.log(`🔍 Validazione evento singolo (campi critici mancanti)...`);
+                eventData = await validateEventData(eventData);
+            } else {
+                console.log(`✅ Evento singolo ha tutti i campi critici, skip validazione`);
+            }
+            console.log(`🔍 Validazione evento singolo...`);
+            eventData = await validateEventData(eventData);
         }
 
         // 3. Restituisci i dati dell'evento

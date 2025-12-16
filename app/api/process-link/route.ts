@@ -244,6 +244,9 @@ export async function POST(request: NextRequest) {
                                 const navbar = descClone.querySelector('#navbar-event-show');
                                 if (navbar) navbar.remove();
                                 
+                                const navbarGrid = descClone.querySelector('#navbar-collapse-grid');
+                                if (navbarGrid) navbarGrid.remove();
+                                
                                 return descClone;
                             }
                             
@@ -255,6 +258,9 @@ export async function POST(request: NextRequest) {
                                 // Rimuovi elementi indesiderati dal clone
                                 const navbar = mainClone.querySelector('#navbar-event-show');
                                 if (navbar) navbar.remove();
+                                
+                                const navbarGrid = mainClone.querySelector('#navbar-collapse-grid');
+                                if (navbarGrid) navbarGrid.remove();
                                 
                                 const eventInterest = mainClone.querySelector('#event_interest');
                                 if (eventInterest) eventInterest.remove();

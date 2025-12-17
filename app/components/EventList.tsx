@@ -59,6 +59,47 @@ export default function EventList() {
 
     useEffect(() => {
         fetchEvents();
+
+        // Re-fetch when page becomes visible (after navigation)
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                console.log('[EventList] Page visible, re-fetching events');
+                fetchEvents();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Also re-fetch when window regains focus
+        const handleFocus = () => {
+            console.log('[EventList] Window focused, re-fetching events');
+            fetchEvents();
+        };
+
+        window.addEventListener('focus', handleFocus);
+
+        // Listen for URL changes (for refresh parameter)
+        const handleUrlChange = () => {
+            const refresh = new URLSearchParams(window.location.search).get('refresh');
+            if (refresh) {
+                console.log('[EventList] Refresh parameter detected, re-fetching events');
+                fetchEvents();
+                // Clean up the URL parameter
+                window.history.replaceState({}, '', '/');
+            }
+        };
+
+        // Check on mount
+        handleUrlChange();
+
+        // Listen for popstate (back/forward navigation)
+        window.addEventListener('popstate', handleUrlChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+            window.removeEventListener('popstate', handleUrlChange);
+        };
     }, []);
 
     useEffect(() => {
@@ -73,10 +114,23 @@ export default function EventList() {
             if (dateFrom) params.append('dateFrom', dateFrom);
             if (dateTo) params.append('dateTo', dateTo);
 
-            const response = await fetch(`/api/events?${params.toString()}`);
+            // Add cache-busting timestamp
+            params.append('_t', Date.now().toString());
+
+            console.log('[EventList] Fetching events from API...');
+            const response = await fetch(`/api/events?${params.toString()}`, {
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                },
+            });
             if (response.ok) {
                 const data = await response.json();
+                console.log('[EventList] Fetched events:', data.length, 'First event:', data[0]?.title, data[0]?.id);
                 setEvents(data);
+            } else {
+                console.error('[EventList] Failed to fetch events:', response.status);
             }
         } catch (error) {
             console.error('Error fetching events:', error);

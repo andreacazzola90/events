@@ -123,6 +123,11 @@ export default function EditEventPage() {
                     body: formData,
                 });
                 if (response.ok) {
+                    // Clear service worker cache
+                    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                        console.log('[App] Sending CLEAR_CACHE message to service worker');
+                        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                    }
                     router.push(`/events/${generateUniqueSlug(event.title, event.id)}`);
                 } else {
                     setError("Errore nel salvataggio dell'evento");
@@ -139,6 +144,11 @@ export default function EditEventPage() {
                     body: JSON.stringify(eventToSave),
                 });
                 if (response.ok) {
+                    // Clear service worker cache
+                    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                        console.log('[App] Sending CLEAR_CACHE message to service worker');
+                        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                    }
                     router.push(`/events/${generateUniqueSlug(event.title, event.id)}`);
                 } else {
                     setError("Errore nel salvataggio dell'evento");

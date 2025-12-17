@@ -677,11 +677,14 @@ REGOLE PER OGNI EVENTO:
   * ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
   * Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
   * Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
-  * REGOLA ANNO: Se l'anno non è specificato, calcola l'anno in base alla data corrente (${currentDate})
-    - Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
-    - Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
-    - Esempio: oggi è 16 dic 2025, "23 gen" → 2026 (gennaio è passato nel 2025)
-    - Esempio: oggi è 16 dic 2025, "20 dic" → 2025 (20 dicembre è ancora futuro)
+  * REGOLA ANNO:
+    - Se l'anno È GIÀ SPECIFICATO (es: "23 gen 2026", "15/02/2025"): MANTIENI L'ANNO ESISTENTE
+    - Se l'anno NON è specificato (es: "23 gen", "15/02"): calcola in base alla data corrente (${currentDate})
+      * Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
+      * Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
+    - Esempio con anno: "23 gen 2027" → mantieni 2027
+    - Esempio senza anno: oggi è 16 dic 2025, "23 gen" → 2026 (gennaio è passato nel 2025)
+    - Esempio senza anno: oggi è 16 dic 2025, "20 dic" → 2025 (20 dicembre è ancora futuro)
   * CONVERTI sempre in YYYY-MM-DD e HH:MM
 - LOCATION: Indirizzo completo (se uguale per tutti, ripetilo)
 - PREZZO: Specifico per evento (se unico per tutti, applicalo a tutti)
@@ -690,11 +693,14 @@ REGOLE PER OGNI EVENTO:
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
-- REGOLA ANNO: Se l'anno non è specificato, calcola l'anno in base alla data corrente:
-  * Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
-  * Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
-  * Esempio: oggi è ${currentDate}, "23 gen" → ${new Date().getFullYear() + 1} (gennaio è passato)
-  * Esempio: oggi è ${currentDate}, "20 dic" → ${new Date().getFullYear()} (dicembre ancora futuro)
+- REGOLA ANNO:
+  * Se l'anno È GIÀ SPECIFICATO nella data (es: "23 gen 2026", "2025-02-15"): MANTIENI L'ANNO ESISTENTE
+  * Se l'anno NON è specificato (es: "23 gen", "15/02"): calcola in base alla data corrente
+    - Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
+    - Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
+  * Esempio con anno: "23 gen 2027" → mantieni 2027-01-23
+  * Esempio senza anno: oggi è ${currentDate}, "23 gen" → ${new Date().getFullYear() + 1} (gennaio è passato)
+  * Esempio senza anno: oggi è ${currentDate}, "20 dic" → ${new Date().getFullYear()} (dicembre ancora futuro)
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
 - PRIORITÀ: Usa sempre i dati da [VISITCHIO DATE TIME INFO] se presenti
 - Converti SEMPRE in formato YYYY-MM-DD
@@ -754,11 +760,14 @@ GESTIONE DATE:
 - ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
 - Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
 - Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
-- REGOLA ANNO: Se l'anno non è specificato, calcola l'anno in base alla data corrente:
-  * Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
-  * Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
-  * Esempio: oggi è ${currentDate}, "23 gen" → ${new Date().getFullYear() + 1} (gennaio è passato)
-  * Esempio: oggi è ${currentDate}, "20 dic" → ${new Date().getFullYear()} (dicembre ancora futuro)
+- REGOLA ANNO:
+  * Se l'anno È GIÀ SPECIFICATO nella data (es: "23 gen 2026", "2025-02-15"): MANTIENI L'ANNO ESISTENTE
+  * Se l'anno NON è specificato (es: "23 gen", "15/02"): calcola in base alla data corrente
+    - Se il mese/giorno è già passato quest'anno, usa l'anno PROSSIMO (${new Date().getFullYear() + 1})
+    - Se il mese/giorno è futuro quest'anno, usa l'anno CORRENTE (${new Date().getFullYear()})
+  * Esempio con anno: "23 gen 2027" → mantieni 2027-01-23
+  * Esempio senza anno: oggi è ${currentDate}, "23 gen" → ${new Date().getFullYear() + 1} (gennaio è passato)
+  * Esempio senza anno: oggi è ${currentDate}, "20 dic" → ${new Date().getFullYear()} (dicembre ancora futuro)
 - PRIORITÀ: Usa sempre i dati da [VISITCHIO DATE TIME INFO] se presenti
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
 - Converti SEMPRE in formato YYYY-MM-DD
@@ -909,6 +918,12 @@ IMPORTANTE:
 - Includi SOLO i campi che trovi nel testo
 - Se non trovi un campo, NON includerlo nel JSON
 - Data corrente di riferimento: ${currentDate}
+- REGOLA ANNO per le date:
+  * Se l'anno È GIÀ SPECIFICATO (es: "23 gen 2026"): MANTIENI L'ANNO ESISTENTE
+  * Se l'anno NON è specificato (es: "23 gen"): calcola in base alla data corrente
+    - Se mese/giorno già passato quest'anno → usa anno PROSSIMO (${new Date().getFullYear() + 1})
+    - Se mese/giorno futuro quest'anno → usa anno CORRENTE (${new Date().getFullYear()})
+- Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
 - Restituisci SOLO JSON valido, senza markdown`;
 
             try {
@@ -975,6 +990,12 @@ TESTO ORIGINALE DA CONFRONTARE:
 ${combinedText.slice(0, 6000)}
 
 Data corrente di riferimento: ${currentDate}
+REGOLA ANNO per le date:
+- Se l'anno È GIÀ SPECIFICATO nella data esistente: MANTIENI L'ANNO ESISTENTE
+- Se l'anno NON è specificato e devi correggere/aggiungere: calcola in base alla data corrente
+  * Se mese/giorno già passato quest'anno → usa anno PROSSIMO (${new Date().getFullYear() + 1})
+  * Se mese/giorno futuro quest'anno → usa anno CORRENTE (${new Date().getFullYear()})
+- Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
 
 Analizza attentamente e restituisci un oggetto JSON con:
 1. I campi che sono CORRETTI (mantieni il valore)

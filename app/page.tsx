@@ -61,7 +61,7 @@ export default function Home() {
             </section>
 
             {/* Features Section - Dice Style */}
-            <section className="py-16 bg-gradient-to-b from-transparent to-black/20">
+            <section className="py-16 bg-linear-to-b from-transparent to-black/20">
                 <div className="max-w-7xl mx-auto px-6">
                     <h2 className="text-4xl font-bold text-center mb-12">What else?</h2>
 

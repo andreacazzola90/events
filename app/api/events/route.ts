@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uploadImageToSupabase } from '../../lib/supabase';
+import { revalidatePath } from 'next/cache';
 
 export async function POST(request: NextRequest) {
   try {
@@ -71,7 +72,18 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('[API /events POST] Event saved successfully, ID:', event.id);
-    return NextResponse.json(event, { status: 201 });
+    
+    // Revalidate the homepage and events list to update the cache
+    revalidatePath('/', 'layout');
+    revalidatePath('/api/events', 'page');
+    console.log('[API /events POST] Cache revalidated for homepage and events list');
+    
+    return NextResponse.json(event, { 
+      status: 201,
+      headers: {
+        'Cache-Control': 'no-store',
+      }
+    });
   } catch (error) {
     console.error('[API /events POST] Error saving event:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -89,6 +101,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
+    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 20;
 
     const where: any = {};
 
@@ -112,8 +125,17 @@ export async function GET(request: NextRequest) {
     const events = await prisma.event.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      take: limit, // Limit to most recent events
     });
-    return NextResponse.json(events);
+    
+    // Disable cache to always fetch fresh data
+    return NextResponse.json(events, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error) {
     console.error('Error fetching events:', error);
     return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });

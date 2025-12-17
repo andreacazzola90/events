@@ -54,6 +54,7 @@ export default function CreaEvento() {
     const [error, setError] = useState<string | null>(null);
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         return () => {
@@ -74,10 +75,24 @@ export default function CreaEvento() {
         const newEvents = Array.isArray(newEventsOrSingle) ? newEventsOrSingle : [newEventsOrSingle];
 
         // Normalizza e aggiungi imageUrl
-        const eventsWithImage = newEvents.map(ev => normalizeEventFields({
+        let eventsWithImage = newEvents.map(ev => normalizeEventFields({
             ...ev,
             imageUrl: ev.imageUrl || newImageUrl
         }));
+
+        // Se ci sono più eventi, controlla se hanno stessa data e orario
+        // In quel caso probabilmente è un duplicato, tieni solo il primo
+        if (eventsWithImage.length > 1) {
+            const firstEvent = eventsWithImage[0];
+            const allSameDateTime = eventsWithImage.every(ev =>
+                ev.date === firstEvent.date && ev.time === firstEvent.time
+            );
+
+            if (allSameDateTime) {
+                console.log('[handleNewEvents] Eventi con stessa data/orario rilevati - probabile duplicato, uso solo il primo');
+                eventsWithImage = [firstEvent];
+            }
+        }
 
         console.log(`[handleNewEvents] Processati ${eventsWithImage.length} eventi`);
         setEvents(eventsWithImage);
@@ -140,10 +155,70 @@ export default function CreaEvento() {
         }
     };
 
-    const handleSaveSingle = (updatedData: EventData) => {
-        // Aggiorna solo lo stato locale dell'evento modificato
-        setEvents(prev => prev.map(ev => ev === events[0] ? updatedData : ev));
-        // Non fare redirect, lascia l'utente sulla pagina
+    const handleSaveSingle = async (updatedData: EventData) => {
+        setSaving(true);
+        setError(null);
+        try {
+            let savedEvent;
+
+            // Salva l'evento sul database
+            if (updatedData.imageUrl && updatedData.imageUrl.startsWith('blob:')) {
+                const response = await fetch(updatedData.imageUrl);
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('eventData', JSON.stringify(updatedData));
+                formData.append('image', blob, 'event-image.jpg');
+
+                const saveResponse = await fetch('/api/events', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!saveResponse.ok) {
+                    throw new Error('Failed to save event');
+                }
+
+                savedEvent = await saveResponse.json();
+            } else {
+                // No image upload needed, use regular JSON
+                const response = await fetch('/api/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(updatedData),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to save event');
+                }
+
+                savedEvent = await response.json();
+            }
+
+            // Track event creation
+            trackEventCreate(savedEvent);
+            trackEvent('event_create', 'Events', updatedData.title);
+
+            console.log('Event saved successfully, ID:', savedEvent.id);
+
+            // Clear service worker cache
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                console.log('[App] Sending CLEAR_CACHE message to service worker');
+                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+
+                // Wait a moment for cache to clear
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Force hard reload to bypass all cache
+            console.log('Forcing hard reload to homepage');
+            window.location.href = '/?refresh=' + Date.now();
+        } catch (error) {
+            console.error('Error saving event:', error);
+            setError(error instanceof Error ? error.message : 'Errore nel salvataggio dell\'evento');
+            setSaving(false);
+        }
     };
 
     const handleLinkSubmit = async (e: React.FormEvent) => {
@@ -335,7 +410,11 @@ export default function CreaEvento() {
                         )}
 
                         {/* Event Editing Interface */}
-                        {events.length > 1 ? (
+                        {saving ? (
+                            <div className="glass-effect p-8 rounded-2xl border border-white/10 animate-fadeInUp">
+                                <LoadingAnimation message="Saving event..." />
+                            </div>
+                        ) : events.length > 1 ? (
                             <MultipleEventsEditor
                                 events={events}
                                 onSaveAll={handleSaveAll}

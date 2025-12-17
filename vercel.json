@@ -1,16 +1,13 @@
 {
   "functions": {
     "app/api/*/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 60
     },
     "app/api/process-link/route.ts": {
-      "maxDuration": 55,
-      "memory": 1024
+      "maxDuration": 55
     },
     "app/api/process-image/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 60
     }
   },
   "build": {

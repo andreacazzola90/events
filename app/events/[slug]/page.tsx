@@ -190,7 +190,17 @@ export default function EventDetailPage() {
                                         <div className="space-y-4">
                                             <p className="flex items-center gap-3 text-white"><CalendarIcon className="w-6 h-6 text-primary shrink-0" /> <span>{event.date}</span></p>
                                             <p className="flex items-center gap-3 text-white"><ClockIcon className="w-6 h-6 text-primary shrink-0" /> <span>{event.time}</span></p>
-                                            <p className="flex items-center gap-3 text-white"><MapPinIcon className="w-6 h-6 text-primary shrink-0" /> <span>{event.location}</span></p>
+                                            <p className="flex items-center gap-3 text-white">
+                                                <MapPinIcon className="w-6 h-6 text-primary shrink-0" />
+                                                <a
+                                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="hover:text-primary hover:underline transition-colors"
+                                                >
+                                                    {event.location}
+                                                </a>
+                                            </p>
                                         </div>
                                         <div className="space-y-4">
                                             {event.category && <p className="flex items-center gap-3 text-white"><span className="text-2xl shrink-0">🏷️</span> <span>{event.category}</span></p>}

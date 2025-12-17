@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eventscanner-v1';
+const CACHE_NAME = 'eventscanner-v2'; // Incrementa versione per forzare update
 const STATIC_CACHE = [
     '/',
     '/crea',
@@ -45,12 +45,19 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // NEVER cache API requests - always fetch fresh data
+    if (event.request.url.includes('/api/')) {
+        console.log('[SW] Bypassing cache for API request:', event.request.url);
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
     event.respondWith(
         caches.match(event.request).then((response) => {
             // Return cached version or fetch from network
             return response || fetch(event.request).then((fetchResponse) => {
-                // Cache successful GET requests
-                if (event.request.method === 'GET' && fetchResponse.ok) {
+                // Cache successful GET requests (but not API calls)
+                if (event.request.method === 'GET' && fetchResponse.ok && !event.request.url.includes('/api/')) {
                     const responseToCache = fetchResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(event.request, responseToCache);
@@ -65,6 +72,38 @@ self.addEventListener('fetch', (event) => {
             }
         })
     );
+});
+
+// Handle messages from the app
+self.addEventListener('message', (event) => {
+    console.log('[SW] Message received:', event.data);
+
+    if (event.data.type === 'CLEAR_CACHE') {
+        console.log('[SW] Clearing all caches...');
+        event.waitUntil(
+            caches.keys().then((cacheNames) => {
+                return Promise.all(
+                    cacheNames.map((cacheName) => {
+                        console.log('[SW] Deleting cache:', cacheName);
+                        return caches.delete(cacheName);
+                    })
+                );
+            }).then(() => {
+                console.log('[SW] All caches cleared');
+                // Notify all clients that cache was cleared
+                self.clients.matchAll().then(clients => {
+                    clients.forEach(client => {
+                        client.postMessage({ type: 'CACHE_CLEARED' });
+                    });
+                });
+            })
+        );
+    }
+
+    if (event.data.type === 'SKIP_WAITING') {
+        console.log('[SW] Skip waiting...');
+        self.skipWaiting();
+    }
 });
 
 // Handle push notifications (future feature)

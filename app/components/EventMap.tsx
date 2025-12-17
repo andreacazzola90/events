@@ -50,16 +50,25 @@ export default function EventMap() {
     const fetchEventsWithCoordinates = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/events');
+            // Add cache-busting timestamp
+            const response = await fetch(`/api/events?_t=${Date.now()}`, {
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                },
+            });
             if (!response.ok) throw new Error('Failed to fetch events');
 
             const eventsData = await response.json();
+            console.log('[EventMap] Fetched events:', eventsData.length);
 
             // Geocode each event location SOLO se sembra un indirizzo
             const eventsWithCoords = await Promise.all(
                 eventsData.map(async (event: EventData) => {
                     if (!isLikelyAddress(event.location)) {
                         // Non tentare la geocodifica, ignora
+                        console.log('[EventMap] Skipping geocoding for:', event.location);
                         return { ...event };
                     }
                     const coords = await geocodeLocation(event.location);
@@ -67,7 +76,9 @@ export default function EventMap() {
                 })
             );
 
-            setEvents(eventsWithCoords.filter(e => e.lat && e.lng));
+            const validEvents = eventsWithCoords.filter(e => e.lat && e.lng);
+            console.log('[EventMap] Events with valid coordinates:', validEvents.length);
+            setEvents(validEvents);
             setLoading(false);
         } catch (err) {
             console.error('Error fetching events:', err);

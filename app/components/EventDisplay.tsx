@@ -44,6 +44,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
     const [showOcr, setShowOcr] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
+    const [isSaving, setIsSaving] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
 
     useEffect(() => {
@@ -92,8 +93,111 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
             imageUrl: imageUrl,
             rawText: eventData.rawText
         };
-        onSave?.(updated);
-        setIsEditing(false);
+
+        if (onSave) {
+            // Chiama la callback del padre (usato in modalità editing)
+            onSave(updated);
+            setIsEditing(false);
+        }
+    };
+
+    const handleAddEvent = async () => {
+        setIsSaving(true);
+        setSaveAnimationStatus('saving');
+
+        try {
+            // Se non siamo in editing, usa direttamente eventData
+            // Se siamo in editing, leggi dal form
+            let eventToSave: EventData;
+
+            if (isEditing && formRef.current) {
+                const form = formRef.current;
+                eventToSave = {
+                    ...eventData,
+                    title: (form.elements.namedItem('title') as HTMLInputElement)?.value || eventData.title,
+                    date: (form.elements.namedItem('date') as HTMLInputElement)?.value || eventData.date,
+                    time: (form.elements.namedItem('time') as HTMLInputElement)?.value || eventData.time,
+                    location: (form.elements.namedItem('location') as HTMLInputElement)?.value || eventData.location,
+                    category: (form.elements.namedItem('category') as HTMLInputElement)?.value || eventData.category,
+                    organizer: (form.elements.namedItem('organizer') as HTMLInputElement)?.value || eventData.organizer,
+                    price: (form.elements.namedItem('price') as HTMLInputElement)?.value || eventData.price,
+                    description: (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || eventData.description,
+                    imageUrl: imageUrl,
+                    rawText: eventData.rawText
+                };
+            } else {
+                // Non in editing, usa i dati esistenti
+                eventToSave = {
+                    ...eventData,
+                    imageUrl: imageUrl,
+                };
+            }
+
+            console.log('[EventDisplay] Saving event:', eventToSave);
+
+            let savedEvent;
+
+            // Salva l'evento sul database
+            if (imageUrl && imageUrl.startsWith('blob:')) {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('eventData', JSON.stringify(eventToSave));
+                formData.append('image', blob, 'event-image.jpg');
+
+                const saveResponse = await fetch('/api/events', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!saveResponse.ok) {
+                    const errorText = await saveResponse.text();
+                    console.error('[EventDisplay] Save failed:', errorText);
+                    throw new Error('Failed to save event: ' + errorText);
+                }
+
+                savedEvent = await saveResponse.json();
+            } else {
+                // No image upload needed, use regular JSON
+                const response = await fetch('/api/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(eventToSave),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[EventDisplay] Save failed:', errorText);
+                    throw new Error('Failed to save event: ' + errorText);
+                }
+
+                savedEvent = await response.json();
+            }
+
+            console.log('[EventDisplay] Event saved successfully, ID:', savedEvent.id);
+            setSaveAnimationStatus('success');
+
+            // Clear service worker cache
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                console.log('[EventDisplay] Sending CLEAR_CACHE message to service worker');
+                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Wait for animation to complete
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Redirect to homepage
+            console.log('[EventDisplay] Redirecting to homepage');
+            window.location.href = '/?refresh=' + Date.now();
+        } catch (error) {
+            console.error('[EventDisplay] Error saving event:', error);
+            alert('Errore nel salvataggio dell\'evento: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            setSaveAnimationStatus('hidden');
+            setIsSaving(false);
+        }
     };
     return (
         <div className="event-display-container space-y-6">
@@ -127,6 +231,16 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                     <div className="event-details-section text-black flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-6">
                         {/* Bottoni sopra il titolo */}
                         <div className="event-actions flex gap-2 mb-4 justify-end">
+                            {!isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={handleAddEvent}
+                                    disabled={isSaving}
+                                    className="event-add-button px-6 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white bg-linear-to-r from-blue-500 via-blue-600 to-blue-700 hover:from-blue-600 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSaving ? '💾 Salvataggio...' : '✨ Aggiungi Evento'}
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -136,82 +250,14 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                         setIsEditing(true);
                                     }
                                 }}
-                                className={`event-edit-save-button px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white ${isEditing
+                                disabled={isSaving}
+                                className={`event-edit-save-button px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white disabled:opacity-50 disabled:cursor-not-allowed ${isEditing
                                     ? 'bg-linear-to-r from-green-400 via-green-500 to-green-600 hover:from-green-500 hover:to-green-700'
                                     : 'bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400'
                                     }`}
                             >
                                 {isEditing ? 'Salva' : 'Modifica'}
                             </button>
-                            {/* Pulsante aggiungi evento: salva solo su DB */}
-                            {!isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        // Salva su DB
-                                        if (imageUrl && imageUrl.startsWith('blob:')) {
-                                            setSaveAnimationStatus('saving');
-                                            try {
-                                                const response = await fetch(imageUrl);
-                                                const blob = await response.blob();
-                                                const formData = new FormData();
-                                                formData.append('eventData', JSON.stringify(eventData));
-                                                formData.append('image', blob, 'event-image.jpg');
-                                                const saveResponse = await fetch('/api/events', {
-                                                    method: 'POST',
-                                                    body: formData,
-                                                });
-                                                if (saveResponse.ok) {
-                                                    setSaveAnimationStatus('success');
-                                                } else {
-                                                    setSaveAnimationStatus('hidden');
-                                                    alert('Errore nel salvataggio evento.');
-                                                }
-                                            } catch (error) {
-                                                setSaveAnimationStatus('hidden');
-                                                alert('Errore nel salvataggio evento.');
-                                            }
-                                        } else {
-                                            // No new image, use regular JSON
-                                            setSaveAnimationStatus('saving');
-                                            try {
-                                                console.log('[EventDisplay] Saving event with JSON:', eventData);
-                                                const saveResponse = await fetch('/api/events', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify(eventData),
-                                                });
-                                                console.log('[EventDisplay] Save response status:', saveResponse.status);
-
-                                                if (saveResponse.ok) {
-                                                    setSaveAnimationStatus('success');
-                                                } else {
-                                                    setSaveAnimationStatus('hidden');
-                                                    const responseText = await saveResponse.text();
-                                                    console.error('[EventDisplay] Save failed, response text:', responseText);
-
-                                                    let errorData;
-                                                    try {
-                                                        errorData = JSON.parse(responseText);
-                                                        console.error('[EventDisplay] Parsed error:', errorData);
-                                                        alert('Errore nel salvataggio evento: ' + (errorData.error || 'Unknown error'));
-                                                    } catch (e) {
-                                                        console.error('[EventDisplay] Failed to parse error response:', e);
-                                                        alert('Errore nel salvataggio evento: ' + responseText);
-                                                    }
-                                                }
-                                            } catch (error) {
-                                                setSaveAnimationStatus('hidden');
-                                                console.error('[EventDisplay] Network or other error:', error);
-                                                alert('Errore nel salvataggio evento: ' + (error instanceof Error ? error.message : 'Unknown error'));
-                                            }
-                                        }
-                                    }}
-                                    className="event-add-button px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white bg-linear-to-r from-blue-400 via-blue-500 to-blue-600 hover:from-blue-500 hover:to-blue-700"
-                                >
-                                    Aggiungi Evento
-                                </button>
-                            )}
                         </div>
 
                         {/* Titolo con tutto lo spazio orizzontale */}

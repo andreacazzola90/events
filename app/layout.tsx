@@ -11,7 +11,7 @@ import { LoadingIndicator } from './components/LoadingIndicator';
 import { PageTransitionWrapper } from './components/PageTransition';
 import { GoogleAnalytics } from './lib/analytics';
 import { GoogleTagManager } from './lib/gtm';
-import { Analytics } from "@vercel/analytics/react";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
   subsets: ['latin'],

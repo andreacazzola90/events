@@ -168,6 +168,8 @@ export default function EventList() {
         fetchEvents();
     };
 
+    const [filtersOpen, setFiltersOpen] = useState(false);
+
     if (loading) {
         return <div className="text-center py-8">Caricamento eventi...</div>;
     }
@@ -175,69 +177,85 @@ export default function EventList() {
     return (
         <div className="space-y-8">
             {/* Filters - Dice.fm Style */}
-            <div className="glass-effect p-6 rounded-2xl border border-white/10">
-                <form
-                    className="flex flex-col lg:flex-row gap-4 items-center"
-                    onSubmit={e => { e.preventDefault(); handleFilterChange(); }}
+            <div className="glass-effect rounded-2xl border border-white/10 overflow-hidden">
+                {/* Mobile Filter Toggle */}
+                <button
+                    onClick={() => setFiltersOpen(!filtersOpen)}
+                    className="w-full lg:hidden flex items-center justify-between p-6 text-white font-bold"
                 >
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <input
-                            type="text"
-                            placeholder="Search events..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                        />
-                        <select
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all appearance-none"
-                        >
-                            <option value="" className="bg-gray-900 text-white">Tutte le Categorie</option>
-                            {STANDARD_CATEGORIES.map(cat => (
-                                <option key={cat} value={cat} className="bg-gray-900 text-white">
-                                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                                </option>
-                            ))}
-                        </select>
-                        <input
-                            type="date"
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                            disabled={onlyToday}
-                        />
-                        <input
-                            type="date"
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                            disabled={onlyToday}
-                        />
+                    <div className="flex items-center gap-3">
+                        <span className="text-xl">🔍</span>
+                        <span>Filtra Eventi</span>
                     </div>
+                    <span className={`transition-transform duration-300 ${filtersOpen ? 'rotate-180' : ''}`}>
+                        ▼
+                    </span>
+                </button>
 
-                    <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-2 text-white font-medium cursor-pointer">
+                <div className={`${filtersOpen ? 'block' : 'hidden'} lg:block p-6 border-t lg:border-t-0 border-white/10`}>
+                    <form
+                        className="flex flex-col lg:flex-row gap-4 items-center"
+                        onSubmit={e => { e.preventDefault(); handleFilterChange(); }}
+                    >
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                             <input
-                                type="checkbox"
-                                checked={onlyToday}
-                                onChange={e => setOnlyToday(e.target.checked)}
-                                className="w-4 h-4 text-pink-500 bg-white/10 border-white/20 rounded focus:ring-pink-500 focus:ring-2"
+                                type="text"
+                                placeholder="Search events..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                             />
-                            Today only
-                        </label>
-                        <button
-                            type="submit"
-                            className="bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
-                        >
-                            Filter
-                        </button>
-                    </div>
-                </form>
+                            <select
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all appearance-none"
+                            >
+                                <option value="" className="bg-gray-900 text-white">Tutte le Categorie</option>
+                                {STANDARD_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat} className="bg-gray-900 text-white">
+                                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                disabled={onlyToday}
+                            />
+                            <input
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                disabled={onlyToday}
+                            />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+                            <label className="flex items-center gap-2 text-white font-medium cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={onlyToday}
+                                    onChange={e => setOnlyToday(e.target.checked)}
+                                    className="w-4 h-4 text-pink-500 bg-white/10 border-white/20 rounded focus:ring-pink-500 focus:ring-2"
+                                />
+                                Today only
+                            </label>
+                            <button
+                                type="submit"
+                                className="w-full sm:w-auto bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
+                            >
+                                Filter
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             {/* Event Grid - Dice.fm Style */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
                 {filteredEvents.length === 0 ? (
                     <div className="col-span-full text-center py-16">
                         <div className="text-6xl mb-4">🎵</div>

@@ -74,16 +74,16 @@ export async function POST(request: NextRequest) {
 
     console.log('[API /events POST] Event saved successfully, ID:', event.id);
     
-    // Revalidate the homepage and events list to update the cache
-    revalidatePath('/', 'layout');
-    revalidatePath('/api/events', 'page');
-    // revalidateTag('events-list'); // Commented out due to build error (signature mismatch)
-    console.log('[API /events POST] Cache revalidated for homepage, events list, and tag events-list');
+    // Revalidate all pages that display events
+    revalidatePath('/', 'page');
+    revalidatePath('/eventi', 'page');
+    revalidatePath('/mappa', 'page');
+    console.log('[API /events POST] Cache revalidated for home, eventi, mappa pages');
     
     return NextResponse.json(event, { 
       status: 201,
       headers: {
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
       }
     });
   } catch (error) {
@@ -134,7 +134,10 @@ export async function GET(request: NextRequest) {
         });
       },
       ['events-list-query'], // Key parts (will be combined with args automatically in newer Next.js, but explicit keys are safer)
-      { tags: ['events-list'] }
+      { 
+        tags: ['events-list'],
+        revalidate: 60 // Revalidate every 60 seconds as fallback
+      }
     );
 
     // Create a unique key based on the query parameters
@@ -150,7 +153,7 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json(events, {
       headers: {
-        'Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=0', // Cache indefinitely on CDN/Server until revalidated
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30', // Cache for 60s, allow stale for 30s
       },
     });
   } catch (error) {

@@ -1,16 +1,34 @@
-
+import sharp from 'sharp';
 import axios from 'axios';
+import { createWorker } from 'tesseract.js';
 import { EventData, OCRResponse } from '@/types/event';
-import { createWorker as tesseractCreateWorker } from 'tesseract.js';
-
 
 export async function extractTextFromImage(imageFile: File): Promise<string> {
+  let processedBuffer: Buffer | null = null;
+  
   try {
-    // Try OCR.space API first
+    // Pre-process image with sharp to improve OCR quality
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const inputBuffer = Buffer.from(arrayBuffer);
+    
+    processedBuffer = await sharp(inputBuffer)
+      .resize(2000, 2000, { fit: 'inside', withoutEnlargement: false }) // Upscale if small
+      .grayscale() // Better for OCR
+      .normalize() // Improve contrast
+      .sharpen() // Sharpen edges
+      .toBuffer();
+
+    // Try OCR.space API first with processed image
     const formData = new FormData();
-    formData.append('file', imageFile);
-    formData.append('apikey', 'helloworld'); // Free API key for testing
+    // In Node.js, we can append the buffer directly or as a Blob
+    const blob = new Blob([processedBuffer as any], { type: 'image/jpeg' });
+    formData.append('file', blob, 'processed.jpg');
+    formData.append('apikey', 'K83907440988957');
     formData.append('language', 'ita');
+    formData.append('isOverlayRequired', 'false');
+    formData.append('detectOrientation', 'true');
+    formData.append('scale', 'true');
+    formData.append('OCREngine', '2');
     
     const response = await axios.post<OCRResponse>(
       'https://api.ocr.space/parse/image',
@@ -23,7 +41,10 @@ export async function extractTextFromImage(imageFile: File): Promise<string> {
     );
 
     if (response.data.IsErroredOnProcessing || !response.data.ParsedResults?.[0]?.ParsedText) {
-      throw new Error('OCR.space processing failed');
+      const errorMsg = response.data.ErrorMessage ? response.data.ErrorMessage[0] : 'Nessun testo rilevato';
+      console.warn(`⚠️ OCR.space failed: ${errorMsg}`);
+      // Throw to trigger Tesseract fallback
+      throw new Error(`OCR.space failed: ${errorMsg}`);
     }
 
     return response.data.ParsedResults[0].ParsedText;
@@ -31,10 +52,20 @@ export async function extractTextFromImage(imageFile: File): Promise<string> {
     console.log('⚠️ OCR.space failed, trying Tesseract.js fallback...');
     
     try {
-      // Fallback to Tesseract.js with serverless configuration
-      const worker = await createWorker('ita');
-      const { data: { text } } = await worker.recognize(imageFile);
+      // Fallback to Tesseract.js with latest API (v5+)
+      // Using createWorker is more robust as it allows better initialization
+      const worker = await createWorker('ita', 1, {
+        logger: m => console.log(m.status, m.progress ? `(${Math.round(m.progress * 100)}%)` : ''),
+      });
+      
+      const { data: { text } } = await worker.recognize(processedBuffer || imageFile);
       await worker.terminate();
+      
+      if (!text || text.trim().length === 0) {
+        console.log('ℹ️ Tesseract returned no text, continuing...');
+        return '';
+      }
+
       console.log('✅ Tesseract.js OCR successful');
       return text;
     } catch (tesseractError) {
@@ -43,8 +74,9 @@ export async function extractTextFromImage(imageFile: File): Promise<string> {
         tesseract: tesseractError instanceof Error ? tesseractError.message : tesseractError
       });
       
-      // Final fallback - return error message with helpful info
-      throw new Error(`OCR processing failed. Both OCR.space and Tesseract.js are unavailable. Original errors: OCR.space: ${ocrSpaceError instanceof Error ? ocrSpaceError.message : 'Unknown error'}, Tesseract: ${tesseractError instanceof Error ? tesseractError.message : 'Unknown error'}`);
+      // Return empty string instead of throwing to allow the process to continue
+      console.log('⚠️ OCR failed but continuing with available data...');
+      return '';
     }
   }
 }
@@ -96,24 +128,5 @@ export function parseEventData(rawText: string): EventData {
     .filter((_, idx) => idx !== 0 && !usedIndexes.has(idx))
     .join(' ');
   return eventData;
-}
-
-async function createWorker(language: string) {
-  try {
-    const worker = await tesseractCreateWorker({
-      // Configure paths for serverless environment
-      workerPath: 'https://unpkg.com/tesseract.js@5.0.3/dist/worker.min.js',
-      langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-      corePath: 'https://unpkg.com/tesseract.js-core@5.0.0/tesseract-core-simd.wasm.js',
-    });
-    
-    await worker.load();
-    await worker.loadLanguage(language);
-    await worker.initialize(language);
-    return worker;
-  } catch (error) {
-    console.error('❌ Tesseract.js worker creation failed:', error);
-    throw new Error('OCR fallback failed: Unable to initialize Tesseract.js worker');
-  }
 }
 

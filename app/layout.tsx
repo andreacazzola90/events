@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
 import Header from './components/Header';
+import Footer from './components/Footer';
 import Providers from './components/Providers';
 import InstallPrompt from './components/InstallPrompt';
 import PWAHandler from './components/PWAHandler';
@@ -69,6 +70,7 @@ export default function RootLayout({
                 {children}
               </PageTransitionWrapper>
             </main>
+            <Footer />
             <InstallPrompt />
             <Analytics />
           </PageTransitionProvider>

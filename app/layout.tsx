@@ -11,6 +11,7 @@ import { LoadingIndicator } from './components/LoadingIndicator';
 import { PageTransitionWrapper } from './components/PageTransition';
 import { GoogleAnalytics } from './lib/analytics';
 import { GoogleTagManager } from './lib/gtm';
+import { Analytics } from "@vercel/analytics/react";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -69,6 +70,7 @@ export default function RootLayout({
               </PageTransitionWrapper>
             </main>
             <InstallPrompt />
+            <Analytics />
           </PageTransitionProvider>
         </Providers>
       </body>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://events-scanner.vercel.app/sitemap.xml

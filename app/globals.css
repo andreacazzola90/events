@@ -245,6 +245,7 @@ button:active,
 .line-clamp-1 {
   display: -webkit-box;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -252,6 +253,7 @@ button:active,
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -393,16 +395,18 @@ button:active,
   }
 }
 
-@keyframes fade-in {
-  0% {
+@keyframes fade-in-simple {
+  from {
     opacity: 0;
-    transform: translateY(10px);
   }
 
-  100% {
+  to {
     opacity: 1;
-    transform: translateY(0);
   }
+}
+
+.animate-fade-in-simple {
+  animation: fade-in-simple 0.3s ease-out;
 }
 
 @keyframes slide-up {

@@ -315,7 +315,7 @@ export default function CreaEvento() {
             <main className="min-h-screen">
                 {/* Hero Section */}
                 <section className="hero-section">
-                    <div className="max-w-6xl mx-auto px-6 py-16 text-center">
+                    <div className="max-w-6xl mx-auto px-6 py-8 md:py-16 text-center">
                         <div className="animate-fadeInUp">
                             <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
                                 {events.length > 0 ? (
@@ -353,8 +353,29 @@ export default function CreaEvento() {
                         {/* Creation Methods - Only show if no events extracted */}
                         {events.length === 0 && (
                             <div className="grid md:grid-cols-2 gap-8">
-                                {/* Link Input Method */}
-                                <div className="glass-effect p-8 rounded-2xl border border-white/10">
+                                {/* Image Upload Method - First on Mobile */}
+                                <div className="glass-effect p-8 rounded-2xl border border-white/10 order-1 md:order-2">
+                                    <div className="text-center mb-6">
+                                        <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                            <span className="text-2xl">📸</span>
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-white mb-2">Upload Image</h2>
+                                        <p className="text-gray-400">Upload an event poster and AI will scan all the details</p>
+                                    </div>
+
+                                    <ImageUploader
+                                        onProcessed={(data, imgUrl, debug) => handleNewEvents(data, imgUrl, debug)}
+                                        onError={(message: string) => {
+                                            setError(message);
+                                            setEvents([]);
+                                            setImageUrl(null);
+                                            setDebugInfo(null);
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Link Input Method - Second on Mobile */}
+                                <div className="glass-effect p-8 rounded-2xl border border-white/10 order-2 md:order-1">
                                     <div className="text-center mb-6">
                                         <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                             <span className="text-2xl">🔗</span>
@@ -386,27 +407,6 @@ export default function CreaEvento() {
                                             </>
                                         )}
                                     </form>
-                                </div>
-
-                                {/* Image Upload Method */}
-                                <div className="glass-effect p-8 rounded-2xl border border-white/10">
-                                    <div className="text-center mb-6">
-                                        <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <span className="text-2xl">📸</span>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-white mb-2">Upload Image</h2>
-                                        <p className="text-gray-400">Upload an event poster and AI will scan all the details</p>
-                                    </div>
-
-                                    <ImageUploader
-                                        onProcessed={(data, imgUrl, debug) => handleNewEvents(data, imgUrl, debug)}
-                                        onError={(message: string) => {
-                                            setError(message);
-                                            setEvents([]);
-                                            setImageUrl(null);
-                                            setDebugInfo(null);
-                                        }}
-                                    />
                                 </div>
                             </div>
                         )}

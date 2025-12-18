@@ -17,8 +17,8 @@ const EventMap = dynamic(() => import('../components/EventMap'), {
 
 export default function MappaPage() {
     return (
-        <main className="min-h-screen py-8 px-2 bg-light w-full">
-            <div className="container mx-auto px-8">
+        <main className="min-h-screen py-4 md:py-8 px-2 bg-light w-full">
+            <div className="max-w-[1800px] mx-auto px-4 md:px-8">
                 <div className="w-full space-y-8">
                     <div className="w-full text-center space-y-4">
                         <h1 className="text-4xl md:text-5xl font-extrabold text-primary drop-shadow-lg tracking-tight">Mappa Eventi</h1>

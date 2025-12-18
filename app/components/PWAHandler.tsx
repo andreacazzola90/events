@@ -4,8 +4,13 @@ import { useEffect } from 'react';
 
 export default function PWAHandler() {
     useEffect(() => {
-        // Register Service Worker
+        // Register Service Worker (skip in development)
         if ('serviceWorker' in navigator) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[PWA] Skipping Service Worker registration in development');
+                return;
+            }
+
             navigator.serviceWorker
                 .register('/sw.js')
                 .then((registration) => {

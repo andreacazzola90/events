@@ -40,6 +40,12 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache when offline or for specific API calls
 self.addEventListener('fetch', (event) => {
+    // Bypass cache for local development
+    const isLocalhost = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+        return; // Let the browser handle the request normally
+    }
+
     // Skip cross-origin requests
     if (!event.request.url.startsWith(self.location.origin)) {
         return;

@@ -206,6 +206,7 @@ Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
       "organizer": "Organizzatore",
       "category": "Categoria specifica",
       "price": "Prezzo",
+      "sourceUrl": "URL trovato nel testo (se presente)",
       "rawText": ""
     },
     {
@@ -217,6 +218,7 @@ Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
       "organizer": "Organizzatore",
       "category": "Categoria specifica",
       "price": "Prezzo",
+      "sourceUrl": "URL trovato nel testo (se presente)",
       "rawText": ""
     }
   ]
@@ -271,6 +273,7 @@ Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
   "organizer": "",
   "category": "",
   "price": "",
+  "sourceUrl": "",
   "rawText": "${rawText.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
 }
 
@@ -410,6 +413,7 @@ REGOLE:
               3. Se i risultati CONTRADDICONO i dati (es. data sbagliata, luogo diverso), CORREGGI i dati usando la fonte più affidabile (es. ticketone, sito ufficiale, facebook page).
               4. Se i risultati non c'entrano nulla, MANTIENI i dati originali.
               5. La CATEGORIA deve rimanere una di: music, nightlife, culture, food, sport, family, theater, party, walk, other.
+              6. Estrai il link più pertinente all'evento (es. pagina ufficiale, TicketOne, evento Facebook) dai risultati di ricerca e inseriscilo nel campo "sourceUrl".
               
               Rispondi SOLO con il JSON corretto dell'evento (senza markdown).
               `;

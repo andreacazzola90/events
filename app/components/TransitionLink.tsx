@@ -11,6 +11,7 @@ interface TransitionLinkProps {
     className?: string;
     onClick?: () => void;
     replace?: boolean;
+    style?: React.CSSProperties;
 }
 
 export function TransitionLink({
@@ -18,7 +19,8 @@ export function TransitionLink({
     children,
     className = '',
     onClick,
-    replace = false
+    replace = false,
+    style
 }: TransitionLinkProps) {
     const router = useRouter();
     const { startTransition, endTransition } = usePageTransition();
@@ -54,6 +56,7 @@ export function TransitionLink({
             href={href}
             className={className}
             onClick={handleClick}
+            style={style}
         >
             {children}
         </Link>

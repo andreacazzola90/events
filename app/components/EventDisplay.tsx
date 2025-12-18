@@ -104,6 +104,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
             price: (form.elements.namedItem('price') as HTMLInputElement)?.value || '',
             description: (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '',
             imageUrl: imageUrl,
+            sourceUrl: (form.elements.namedItem('sourceUrl') as HTMLInputElement)?.value || eventData.sourceUrl,
             rawText: eventData.rawText
         };
 
@@ -136,6 +137,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                     price: (form.elements.namedItem('price') as HTMLInputElement)?.value || eventData.price,
                     description: (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || eventData.description,
                     imageUrl: imageUrl,
+                    sourceUrl: (form.elements.namedItem('sourceUrl') as HTMLInputElement)?.value || eventData.sourceUrl,
                     rawText: eventData.rawText
                 };
             } else {
@@ -219,8 +221,8 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
     return (
         <div className="event-display-container space-y-6">
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }} className="event-form">
-                <div className="event-main-layout flex flex-row gap-8">
-                    <div className="event-image-section rounded-lg overflow-hidden shadow-lg min-w-[220px] max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
+                <div className="event-main-layout flex flex-col md:flex-row gap-8">
+                    <div className="event-image-section rounded-lg overflow-hidden shadow-lg w-full md:min-w-[220px] md:max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
@@ -231,21 +233,23 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                             <div className="event-image-placeholder w-full h-[220px] flex items-center justify-center text-gray-400">Nessuna immagine</div>
                         )}
                         {isEditing && (
-                            <input
-                                type="file"
-                                accept="image/*"
-                                className="event-image-upload mt-2 text-sm"
-                                onChange={e => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                        const url = URL.createObjectURL(file);
-                                        setImageUrl(url);
-                                    }
-                                }}
-                            />
+                            <div className="p-4 w-full">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="event-image-upload text-sm w-full"
+                                    onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            const url = URL.createObjectURL(file);
+                                            setImageUrl(url);
+                                        }
+                                    }}
+                                />
+                            </div>
                         )}
                     </div>
-                    <div className="event-details-section text-black flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-6">
+                    <div className="event-details-section text-black flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-4 md:p-6">
                         {/* Bottoni sopra il titolo */}
                         <div className="event-actions flex gap-2 mb-4 justify-end">
                             {!isEditing && (
@@ -341,9 +345,17 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                     <span className="event-description-text flex-1 py-2">{eventData.description}</span>
                                 )}
                             </div>
-                            {eventData.sourceUrl && (
-                                <div className="event-field-source flex items-start space-x-4">
-                                    <span className="source-label text-gray-600 w-24 mt-2">Link:</span>
+                            <div className="event-field-source flex items-start space-x-4">
+                                <span className="source-label text-gray-600 w-24 mt-2">Link:</span>
+                                {isEditing ? (
+                                    <input
+                                        type="text"
+                                        name="sourceUrl"
+                                        defaultValue={eventData.sourceUrl || ''}
+                                        placeholder="https://..."
+                                        className="event-source-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                ) : eventData.sourceUrl ? (
                                     <a
                                         href={eventData.sourceUrl}
                                         target="_blank"
@@ -352,8 +364,10 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                     >
                                         {eventData.sourceUrl}
                                     </a>
-                                </div>
-                            )}
+                                ) : (
+                                    <span className="text-gray-400 py-2 italic">Nessun link trovato</span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

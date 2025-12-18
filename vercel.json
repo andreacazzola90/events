@@ -8,8 +8,17 @@
     },
     "app/api/process-image/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/scrape-visitschio/route.ts": {
+      "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/scrape-visitschio",
+      "schedule": "0 4 * * *"
+    }
+  ],
   "build": {
     "env": {
       "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",

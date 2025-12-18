@@ -674,16 +674,8 @@ export async function POST(request: NextRequest) {
                          lowerText.includes('stagione') || lowerText.includes('incontri');
         
         // Determina se ci sono eventi multipli
-        const isVisitSchio = url.includes('visitschio.it');
-        const hasMultipleEvents = !isVisitSchio && ((dateMatches.length > 1 && timeMatches.length > 1) || 
-                                  textLines.length > 30 ||
-                                  hasLineup || 
-                                  hasProgramma ||
-                                  hasMultipleDays ||
-                                  (hasVsOrWith && (dateMatches.length > 1 || timeMatches.length > 2)) ||
-                                  hasCyclePattern ||
-                                  (hasCiclo && uniqueDates.length >= 2) ||
-                                  hasMultipleTitles);
+        // FORZATO A FALSE: Gli eventi da link sono sempre considerati singoli come richiesto dall'utente
+        const hasMultipleEvents = false;
         
         console.log('🔍 Analisi eventi multipli:', {
             dateMatches: dateMatches.length,
@@ -699,7 +691,7 @@ export async function POST(request: NextRequest) {
             hasCiclo,
             hasMultipleTitles,
             conclusion: hasMultipleEvents ? 'EVENTI MULTIPLI' : 'EVENTO SINGOLO',
-            forcedSingle: isVisitSchio ? 'YES (VisitSchio)' : 'NO'
+            forcedSingle: url.includes('visitschio.it') ? 'YES (VisitSchio)' : 'YES (Forced)'
         });
 
         const currentDate = new Date().toISOString().split('T')[0];

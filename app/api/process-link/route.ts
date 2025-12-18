@@ -4,6 +4,7 @@ import { getBrowser, closeBrowser } from '../../../lib/browser-vercel';
 import { EventData } from '../../types/event';
 import { extractTextFromImageSimple } from '../../lib/ocr-simple';
 import { extractTextFromImage } from '../../lib/ocr';
+import { compressImage } from '../../lib/image-utils';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -298,8 +299,8 @@ export async function POST(request: NextRequest) {
                     
                     const mainContent = getMainContent();
                     
-                    // ESTRAZIONE SPECIFICA PER VISITSCHIO: Data Inizio/Fine e Luogo
-                    let visitSchioDateTime = '';
+                    // ESTRAZIONE SPECIFICA PER VISITSCHIO: Data Inizio/Fine, Luogo e Prezzo
+                    let visitSchioInfo = '';
                     const isVisitSchio = window.location.hostname.includes('visitschio.it');
                     if (isVisitSchio) {
                         // Cerca il blocco con "Data Inizio" e "Fine"
@@ -307,33 +308,102 @@ export async function POST(request: NextRequest) {
                         const dataInizioMatch = bodyText.match(/Data Inizio:\s*(\d{1,2}\s+\w+\s+\d{2}:\d{2})/i);
                         const dataFineMatch = bodyText.match(/Fine:\s*(\d{1,2}\s+\w+\s+\d{2}:\d{2})/i);
                         
-                        // Cerca il luogo - pattern per "Teatro X via Y, Schio"
-                        const luogoMatch = bodyText.match(/(Teatro\s+[^\n,]+)\s+via\s+([^,\n]+),\s*Schio/i);
+                        // 1. LUOGO: Cerca il luogo usando il selettore specifico .icon-indirizzo
+                        const iconsIndirizzo = document.querySelectorAll('i.icon-indirizzo');
+                        let luogoText = '';
                         
-                        if (dataInizioMatch || luogoMatch) {
-                            visitSchioDateTime = `\n\n[VISITCHIO EVENT INFO]\n`;
+                        if (iconsIndirizzo.length > 0) {
+                            // Cerca tra tutte le icone quella che sembra contenere l'indirizzo dell'evento
+                            // Spesso l'indirizzo corretto è quello che NON è "Via Pietro Maraschin 19" (che sembra un default)
+                            // o quello che contiene più testo (nome locale + via)
+                            let bestLuogo = '';
+                            iconsIndirizzo.forEach(icon => {
+                                const parent = icon.parentElement;
+                                if (parent) {
+                                    const clone = parent.cloneNode(true) as HTMLElement;
+                                    const iconInClone = clone.querySelector('i.icon-indirizzo');
+                                    if (iconInClone) iconInClone.remove();
+                                    
+                                    let text = clone.innerText || clone.textContent || '';
+                                    text = text.replace(/\s+/g, ' ').replace(/INDICAZIONI STRADALI/i, '').trim();
+                                    
+                                    // Se troviamo un testo che contiene "Schio" e una "Via", è un buon candidato
+                                    if (text.toLowerCase().includes('schio') && (text.toLowerCase().includes('via') || text.toLowerCase().includes('piazza') || text.toLowerCase().includes('viale'))) {
+                                        // Preferiamo quello più lungo (che probabilmente ha il nome del locale)
+                                        if (text.length > bestLuogo.length) {
+                                            bestLuogo = text;
+                                        }
+                                    }
+                                }
+                            });
+                            luogoText = bestLuogo;
+                        }
+
+                        // Fallback 1: Cerca nel testo della pagina per pattern comuni di visitSchio
+                        if (!luogoText) {
+                            const bodyText = document.body.innerText || '';
+                            // Pattern: "Nome Locale - Via ..., Schio"
+                            const fullLocationMatch = bodyText.match(/([^\n\-]+)\s*-\s*(Via\s+[^\n,]+,\s*Schio)/i);
+                            if (fullLocationMatch) {
+                                luogoText = `${fullLocationMatch[1].trim()} - ${fullLocationMatch[2].trim()}`;
+                            }
+                        }
+
+                        // Fallback 2: Regex specifica per Teatro/Cineforum
+                        if (!luogoText) {
+                            const bodyText = document.body.innerText || '';
+                            const luogoMatch = bodyText.match(/((?:Teatro|Cineforum|Palazzo|Auditorium)\s+[^\n,]+)\s+via\s+([^,\n]+),\s*Schio/i);
+                            if (luogoMatch) {
+                                const nomeLocale = luogoMatch[1].trim();
+                                const via = luogoMatch[2].trim();
+                                luogoText = `${nomeLocale}, via ${via}, Schio`;
+                            }
+                        }
+
+                        // 2. PREZZO: Cerca il blocco .info_box-container o testo "Biglietti"
+                        let prezzoText = '';
+                        const infoBox = document.querySelector('.info_box-container');
+                        if (infoBox) {
+                            prezzoText = (infoBox as HTMLElement).innerText || infoBox.textContent || '';
+                            prezzoText = prezzoText.replace(/\s+/g, ' ').trim();
+                        }
+                        
+                        // Fallback: Cerca testo "Biglietti" nel corpo se non trovato o se troppo generico
+                        if (!prezzoText || (prezzoText.toLowerCase().includes('biglietti') && prezzoText.length < 20)) {
+                            const bodyText = document.body.innerText || '';
+                            // Cerca "Biglietti" seguito da prezzi o dettagli
+                            const bigliettiMatch = bodyText.match(/Biglietti\s*[\n:]*\s*([^\n]+(?:\n[^\n]+)?)/i);
+                            if (bigliettiMatch) {
+                                prezzoText = bigliettiMatch[0].trim();
+                            }
+                        }
+                        
+                        if (dataInizioMatch || luogoText || prezzoText) {
+                            visitSchioInfo = `\n\n[VISITCHIO EVENT INFO]\n`;
                             
                             if (dataInizioMatch) {
-                                visitSchioDateTime += `Data Inizio: ${dataInizioMatch[1]}`;
+                                visitSchioInfo += `Data Inizio: ${dataInizioMatch[1]}`;
                                 if (dataFineMatch) {
-                                    visitSchioDateTime += `\nFine: ${dataFineMatch[1]}`;
+                                    visitSchioInfo += `\nFine: ${dataFineMatch[1]}`;
                                 }
-                                visitSchioDateTime += '\n';
+                                visitSchioInfo += '\n';
                             }
                             
-                            if (luogoMatch) {
-                                const nomeTeatro = luogoMatch[1].trim();
-                                const via = luogoMatch[2].trim();
-                                visitSchioDateTime += `Luogo: ${nomeTeatro}, via ${via}, Schio\n`;
+                            if (luogoText) {
+                                visitSchioInfo += `Luogo: ${luogoText}\n`;
+                            }
+
+                            if (prezzoText) {
+                                visitSchioInfo += `Prezzo Info: ${prezzoText}\n`;
                             }
                             
-                            visitSchioDateTime += `[END VISITCHIO INFO]\n\n`;
-                            console.log('[visitSchio] Extracted event info:', visitSchioDateTime);
+                            visitSchioInfo += `[END VISITCHIO INFO]\n\n`;
+                            console.log('[visitSchio] Extracted event info:', visitSchioInfo);
                         }
                     }
                     
                     const mainText = (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
-                    return visitSchioDateTime + mainText;
+                    return visitSchioInfo + mainText;
                 });
                 
                 console.log(`📄 Extracted ${pageText.length} characters from main content`);
@@ -523,7 +593,10 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Converti Blob in File per l'OCR
-                const imageFile = new File([imageBlob], 'event-image.jpg', { type: imageBlob.type });
+                const rawImageFile = new File([imageBlob], 'event-image.jpg', { type: imageBlob.type });
+                
+                // Compress image if needed before OCR (max 1024KB)
+                const imageFile = await compressImage(rawImageFile, 1024 * 1024);
 
                 // Prova OCR semplificato
                 try {
@@ -601,7 +674,8 @@ export async function POST(request: NextRequest) {
                          lowerText.includes('stagione') || lowerText.includes('incontri');
         
         // Determina se ci sono eventi multipli
-        const hasMultipleEvents = (dateMatches.length > 1 && timeMatches.length > 1) || 
+        const isVisitSchio = url.includes('visitschio.it');
+        const hasMultipleEvents = !isVisitSchio && ((dateMatches.length > 1 && timeMatches.length > 1) || 
                                   textLines.length > 30 ||
                                   hasLineup || 
                                   hasProgramma ||
@@ -609,7 +683,7 @@ export async function POST(request: NextRequest) {
                                   (hasVsOrWith && (dateMatches.length > 1 || timeMatches.length > 2)) ||
                                   hasCyclePattern ||
                                   (hasCiclo && uniqueDates.length >= 2) ||
-                                  hasMultipleTitles;
+                                  hasMultipleTitles);
         
         console.log('🔍 Analisi eventi multipli:', {
             dateMatches: dateMatches.length,
@@ -624,7 +698,8 @@ export async function POST(request: NextRequest) {
             hasCyclePattern,
             hasCiclo,
             hasMultipleTitles,
-            conclusion: hasMultipleEvents ? 'EVENTI MULTIPLI' : 'EVENTO SINGOLO'
+            conclusion: hasMultipleEvents ? 'EVENTI MULTIPLI' : 'EVENTO SINGOLO',
+            forcedSingle: isVisitSchio ? 'YES (VisitSchio)' : 'NO'
         });
 
         const currentDate = new Date().toISOString().split('T')[0];
@@ -648,6 +723,10 @@ IMPORTANTE: IGNORA completamente:
 - Sidebar con lista di eventi
 - Eventi in date future non correlati
 - Banner pubblicitari di altri eventi
+- Testo tecnico o ID come "#event_description" (il contenuto dentro è la DESCRIZIONE dell'evento corrente, NON un nuovo evento)
+
+ATTENZIONE A #event_description:
+Se vedi testo che sembra provenire da un blocco "#event_description", consideralo TUTTO come parte della descrizione dell'evento principale. NON creare un nuovo evento basandoti su questo.
 
 ATTENZIONE CICLI E RASSEGNE:
 Se vedi parole come "ciclo", "rassegna", "stagione", "incontri", "appuntamenti":
@@ -669,10 +748,11 @@ REGOLE PER OGNI EVENTO:
 - TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
   * Esempi CORRETTI: "Marco Carola DJ Set", "Teatro: Amleto", "Rock Night con The Beatles"
   * Esempi SBAGLIATI: "Evento 1", "Concerto", "Spettacolo"
-- DESCRIZIONE: Crea una descrizione DETTAGLIATA e UNICA
-  * Includi: artisti/ospiti, genere musicale/tipo, dettagli specifici, ospiti speciali
+- DESCRIZIONE: Crea una descrizione DETTAGLIATA e UNICA (MINIMO 100 CARATTERI)
+  * Includi: artisti/ospiti, genere musicale/tipo, dettagli specifici, ospiti speciali, contesto
+  * Se il testo originale è breve, elabora il contesto o aggiungi dettagli generici pertinenti al tipo di evento
   * NON copiare l'intero testo grezzo
-  * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground."
+  * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground. Una serata imperdibile per gli amanti del genere..."
 - DATA e ORARIO: SPECIFICI per ogni evento
   * ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
   * Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
@@ -686,10 +766,13 @@ REGOLE PER OGNI EVENTO:
     - Esempio senza anno: oggi è 16 dic 2025, "23 gen" → 2026 (gennaio è passato nel 2025)
     - Esempio senza anno: oggi è 16 dic 2025, "20 dic" → 2025 (20 dicembre è ancora futuro)
   * CONVERTI sempre in YYYY-MM-DD e HH:MM
-- LOCATION: Indirizzo completo (se uguale per tutti, ripetilo)
-- PREZZO: Specifico per evento (se unico per tutti, applicalo a tutti)
+- LOCATION: Indirizzo completo. 
+  * IMPORTANTE: Includi SEMPRE il nome del locale/struttura se presente (es: "Cineforum Altovicentino - Via Pietro Maraschin 81, Schio"). NON abbreviare o rimuovere il nome del locale.
+  * Se uguale per tutti, ripetilo.
+- PREZZO: Estrai il prezzo esatto. Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa "Gratuito". Se è a offerta, usa "Offerta Libera". Se vedi prezzi numerici (es: "€5", "10€", "Ridotto 5€"), usa QUELLI. NON usare "Offerta Libera" se trovi dei prezzi numerici. Se non trovi NESSUNA informazione, lascia vuoto ("").
+- VISIT SCHIO: Se vedi [VISITCHIO EVENT INFO] con "Prezzo Info:", usa QUELLA informazione come priorità assoluta per determinare il prezzo.
 - ORGANIZER: Se presente e condiviso, ripetilo
-- CATEGORY: Dedotta dal tipo (musica/rock, musica/techno, teatro/commedia, sport/calcio, ecc.)
+- CATEGORY: Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro. Altrimenti usa una categoria specifica (es. "conferenza", "workshop").
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
@@ -717,7 +800,7 @@ Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
       "description": "Descrizione dettagliata e unica per evento 1 con info specifiche",
       "date": "YYYY-MM-DD",
       "time": "HH:MM",
-      "location": "Luogo completo",
+      "location": "Luogo completo (Includi SEMPRE nome locale + indirizzo, es: 'Cineforum Altovicentino - Via Pietro Maraschin 81, Schio')",
       "organizer": "Organizzatore",
       "category": "Categoria specifica",
       "price": "Prezzo"
@@ -727,7 +810,7 @@ Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
       "description": "Descrizione dettagliata e unica per evento 2 con info specifiche",
       "date": "YYYY-MM-DD",
       "time": "HH:MM",
-      "location": "Luogo completo",
+      "location": "Luogo completo (Includi SEMPRE nome locale + indirizzo, es: 'Cineforum Altovicentino - Via Pietro Maraschin 81, Schio')",
       "organizer": "Organizzatore",
       "category": "Categoria specifica",
       "price": "Prezzo"
@@ -746,14 +829,27 @@ IMPORTANTE:
 Rispondi SOLO con un oggetto JSON valido nel seguente formato:
 {
   "title": "Titolo evento",
-  "description": "Descrizione dettagliata",
+  "description": "Descrizione dettagliata (MINIMO 100 CARATTERI - se breve, elabora il contesto)",
   "date": "YYYY-MM-DD",
   "time": "HH:MM",
-  "location": "Luogo completo",
+  "location": "Luogo completo (Includi SEMPRE nome locale + indirizzo, es: 'Cineforum Altovicentino - Via Pietro Maraschin 81, Schio')",
   "organizer": "Organizzatore",
   "category": "Categoria",
-  "price": "Prezzo (es: Gratis, 10€, etc.)"
+  "price": "Prezzo (es: Gratuito, 10€, Offerta Libera, etc.)"
 }
+
+GESTIONE PREZZO:
+- Estrai il prezzo esatto dal testo.
+- Se vedi prezzi numerici (es: "€5", "10€", "Ridotto 5€"), usa QUELLI.
+- Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa "Gratuito".
+- Se è esplicitamente indicato come offerta, usa "Offerta Libera".
+- IMPORTANTE: NON usare "Offerta Libera" se trovi dei prezzi numerici o se non sei sicuro.
+- Se non trovi NESSUNA informazione sul prezzo, lascia il campo VUOTO ("").
+- PRIORITÀ: Se vedi [VISITCHIO EVENT INFO] con "Prezzo Info:", usa QUELLA informazione come priorità assoluta.
+
+GESTIONE CATEGORIA:
+- Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro.
+- Altrimenti usa una categoria specifica (es. "conferenza", "workshop").
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
@@ -807,6 +903,7 @@ REGOLE:
                 },
             ],
             model: 'llama-3.1-8b-instant',
+            response_format: { type: 'json_object' },
             temperature: 0.1,
             max_tokens: 5000,
         });
@@ -817,9 +914,7 @@ REGOLE:
         const responseText = completion.choices[0]?.message?.content || '';
         console.log('=== GROQ RESPONSE ===');
         console.log('Response length:', responseText.length);
-        console.log('Response preview:', responseText.slice(0, 300));
-        console.log('Full response:', responseText);
-
+        
         // Parse JSON from response - cerca sia oggetto che array JSON
         let eventData = null;
         let first = responseText.indexOf('{');
@@ -833,6 +928,7 @@ REGOLE:
         
         if (first === -1 || last === -1 || last <= first) {
             console.error('❌ No valid JSON found in response');
+            console.log('Raw response:', responseText);
             throw new Error('Groq AI non ha restituito un JSON valido. Riprova.');
         }
         
@@ -875,9 +971,7 @@ REGOLE:
         } catch (err) {
             console.error('❌ ERRORE CRITICO nel parsing JSON!');
             console.error('❌ Errore:', err);
-            console.error('❌ Tipo errore:', err instanceof Error ? err.message : 'Unknown');
             console.error('❌ JSON string completo:', jsonStr);
-            
             throw new Error('Impossibile interpretare i dati dell\'evento. Riprova.');
         }
 
@@ -910,7 +1004,7 @@ Restituisci SOLO un oggetto JSON con i campi mancanti nel formato:
   "date": "YYYY-MM-DD" (se mancante),
   "time": "HH:MM" (se mancante),
   "location": "indirizzo completo" (se mancante),
-  "price": "prezzo" (se mancante),
+  "price": "prezzo (es: Gratuito, 10€, Offerta Libera - NON usare Offerta Libera se trovi prezzi numerici)" (se mancante),
   "organizer": "nome organizzatore" (se mancante)
 }
 
@@ -939,6 +1033,7 @@ IMPORTANTE:
                         }
                     ],
                     model: 'llama-3.1-8b-instant',
+                    response_format: { type: 'json_object' },
                     temperature: 0.1,
                     max_tokens: 500
                 });
@@ -951,16 +1046,21 @@ IMPORTANTE:
                 
                 if (enrichFirst !== -1 && enrichLast !== -1 && enrichLast > enrichFirst) {
                     const enrichJsonStr = enrichmentResponse.slice(enrichFirst, enrichLast + 1);
-                    const enrichedData = JSON.parse(enrichJsonStr);
-                    
-                    // Aggiorna solo i campi trovati
-                    if (enrichedData.date) event.date = enrichedData.date;
-                    if (enrichedData.time) event.time = enrichedData.time;
-                    if (enrichedData.location) event.location = enrichedData.location;
-                    if (enrichedData.price) event.price = enrichedData.price;
-                    if (enrichedData.organizer) event.organizer = enrichedData.organizer;
-                    
-                    console.log('✅ Campi arricchiti:', Object.keys(enrichedData).join(', '));
+                    try {
+                        const enrichedData = JSON.parse(enrichJsonStr);
+                        
+                        // Aggiorna solo i campi trovati
+                        if (enrichedData.date) event.date = enrichedData.date;
+                        if (enrichedData.time) event.time = enrichedData.time;
+                        if (enrichedData.location) event.location = enrichedData.location;
+                        if (enrichedData.price) event.price = enrichedData.price;
+                        if (enrichedData.organizer) event.organizer = enrichedData.organizer;
+                        
+                        console.log('✅ Campi arricchiti:', Object.keys(enrichedData).join(', '));
+                    } catch (pError) {
+                        console.warn('⚠️ Failed to parse enrichment JSON:', pError);
+                        console.log('Raw enrichment response:', enrichmentResponse);
+                    }
                 }
             } catch (enrichError) {
                 console.warn('⚠️ Impossibile arricchire i dati mancanti:', enrichError);
@@ -998,20 +1098,13 @@ REGOLA ANNO per le date:
 - Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12
 
 Analizza attentamente e restituisci un oggetto JSON con:
-1. I campi che sono CORRETTI (mantieni il valore)
-2. I campi che sono ERRATI (fornisci il valore corretto)
+1. I campi che sono CORRETTI (mantieni il valore ESATTO, specialmente per il PREZZO se già presente)
+2. I campi che sono ERRATI (fornisci il valore corretto basandoti sul testo originale)
 3. Usa "" (stringa vuota) se un campo non è presente nel testo
 
-Formato JSON:
-{
-  "date": "YYYY-MM-DD o valore corretto",
-  "time": "HH:MM o valore corretto",
-  "location": "luogo corretto",
-  "price": "prezzo corretto",
-  "organizer": "organizzatore corretto",
-  "category": "categoria corretta",
-  "corrections": ["lista di campi corretti, es: data, orario"]
-}
+IMPORTANTE PER IL PREZZO:
+- Se il prezzo estratto è già un valore numerico (es: "€5", "10€"), NON cambiarlo in "Offerta Libera" a meno che non sia esplicitamente scritto così nel testo.
+- Rispetta i valori numerici trovati.
 
 IMPORTANTE: Restituisci SOLO JSON valido, senza markdown o spiegazioni.`;
 
@@ -1028,6 +1121,7 @@ IMPORTANTE: Restituisci SOLO JSON valido, senza markdown o spiegazioni.`;
                         }
                     ],
                     model: 'llama-3.1-8b-instant',
+                    response_format: { type: 'json_object' },
                     temperature: 0.05,  // Temperatura più bassa per maggiore precisione
                     max_tokens: 800
                 });
@@ -1040,10 +1134,11 @@ IMPORTANTE: Restituisci SOLO JSON valido, senza markdown o spiegazioni.`;
                 
                 if (valFirst !== -1 && valLast !== -1 && valLast > valFirst) {
                     const valJsonStr = validationResponse.slice(valFirst, valLast + 1);
-                    const validatedData = JSON.parse(valJsonStr);
-                    
-                    // Applica le correzioni solo se ci sono cambiamenti significativi
-                    const corrections: string[] = validatedData.corrections || [];
+                    try {
+                        const validatedData = JSON.parse(valJsonStr);
+                        
+                        // Applica le correzioni solo se ci sono cambiamenti significativi
+                        const corrections: string[] = validatedData.corrections || [];
                     
                     if (validatedData.date && validatedData.date !== event.date) {
                         event.date = validatedData.date;
@@ -1075,14 +1170,18 @@ IMPORTANTE: Restituisci SOLO JSON valido, senza markdown o spiegazioni.`;
                     } else {
                         console.log('✅ Tutti i dati confermati corretti');
                     }
+                } catch (pError) {
+                    console.warn('⚠️ Failed to parse validation JSON:', pError);
+                    console.log('Raw validation response:', validationResponse);
                 }
-            } catch (validationError) {
-                console.warn('⚠️ Impossibile validare i dati:', validationError);
-                // Non è fatale, continua con i dati esistenti
             }
+        } catch (validationError) {
+            console.warn('⚠️ Impossibile validare i dati:', validationError);
+            // Non è fatale, continua con i dati esistenti
+        }
             
-            return event;
-        };
+        return event;
+    };
 
         // Controlla se ci sono campi critici mancanti (solo data e location sono critici)
         const hasCriticalMissing = (event: EventData) => {
@@ -1127,8 +1226,6 @@ IMPORTANTE: Restituisci SOLO JSON valido, senza markdown o spiegazioni.`;
             } else {
                 console.log(`✅ Evento singolo ha tutti i campi critici, skip validazione`);
             }
-            console.log(`🔍 Validazione evento singolo...`);
-            eventData = await validateEventData(eventData);
         }
 
         // 3. Restituisci i dati dell'evento

@@ -10,6 +10,7 @@ import { EventData } from '../types/event';
 import EventDisplay from '../components/EventDisplay';
 import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
+import DebugInfoDisplay from '../components/DebugInfoDisplay';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -55,6 +56,7 @@ export default function CreaEvento() {
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [debugInfo, setDebugInfo] = useState<any>(null);
 
     useEffect(() => {
         return () => {
@@ -65,7 +67,7 @@ export default function CreaEvento() {
         };
     }, [imageUrl]);
 
-    const handleNewEvents = (newEventsOrSingle: EventData | EventData[], newImageUrl: string) => {
+    const handleNewEvents = (newEventsOrSingle: EventData | EventData[], newImageUrl: string, debug?: any) => {
         // Cleanup previous image URL if it exists
         if (imageUrl) {
             URL.revokeObjectURL(imageUrl);
@@ -97,6 +99,7 @@ export default function CreaEvento() {
         console.log(`[handleNewEvents] Processati ${eventsWithImage.length} eventi`);
         setEvents(eventsWithImage);
         setImageUrl(newImageUrl);
+        setDebugInfo(debug);
         setError(null);
     };
 
@@ -144,9 +147,18 @@ export default function CreaEvento() {
                 }
             }
             console.log(`Successfully saved ${eventsToSave.length} events`);
+
+            // Clear service worker cache
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                console.log('[Crea] Sending CLEAR_CACHE message to service worker');
+                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
             // Reset state after successful save
             setEvents([]);
             setImageUrl(null);
+            setDebugInfo(null);
             // Redirect to homepage to see saved events
             router.push('/');
         } catch (error) {
@@ -269,6 +281,7 @@ export default function CreaEvento() {
                 const normalized = data.events.map((ev: EventData) => normalizeEventFields(ev));
                 setEvents(normalized);
                 setImageUrl(data.imageUrl || null);
+                setDebugInfo(null); // Link extraction doesn't support debug info yet
                 setLinkUrl('');
             } else {
                 setError('Nessun evento trovato dal link');
@@ -323,6 +336,7 @@ export default function CreaEvento() {
                                     onClick={() => {
                                         setEvents([]);
                                         setImageUrl(null);
+                                        setDebugInfo(null);
                                         setError(null);
                                     }}
                                     className="inline-flex items-center gap-2 bg-white/10 text-white px-6 py-3 rounded-lg font-semibold border border-white/20 transition-all duration-300 hover:bg-white/20 hover:scale-105"
@@ -385,11 +399,12 @@ export default function CreaEvento() {
                                     </div>
 
                                     <ImageUploader
-                                        onProcessed={(data, imgUrl) => handleNewEvents(data, imgUrl)}
+                                        onProcessed={(data, imgUrl, debug) => handleNewEvents(data, imgUrl, debug)}
                                         onError={(message: string) => {
                                             setError(message);
                                             setEvents([]);
                                             setImageUrl(null);
+                                            setDebugInfo(null);
                                         }}
                                     />
                                 </div>
@@ -406,6 +421,13 @@ export default function CreaEvento() {
                                         <p className="text-red-200 leading-relaxed">{error}</p>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Debug Info Display */}
+                        {events.length > 0 && debugInfo && (
+                            <div className="animate-fadeInUp">
+                                <DebugInfoDisplay debugInfo={debugInfo} />
                             </div>
                         )}
 

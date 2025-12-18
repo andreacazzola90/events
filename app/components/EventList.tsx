@@ -7,6 +7,7 @@ import { generateUniqueSlug } from '../../lib/slug-utils';
 import { TransitionLink } from './TransitionLink';
 import { trackSearch, trackGTMEvent } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
+import { STANDARD_CATEGORIES } from '../../lib/constants';
 
 // Funzione per pulire il testo da caratteri strani
 function cleanText(text: string): string {
@@ -114,17 +115,8 @@ export default function EventList() {
             if (dateFrom) params.append('dateFrom', dateFrom);
             if (dateTo) params.append('dateTo', dateTo);
 
-            // Add cache-busting timestamp
-            params.append('_t', Date.now().toString());
-
             console.log('[EventList] Fetching events from API...');
-            const response = await fetch(`/api/events?${params.toString()}`, {
-                cache: 'no-store',
-                headers: {
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                },
-            });
+            const response = await fetch(`/api/events?${params.toString()}`);
             if (response.ok) {
                 const data = await response.json();
                 console.log('[EventList] Fetched events:', data.length, 'First event:', data[0]?.title, data[0]?.id);
@@ -196,13 +188,18 @@ export default function EventList() {
                             onChange={(e) => setSearch(e.target.value)}
                             className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                         />
-                        <input
-                            type="text"
-                            placeholder="Category"
+                        <select
                             value={category}
                             onChange={(e) => setCategory(e.target.value)}
-                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                        />
+                            className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all appearance-none"
+                        >
+                            <option value="" className="bg-gray-900 text-white">Tutte le Categorie</option>
+                            {STANDARD_CATEGORIES.map(cat => (
+                                <option key={cat} value={cat} className="bg-gray-900 text-white">
+                                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                                </option>
+                            ))}
+                        </select>
                         <input
                             type="date"
                             value={dateFrom}
@@ -311,15 +308,15 @@ export default function EventList() {
                                     </div>
 
                                     {event.location && (
-                                        <div className="flex items-center gap-2 text-gray-300 line-clamp-1">
-                                            <span className="w-4">📍</span>
+                                        <div className="flex items-center gap-2 text-gray-300">
+                                            <span className="w-4 shrink-0">📍</span>
                                             <span className="truncate">{event.location}</span>
                                         </div>
                                     )}
 
                                     {event.organizer && (
-                                        <div className="flex items-center gap-2 text-gray-300 line-clamp-1">
-                                            <span className="w-4">👤</span>
+                                        <div className="flex items-center gap-2 text-gray-300">
+                                            <span className="w-4 shrink-0">👤</span>
                                             <span className="truncate">{event.organizer}</span>
                                         </div>
                                     )}

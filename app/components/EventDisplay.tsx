@@ -30,6 +30,9 @@ import { CalendarIcon, ClockIcon, MapPinIcon } from './EventIcons';
 const CategoryIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01" /></svg>;
 const UserIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-7 8-7s8 3 8 7" /></svg>;
 const PriceIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 8v8m0 0a4 4 0 1 1 0-8 4 4 0 1 1 0 8zm0 0h4m-4 0H8" /></svg>;
+import { STANDARD_CATEGORIES } from '../../lib/constants';
+import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
+import { generateUniqueSlug } from '../../lib/slug-utils';
 import { useState, useEffect, useRef } from 'react';
 import SaveAnimation from './SaveAnimation';
 
@@ -64,12 +67,22 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                 {icon && <span className="field-icon-wrapper mt-2">{icon}</span>}
                 {!icon && <span className="field-label text-gray-600 w-24 mt-2">{label}:</span>}
                 {isEditing ? (
-                    <input
-                        type="text"
-                        name={field}
-                        defaultValue={eventData[field] as string || ''}
-                        className={`field-input field-${field}-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
-                    />
+                    <>
+                        <input
+                            type="text"
+                            name={field}
+                            list={field === 'category' ? "category-suggestions" : undefined}
+                            defaultValue={eventData[field] as string || ''}
+                            className={`field-input field-${field}-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
+                        />
+                        {field === 'category' && (
+                            <datalist id="category-suggestions">
+                                {STANDARD_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat} />
+                                ))}
+                            </datalist>
+                        )}
+                    </>
                 ) : (
                     <span className={`field-display field-${field}-display flex-1 py-2`}>{eventData[field] || ''}</span>
                 )}
@@ -133,13 +146,17 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                 };
             }
 
+            // Normalizza i dati prima del salvataggio
+            eventToSave.category = normalizeCategory(eventToSave.category);
+            eventToSave.price = normalizePrice(eventToSave.price);
+
             console.log('[EventDisplay] Saving event:', eventToSave);
 
             let savedEvent;
 
             // Salva l'evento sul database
-            if (imageUrl && imageUrl.startsWith('blob:')) {
-                const response = await fetch(imageUrl);
+            if (eventToSave.imageUrl && eventToSave.imageUrl.startsWith('blob:')) {
+                const response = await fetch(eventToSave.imageUrl);
                 const blob = await response.blob();
                 const formData = new FormData();
                 formData.append('eventData', JSON.stringify(eventToSave));

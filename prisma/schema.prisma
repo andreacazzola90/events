@@ -15,7 +15,7 @@ model Event {
   time        String
   location    String
   organizer   String
-  category    String
+  category    String     @default("other")
   price       String
   rawText     String
   imageUrl    String?

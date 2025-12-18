@@ -50,14 +50,8 @@ export default function EventMap() {
     const fetchEventsWithCoordinates = async () => {
         try {
             setLoading(true);
-            // Add cache-busting timestamp
-            const response = await fetch(`/api/events?_t=${Date.now()}`, {
-                cache: 'no-store',
-                headers: {
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                },
-            });
+            // Fetch events
+            const response = await fetch('/api/events');
             if (!response.ok) throw new Error('Failed to fetch events');
 
             const eventsData = await response.json();
@@ -188,7 +182,7 @@ export default function EventMap() {
                                         <img
                                             src={event.imageUrl}
                                             alt={event.title}
-                                            className="w-full h-32 object-cover rounded mb-2"
+                                            className="w-full h-48 object-cover rounded mb-2"
                                         />
                                     )}
                                     <h3 className="font-bold text-lg mb-1">{event.title}</h3>

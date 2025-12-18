@@ -6,7 +6,7 @@ import { EventData } from '@/types/event';
 import LoadingAnimation from './LoadingAnimation';
 
 interface ImageUploaderProps {
-    onProcessed: (data: EventData | EventData[], imageUrl: string) => void;
+    onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any) => void;
     onError: (error: string) => void;
 }
 
@@ -49,14 +49,14 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
 
             const imageUrl = URL.createObjectURL(file);
 
+            // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
-                console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi multipli`);
-                console.log('[ImageUploader] Eventi:', data.events.map((e: EventData) => e.title));
-                onProcessed(data.events, imageUrl);
+                console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
+                onProcessed(data.events, imageUrl, data.debug);
             } else {
-                console.log('[ImageUploader] ✅ Ricevuto 1 evento singolo');
-                console.log('[ImageUploader] Evento:', data.title);
-                onProcessed(data, imageUrl);
+                // Fallback for old structure or single event
+                console.log('[ImageUploader] ✅ Ricevuto evento singolo/vecchio formato');
+                onProcessed(data, imageUrl, data.debug);
             }
         } catch (error) {
             const errorMessage = error instanceof Error

@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { EventData } from '../types/event';
 
 interface SharedImageHandlerProps {
-    onProcessed: (data: EventData | EventData[], imageUrl: string) => void;
+    onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any) => void;
 }
 
 /**
@@ -47,7 +47,12 @@ export default function SharedImageHandler({ onProcessed }: SharedImageHandlerPr
 
                         if (response.ok) {
                             const data = await response.json();
-                            onProcessed(data.events || data, imageUrl);
+                            // Handle new response structure { events: [], debug: {} }
+                            if (data.events && Array.isArray(data.events)) {
+                                onProcessed(data.events, imageUrl, data.debug);
+                            } else {
+                                onProcessed(data, imageUrl, data.debug);
+                            }
                         }
 
                         // Clean up cache

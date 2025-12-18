@@ -2,65 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractTextFromImageSimple } from '../../lib/ocr-simple';
 import { extractTextFromImage } from '../../lib/ocr';
 import Groq from 'groq-sdk';
-import sharp from 'sharp';
+import { compressImage } from '../../lib/image-utils';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
-
-/**
- * Compress image for OCR processing (max 1MB for OCR.space)
- */
-async function compressImageForOCR(file: File): Promise<File> {
-  const fileSizeKB = file.size / 1024;
-  console.log(`📏 Original image size: ${fileSizeKB.toFixed(2)} KB`);
-  
-  // If already small enough, return as is
-  if (fileSizeKB <= 900) {
-    console.log('✅ Image size OK, no compression needed');
-    return file;
-  }
-  
-  console.log(`🗜️ Compressing image from ${fileSizeKB.toFixed(2)} KB...`);
-  
-  try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    
-    // Get image metadata
-    const metadata = await sharp(buffer).metadata();
-    
-    // Calculate target dimensions (reduce by sqrt of size ratio)
-    const compressionRatio = Math.sqrt(900 / fileSizeKB);
-    const targetWidth = metadata.width ? Math.floor(metadata.width * compressionRatio) : undefined;
-    
-    // Compress with Sharp
-    const compressedBuffer = await sharp(buffer)
-      .resize(targetWidth, undefined, {
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .jpeg({
-        quality: 85,
-        progressive: true
-      })
-      .toBuffer();
-    
-    // Convert Buffer to Blob then to File
-    const blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/jpeg' });
-    const compressedFile = new File([blob], file.name, {
-      type: 'image/jpeg',
-      lastModified: Date.now(),
-    });
-    
-    const newSizeKB = compressedFile.size / 1024;
-    console.log(`✅ Compressed to ${newSizeKB.toFixed(2)} KB`);
-    
-    return compressedFile;
-  } catch (error) {
-    console.warn('⚠️ Compression failed, using original:', error);
-    return file;
-  }
-}
 
 
 export async function POST(request: NextRequest) {
@@ -79,8 +25,8 @@ export async function POST(request: NextRequest) {
     // Log per debug
     console.log('Ricevuto file:', file.name, 'Size:', file.size, 'Type:', file.type);
 
-    // Compress image if needed before OCR
-    const processedFile = await compressImageForOCR(file);
+    // Compress image if needed before OCR (max 1024KB)
+    const processedFile = await compressImage(file, 1024 * 1024);
 
     let rawText = '';
 
@@ -200,6 +146,9 @@ Se vedi parole come "ciclo", "rassegna", "stagione", "incontri", "appuntamenti":
 - Anche se hanno stesso orario e luogo
 - Esempio: "29 novembre - Cleopatra", "6 dicembre - Ritratti", "13 dicembre - Giuditta" = 3 EVENTI
 
+ATTENZIONE A TESTI TECNICI:
+Se vedi testi come "#event_description" o simili, il contenuto che segue è la DESCRIZIONE dell'evento precedente, NON un nuovo evento.
+
 PASSO 2 - ESTRAZIONE DETTAGLIATA:
 Per OGNI evento identificato, estrai TUTTE le informazioni disponibili:
 
@@ -214,17 +163,20 @@ REGOLE PER OGNI EVENTO:
 - TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
   * Esempi CORRETTI: "Marco Carola DJ Set", "Teatro: Amleto", "Rock Night con The Beatles"
   * Esempi SBAGLIATI: "Evento 1", "Concerto", "Spettacolo"
-- DESCRIZIONE: Crea una descrizione DETTAGLIATA e UNICA
-  * Includi: artisti/ospiti, genere musicale/tipo, dettagli specifici, ospiti speciali
+- DESCRIZIONE: Crea una descrizione DETTAGLIATA e UNICA (MINIMO 100 CARATTERI)
+  * Includi: artisti/ospiti, genere musicale/tipo, dettagli specifici, ospiti speciali, contesto
+  * Se il testo originale è breve, elabora il contesto o aggiungi dettagli generici pertinenti al tipo di evento
   * NON copiare l'intero testo grezzo
-  * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground."
+  * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground. Una serata imperdibile per gli amanti del genere..."
 - DATA e ORARIO: SPECIFICI per ogni evento
   * CONVERTI sempre in YYYY-MM-DD e HH:MM
   * Se manca l'anno, usa ${new Date().getFullYear()}
 - LOCATION: Indirizzo completo (se uguale per tutti, ripetilo)
-- PREZZO: Specifico per evento (se unico per tutti, applicalo a tutti)
 - ORGANIZER: Se presente e condiviso, ripetilo
-- CATEGORY: Dedotta dal tipo (musica/rock, musica/techno, teatro/commedia, sport/calcio, ecc.)
+- CATEGORY: Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro.
+  * Altrimenti usa una categoria specifica in italiano (es. "conferenza", "workshop", "mercato", "festival").
+  * NON inventare categorie troppo lunghe o complesse. Usa 1-2 parole.
+- PREZZO: Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa SEMPRE il termine "Gratuito". Se c'è un prezzo, indicalo (es. "10€"). Se è a offerta, usa "Offerta Libera". Se non trovi NESSUNA informazione sul prezzo, lascia il campo VUOTO ("").
 
 ANALISI DEL LAYOUT:
 - Eventi in lista verticale (uno sotto l'altro)
@@ -289,9 +241,11 @@ REGOLE FONDAMENTALI:
 4. L'ORARIO può essere: "21:00", "h 21", "ore 21", "dalle 20:00 alle 23:00"
    - Formato output: "HH:MM" o "HH:MM-HH:MM" per range
 5. Il LUOGO deve includere: nome locale + via/indirizzo + città (tutto quello che trovi)
-6. La CATEGORIA dedotta dal contesto (musica, arte, sport, cultura, teatro, cinema, conferenza, festa, ecc.)
-7. Il PREZZO esatto come scritto (se non presente → "Gratis")
-8. La DESCRIZIONE deve contenere tutti i dettagli rimanenti: artisti, lineup, informazioni aggiuntive
+6. La CATEGORIA: Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro. Altrimenti usa una categoria specifica (es. "conferenza", "workshop").
+7. Il PREZZO: Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa SEMPRE il termine "Gratuito". Se c'è un prezzo, indicalo (es. "10€"). Se è a offerta, usa "Offerta Libera". Se non trovi NESSUNA informazione sul prezzo, lascia il campo VUOTO ("").
+8. La DESCRIZIONE deve contenere tutti i dettagli rimanenti: artisti, lineup, informazioni aggiuntive.
+   - DEVE ESSERE LUNGA ALMENO 100 CARATTERI.
+   - Se il testo è breve, elabora il contesto, descrivi il tipo di evento o aggiungi dettagli pertinenti.
 
 ANALISI SEMANTICA:
 - Identifica il contesto (è un concerto? una mostra? una conferenza?)
@@ -354,19 +308,18 @@ REGOLE:
           content: prompt,
         },
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.1-8b-instant',
+      response_format: { type: 'json_object' },
       temperature: 0.1,
-      max_tokens: 4000,
+      max_tokens: 5000,
     });
 
     const groqDuration = Date.now() - groqStartTime;
     console.log(`Groq API responded in ${groqDuration}ms`);
 
     const responseText = completion.choices[0]?.message?.content || '';
-    console.log('=== GROQ RESPONSE (IMAGE) ===');
+    console.log('=== GROQ RESPONSE ===');
     console.log('Response length:', responseText.length);
-    console.log('Response preview:', responseText.substring(0, 300));
-    console.log('Full response:', responseText);
 
     // Parse JSON from response - cerca anche array JSON
     let eventData = null;
@@ -381,6 +334,7 @@ REGOLE:
     
     if (first === -1 || last === -1 || last <= first) {
       console.error('❌ No valid JSON found in response');
+      console.log('Raw response:', responseText);
       throw new Error('Groq AI non ha restituito un JSON valido. Riprova.');
     }
     
@@ -412,32 +366,131 @@ REGOLE:
         console.log('✅ Dati evento singolo estratti con successo');
       }
       
-      console.log('📤 Final eventData:', JSON.stringify(eventData, null, 2));
-    } catch (err) {
-      console.error('❌ ERRORE CRITICO nel parsing JSON!');
-      console.error('❌ Errore:', err);
-      console.error('❌ Tipo errore:', err instanceof Error ? err.message : 'Unknown');
-      console.error('❌ JSON string completo:', jsonStr);
-      console.error('❌ Lunghezza JSON:', jsonStr.length);
-      console.error('❌ Prime 1000 caratteri:', jsonStr.substring(0, 1000));
-      console.error('❌ Ultime 500 caratteri:', jsonStr.substring(jsonStr.length - 500));
-      
-      // Prova a identificare il problema specifico
-      if (jsonStr.includes('```')) {
-        console.error('⚠️ PROBLEMA: Il JSON contiene markdown code blocks (```)');
-      }
-      if (jsonStr.includes('\\n') && !jsonStr.includes('"rawText"')) {
-        console.error('⚠️ PROBLEMA: Il JSON contiene newline escaped non gestiti');
-      }
-      
-      throw new Error('Impossibile interpretare i dati dell\'evento. Riprova con un\'immagine più chiara.');
-    }
+    // ... (previous code)
 
-    return NextResponse.json(eventData);
+      // ... (previous code)
+
+      console.log('📤 Final eventData (Pre-Verification):', JSON.stringify(eventData, null, 2));
+
+      // Capture Groq Raw Data (before verification)
+      const groqRawData = JSON.parse(JSON.stringify(eventData));
+      let googleRawData = null;
+
+      // ----------------------------------------------------------------
+      // STEP 3: GOOGLE SEARCH VERIFICATION
+      // ----------------------------------------------------------------
+      if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX) {
+        console.log('🌍 Starting Google Search Verification...');
+        const { googleSearch } = await import('../../../lib/google-search');
+
+        // Helper function to verify a single event
+        const verifyEvent = async (event: any) => {
+          try {
+            const query = `${event.title} ${event.location} ${event.date} event`;
+            const searchResults = await googleSearch(query);
+
+            if (searchResults.length > 0) {
+              console.log(`✅ Found ${searchResults.length} search results for "${event.title}"`);
+              
+              const verificationPrompt = `
+              Sei un esperto fact-checker di eventi.
+              
+              DATI ESTRATTI DALL'IMMAGINE:
+              ${JSON.stringify(event, null, 2)}
+              
+              RISULTATI RICERCA GOOGLE (FONTI ESTERNE):
+              ${JSON.stringify(searchResults, null, 2)}
+              
+              COMPITO:
+              Verifica e correggi i dati dell'evento usando le fonti esterne.
+              
+              REGOLE:
+              1. Se i risultati di ricerca confermano i dati, MANTIENILI.
+              2. Se i risultati forniscono dettagli mancanti (es. indirizzo completo, orario preciso, prezzo), AGGIUNGILI.
+              3. Se i risultati CONTRADDICONO i dati (es. data sbagliata, luogo diverso), CORREGGI i dati usando la fonte più affidabile (es. ticketone, sito ufficiale, facebook page).
+              4. Se i risultati non c'entrano nulla, MANTIENI i dati originali.
+              5. La CATEGORIA deve rimanere una di: music, nightlife, culture, food, sport, family, theater, party, walk, other.
+              
+              Rispondi SOLO con il JSON corretto dell'evento (senza markdown).
+              `;
+
+              const verificationCompletion = await groq.chat.completions.create({
+                messages: [
+                  { role: 'system', content: 'Sei un assistente AI che verifica dati di eventi. Rispondi SEMPRE con un oggetto JSON valido.' },
+                  { role: 'user', content: verificationPrompt }
+                ],
+                model: 'llama-3.3-70b-versatile',
+                response_format: { type: 'json_object' },
+                temperature: 0.1,
+              });
+
+              const verifiedJsonStr = verificationCompletion.choices[0]?.message?.content || '';
+              const first = verifiedJsonStr.indexOf('{');
+              const last = verifiedJsonStr.lastIndexOf('}');
+              
+              if (first !== -1 && last !== -1) {
+                try {
+                  const verifiedEvent = JSON.parse(verifiedJsonStr.slice(first, last + 1));
+                  console.log('✨ Event verified and updated:', verifiedEvent.title);
+                  return { verifiedEvent, searchResults };
+                } catch (pError) {
+                  console.warn('⚠️ Failed to parse verification JSON:', pError);
+                  console.log('Raw verification response:', verifiedJsonStr);
+                }
+              }
+            } else {
+              console.log('⚠️ No search results found, skipping verification.');
+            }
+          } catch (err) {
+            console.error('❌ Verification failed for event:', event.title, err);
+          }
+          return { verifiedEvent: event, searchResults: [] }; // Return original if verification fails
+        };
+
+        // Verify all events
+        if (eventData.events && Array.isArray(eventData.events)) {
+          console.log(`🔍 Verifying ${eventData.events.length} events...`);
+          const verificationResults = await Promise.all(eventData.events.map(verifyEvent));
+          eventData.events = verificationResults.map(r => r.verifiedEvent);
+          googleRawData = verificationResults.map(r => ({
+            event: r.verifiedEvent.title,
+            searchResults: r.searchResults,
+            verifiedData: r.verifiedEvent
+          }));
+        } else {
+          console.log('🔍 Verifying single event...');
+          const result = await verifyEvent(eventData);
+          eventData = result.verifiedEvent;
+          googleRawData = {
+            searchResults: result.searchResults,
+            verifiedData: result.verifiedEvent
+          };
+        }
+        
+        console.log('✅ Google Verification Complete');
+      } else {
+        console.log('ℹ️ Skipping Google Verification (Keys missing)');
+      }
+
+      // Construct final response with debug info
+      const response = {
+        events: eventData.events || [eventData],
+        debug: {
+          ocrRaw: rawText,
+          groqRaw: groqRawData,
+          googleRaw: googleRawData
+        }
+      };
+
+      return NextResponse.json(response);
+
+    } catch (err) {
+      // ... (error handling)
+      console.error('❌ ERRORE CRITICO nel parsing JSON!', err);
+      throw new Error('Impossibile interpretare i dati dell\'evento.');
+    }
   } catch (error) {
-    // Log dettagliato dell'errore
     console.error('Errore dettagliato:', error);
-    
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to process image' },
       { status: 500 }

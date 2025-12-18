@@ -297,7 +297,7 @@ export default function EditEventPage() {
                                 <img
                                     src={imagePreview || event.imageUrl || ''}
                                     alt="Anteprima immagine"
-                                    className="w-32 h-32 object-cover rounded border"
+                                    className="w-32 h-48 object-cover rounded border"
                                 />
                             )}
                             <input

@@ -38,14 +38,46 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Fetch event - serve from cache when offline
+// Fetch event - serve from cache when offline or for specific API calls
 self.addEventListener('fetch', (event) => {
     // Skip cross-origin requests
     if (!event.request.url.startsWith(self.location.origin)) {
         return;
     }
 
-    // NEVER cache API requests - always fetch fresh data
+    // Cache-First strategy for events API
+    if (event.request.url.includes('/api/events') && event.request.method === 'GET') {
+        console.log('[SW] Handling API request with Cache-First:', event.request.url);
+        event.respondWith(
+            caches.match(event.request).then((cachedResponse) => {
+                if (cachedResponse) {
+                    console.log('[SW] Serving from cache:', event.request.url);
+                    // Optional: Update cache in background (Stale-While-Revalidate)
+                    // fetch(event.request).then(response => {
+                    //     if (response.ok) {
+                    //         const responseToCache = response.clone();
+                    //         caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
+                    //     }
+                    // });
+                    return cachedResponse;
+                }
+
+                return fetch(event.request).then((fetchResponse) => {
+                    if (fetchResponse.ok) {
+                        console.log('[SW] Fetching and caching API response:', event.request.url);
+                        const responseToCache = fetchResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, responseToCache);
+                        });
+                    }
+                    return fetchResponse;
+                });
+            })
+        );
+        return;
+    }
+
+    // Bypassing cache for other API requests (POST, etc.)
     if (event.request.url.includes('/api/')) {
         console.log('[SW] Bypassing cache for API request:', event.request.url);
         event.respondWith(fetch(event.request));
@@ -56,7 +88,7 @@ self.addEventListener('fetch', (event) => {
         caches.match(event.request).then((response) => {
             // Return cached version or fetch from network
             return response || fetch(event.request).then((fetchResponse) => {
-                // Cache successful GET requests (but not API calls)
+                // Cache successful GET requests (but not API calls - already handled above)
                 if (event.request.method === 'GET' && fetchResponse.ok && !event.request.url.includes('/api/')) {
                     const responseToCache = fetchResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {

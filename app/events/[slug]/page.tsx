@@ -1,156 +1,93 @@
-'use client';
-
-import { useState, useEffect } from 'react';
 import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons';
-import { useSession } from 'next-auth/react';
-import { useParams, useRouter } from 'next/navigation';
 import { extractIdFromSlug, generateUniqueSlug } from '../../../lib/slug-utils';
 import { TransitionLink } from '../../components/TransitionLink';
-import { trackEventView, trackGTMEvent } from '../../lib/gtm';
-import { trackEventInteraction } from '../../lib/analytics';
+import { prisma } from '../../lib/prisma';
+import { notFound } from 'next/navigation';
+import EventActions from './EventActions';
 
-interface Event {
-    id: number;
-    title: string;
-    description: string;
-    date: string;
-    time: string;
-    location: string;
-    organizer: string;
-    category: string;
-    price: string;
-    rawText: string;
-    imageUrl: string | null;
-    sourceUrl: string | null;
-    createdAt: string;
-    updatedAt: string;
+export const revalidate = 60; // ISR: Revalidate every 60 seconds
+
+export async function generateStaticParams() {
+    const events = await prisma.event.findMany({
+        select: {
+            id: true,
+            title: true,
+        },
+        take: 10, // Limit to latest 10 events to avoid DB connection limits during build
+        orderBy: {
+            date: 'desc',
+        },
+    });
+
+    return events.map((event) => ({
+        slug: generateUniqueSlug(event.title, event.id),
+    }));
 }
 
-interface SimilarEvent {
-    id: number;
-    title: string;
-    description: string;
-    date: string;
-    time: string;
-    location: string;
-    category: string;
-    imageUrl: string | null;
+async function getEvent(slug: string) {
+    const eventId = extractIdFromSlug(slug);
+    if (!eventId) return null;
+
+    const event = await prisma.event.findUnique({
+        where: { id: eventId },
+    });
+
+    return event;
 }
 
-export default function EventDetailPage() {
-    const params = useParams();
-    const router = useRouter();
-    const [event, setEvent] = useState<Event | null>(null);
-    const [similarEvents, setSimilarEvents] = useState<SimilarEvent[]>([]);
-    const [sameDayEvents, setSameDayEvents] = useState<SimilarEvent[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const { data: session } = useSession();
+async function getSameDayEvents(date: string, currentEventId: number) {
+    const events = await prisma.event.findMany({
+        where: {
+            date: date,
+            id: { not: currentEventId },
+        },
+    });
+    return events;
+}
 
-    useEffect(() => {
-        if (params && params.slug) {
-            const eventId = extractIdFromSlug(params.slug as string);
-            if (eventId) {
-                fetchEvent(eventId);
-                fetchSimilarEvents(eventId);
-                // Scroll to top when event changes
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-                setError('Invalid event URL');
-                setLoading(false);
-            }
-        }
-    }, [params?.slug]);
+async function getSimilarEvents(currentEvent: any) {
+    const similarEvents = await prisma.event.findMany({
+        where: {
+            AND: [
+                { id: { not: currentEvent.id } }, // Exclude current event
+                {
+                    OR: [
+                        { category: currentEvent.category }, // Same category
+                        { location: { contains: currentEvent.location.split(',')[0] } }, // Same city/area
+                        {
+                            AND: [
+                                { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] } }, // Events in the next week
+                                { date: { lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] } }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        take: 6, // Limit to 6 similar events
+        orderBy: [
+            { category: 'desc' }, // Prioritize same category
+            { date: 'asc' } // Then by date
+        ],
+    });
+    return similarEvents;
+}
 
-    const fetchEvent = async (eventId: number) => {
-        try {
-            const response = await fetch(`/api/events/${eventId}`);
-            if (response.ok) {
-                const data = await response.json();
-                setEvent(data);
+export default async function EventDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+    const { slug } = await params;
+    const event = await getEvent(slug);
 
-                // Track event view
-                trackEventView(data);
-                trackEventInteraction('event_view', data);
-
-                // Fetch eventi dello stesso giorno
-                fetchSameDayEvents(data.date, eventId);
-            } else {
-                setError('Evento non trovato');
-            }
-        } catch (error) {
-            console.error('Error fetching event:', error);
-            setError('Errore nel caricamento dell\'evento');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchSameDayEvents = async (eventDate: string, currentEventId: number) => {
-        try {
-            const response = await fetch(`/api/events`);
-            if (response.ok) {
-                const allEvents = await response.json();
-                const filtered = allEvents.filter((e: Event) => e.date === eventDate && e.id !== currentEventId);
-                setSameDayEvents(filtered);
-            }
-        } catch (error) {
-            console.error('Error fetching same day events:', error);
-        }
-    };
-
-    const fetchSimilarEvents = async (eventId: number) => {
-        try {
-            const response = await fetch(`/api/events/${eventId}/similar`);
-            if (response.ok) {
-                const data = await response.json();
-                setSimilarEvents(data);
-            }
-        } catch (error) {
-            console.error('Error fetching similar events:', error);
-        }
-    };
-
-    if (loading) {
-        return (
-            <div className="min-h-screen py-8 px-2 bg-light w-full">
-                <div className="w-full">
-                    <div className="text-center py-12 text-2xl font-bold text-primary animate-pulse">Caricamento evento...</div>
-                </div>
-            </div>
-        );
+    if (!event) {
+        notFound();
     }
 
-    if (error || !event) {
-        return (
-            <div className="min-h-screen py-8 px-2 bg-light w-full">
-                <div className="w-full">
-                    <div className="text-center py-12 text-2xl font-bold text-red-500">
-                        {error || 'Evento non trovato'}
-                    </div>
-                    <button
-                        onClick={() => router.back()}
-                        className="mt-4 px-6 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary text-white transition-all"
-                    >
-                        Torna indietro
-                    </button>
-                </div>
-            </div>
-        );
-    }
+    const sameDayEvents = await getSameDayEvents(event.date, event.id);
+    const similarEvents = await getSimilarEvents(event);
 
     return (
         <div className="min-h-screen py-8 px-2 bg-light w-full">
             <div className="container mx-auto px-8">
                 <div className="w-full space-y-8">
-                    {/* Back Button - Fixed position */}
-                    <button
-                        onClick={() => router.back()}
-                        className="mb-6 w-12 h-12 rounded-full bg-white/70 backdrop-blur-sm hover:bg-white/90 shadow-lg flex items-center justify-center transition-all"
-                        aria-label="Torna indietro"
-                    >
-                        <span className="text-2xl">←</span>
-                    </button>
 
                     {/* Desktop Layout: Image Left + Content Right */}
                     <div className="lg:flex lg:gap-8 lg:items-start">
@@ -165,16 +102,11 @@ export default function EventDetailPage() {
                                     />
                                     {/* Gradient Overlay */}
                                     <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-                                    {/* Edit Button - Float over image if logged in */}
-                                    {session && event && params?.slug && (
-                                        <button
-                                            onClick={() => router.push(`/events/${params.slug}/edit`)}
-                                            className="absolute top-6 right-6 z-10 px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-secondary via-accent to-primary text-white hover:shadow-lg transition-all opacity-0 group-hover:opacity-100"
-                                        >
-                                            ✏️ Modifica
-                                        </button>
-                                    )}
+                                </div>
+                            )}
+                            {!event.imageUrl && (
+                                <div className="relative group event-image-container">
+                                    {/* Placeholder or empty */}
                                 </div>
                             )}
                         </div>
@@ -255,14 +187,14 @@ export default function EventDetailPage() {
                                             <img
                                                 src={sameDayEvent.imageUrl.startsWith('/uploads/') ? sameDayEvent.imageUrl : sameDayEvent.imageUrl}
                                                 alt={sameDayEvent.title}
-                                                className="w-full h-32 object-cover rounded-lg mb-3"
+                                                className="w-full h-48 object-cover rounded-lg mb-3"
                                             />
                                         )}
-                                        <h3 className="font-bold text-xl mb-2 text-white group-hover:text-primary transition-colors">{sameDayEvent.title}</h3>
+                                        <h3 className="font-bold text-xl mb-2 text-white group-hover:text-primary transition-colors truncate">{sameDayEvent.title}</h3>
                                         <p className="text-gray-400 text-sm mb-3 line-clamp-2">{sameDayEvent.description}</p>
                                         <div className="space-y-1 text-sm text-gray-400">
-                                            <p className="flex items-center gap-2"><ClockIcon className="w-5 h-5 text-primary" /> {sameDayEvent.time}</p>
-                                            <p className="flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-primary" /> {sameDayEvent.location}</p>
+                                            <p className="flex items-center gap-2"><ClockIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{sameDayEvent.time}</span></p>
+                                            <p className="flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{sameDayEvent.location}</span></p>
                                         </div>
                                     </TransitionLink>
                                 ))}
@@ -285,14 +217,14 @@ export default function EventDetailPage() {
                                             <img
                                                 src={similarEvent.imageUrl.startsWith('/uploads/') ? similarEvent.imageUrl : similarEvent.imageUrl}
                                                 alt={similarEvent.title}
-                                                className="w-full h-24 object-cover rounded mb-2"
+                                                className="w-full h-48 object-cover rounded mb-2"
                                             />
                                         )}
-                                        <h3 className="font-semibold text-lg text-white group-hover:text-primary transition-colors">{similarEvent.title}</h3>
-                                        <p className="text-gray-400 text-sm">{similarEvent.description.slice(0, 80)}...</p>
+                                        <h3 className="font-semibold text-lg text-white group-hover:text-primary transition-colors truncate">{similarEvent.title}</h3>
+                                        <p className="text-gray-400 text-sm line-clamp-2">{similarEvent.description}</p>
                                         <div className="mt-2 text-sm text-gray-400">
-                                            <p className="flex items-center gap-2"><CalendarIcon className="w-5 h-5 text-primary" /> {similarEvent.date}</p>
-                                            <p className="flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-primary" /> {similarEvent.location}</p>
+                                            <p className="flex items-center gap-2"><CalendarIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{similarEvent.date}</span></p>
+                                            <p className="flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{similarEvent.location}</span></p>
                                         </div>
                                     </TransitionLink>
                                 ))}

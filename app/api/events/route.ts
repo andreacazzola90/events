@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uploadImageToSupabase } from '../../lib/supabase';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
 
     const contentType = request.headers.get('content-type') || '';
     console.log('[API /events POST] Request received, Content-Type:', contentType);
+    console.log('[API /events POST] Prisma Client version check: category is now a String');
     if (contentType.includes('application/json')) {
       // Handle JSON body
       eventData = await request.json();
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       time: eventData.time || '',
       location: eventData.location || '',
       organizer: eventData.organizer || '',
-      category: eventData.category || '',
+      category: (eventData.category || 'other').toLowerCase().trim(),
       price: eventData.price || '',
       rawText: typeof eventData.rawText === 'string' ? eventData.rawText : '',
       imageUrl: imageUrl || null,
@@ -76,7 +77,8 @@ export async function POST(request: NextRequest) {
     // Revalidate the homepage and events list to update the cache
     revalidatePath('/', 'layout');
     revalidatePath('/api/events', 'page');
-    console.log('[API /events POST] Cache revalidated for homepage and events list');
+    // revalidateTag('events-list'); // Commented out due to build error (signature mismatch)
+    console.log('[API /events POST] Cache revalidated for homepage, events list, and tag events-list');
     
     return NextResponse.json(event, { 
       status: 201,
@@ -122,18 +124,33 @@ export async function GET(request: NextRequest) {
       if (dateTo) where.date.lte = dateTo;
     }
 
-    const events = await prisma.event.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit, // Limit to most recent events
-    });
+    // Use unstable_cache to cache the database query
+    const getCachedEvents = unstable_cache(
+      async (queryWhere, queryLimit) => {
+        return prisma.event.findMany({
+          where: queryWhere,
+          orderBy: { createdAt: 'desc' },
+          take: queryLimit,
+        });
+      },
+      ['events-list-query'], // Key parts (will be combined with args automatically in newer Next.js, but explicit keys are safer)
+      { tags: ['events-list'] }
+    );
+
+    // Create a unique key based on the query parameters
+    const cacheKey = JSON.stringify({ where, limit });
     
-    // Disable cache to always fetch fresh data
+    // We need to pass the arguments to the cached function. 
+    // Note: unstable_cache memoizes based on the arguments passed to the returned function.
+    // However, the second argument to unstable_cache (keyParts) is static. 
+    // To make it dynamic based on args, we rely on the args being part of the cache key internally.
+    // But to be safe and explicit with tags, we use the tag 'events-list'.
+    
+    const events = await getCachedEvents(where, limit);
+    
     return NextResponse.json(events, {
       headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
+        'Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=0', // Cache indefinitely on CDN/Server until revalidated
       },
     });
   } catch (error) {

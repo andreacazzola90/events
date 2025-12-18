@@ -1,4 +1,5 @@
 import { EventData, OCRResponse } from '@/types/event';
+import sharp from 'sharp';
 
 /**
  * Compress image if it exceeds the size limit
@@ -85,27 +86,31 @@ async function compressImage(file: File, maxSizeKB: number = 900): Promise<File>
 async function performOCR(imageFile: File): Promise<string> {
   console.log('📡 Calling OCR.space API directly...');
   
-  // Compress image if needed (OCR.space has 1MB limit)
-  let processedFile = imageFile;
+  let processedBuffer: Buffer;
   
-  // Check if we're in browser environment for compression
-  if (typeof window !== 'undefined' && typeof Image !== 'undefined') {
-    try {
-      processedFile = await compressImage(imageFile, 900); // Target 900KB to be safe
-    } catch (compressionError) {
-      console.warn('⚠️ Image compression failed, trying with original:', compressionError);
-      // Continue with original file if compression fails
-    }
+  try {
+    // Pre-process image with sharp to improve OCR quality
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const inputBuffer = Buffer.from(arrayBuffer);
+    
+    processedBuffer = await sharp(inputBuffer)
+      .resize(2000, 2000, { fit: 'inside', withoutEnlargement: false })
+      .grayscale()
+      .normalize()
+      .sharpen()
+      .toBuffer();
+      
+    console.log('✅ Image pre-processed with sharp');
+  } catch (sharpError) {
+    console.warn('⚠️ Sharp pre-processing failed, using original:', sharpError);
+    const arrayBuffer = await imageFile.arrayBuffer();
+    processedBuffer = Buffer.from(arrayBuffer);
   }
-  
-  // Convert file to buffer
-  const bytes = await processedFile.arrayBuffer();
-  const buffer = Buffer.from(bytes);
 
   // Create FormData for OCR.space API
   const ocrFormData = new FormData();
-  const blob = new Blob([buffer], { type: imageFile.type });
-  ocrFormData.append('file', blob, imageFile.name);
+  const blob = new Blob([processedBuffer as any], { type: 'image/jpeg' });
+  ocrFormData.append('file', blob, 'image.jpg');
   ocrFormData.append('apikey', 'K83907440988957');
   ocrFormData.append('language', 'ita');
   ocrFormData.append('isOverlayRequired', 'false');
@@ -133,7 +138,10 @@ async function performOCR(imageFile: File): Promise<string> {
   }
 
   if (!data.ParsedResults?.[0]?.ParsedText) {
-    throw new Error('OCR returned no text results');
+    const errorMsg = data.ErrorMessage ? data.ErrorMessage[0] : 'Nessun testo rilevato nell\'immagine';
+    console.warn('⚠️ OCR.space returned no text:', errorMsg);
+    // Don't throw, just return empty string to allow processing to continue
+    return '';
   }
 
   const extractedText = data.ParsedResults[0].ParsedText.trim();
@@ -154,7 +162,8 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
     const extractedText = await performOCR(imageFile);
     
     if (!extractedText || extractedText.trim().length === 0) {
-      throw new Error('No text extracted from image');
+      console.log('ℹ️ No text extracted from image, continuing...');
+      return '';
     }
     
     if (extractedText.length < 10) {
@@ -167,12 +176,9 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
   } catch (error) {
     console.error('❌ OCR extraction failed:', error);
     
-    // Return a more user-friendly error
-    if (error instanceof Error) {
-      throw new Error(`Impossibile estrarre testo dall'immagine: ${error.message}. Assicurati che l'immagine contenga testo leggibile.`);
-    }
-    
-    throw new Error('Impossibile estrarre testo dall\'immagine. Riprova con un\'immagine più chiara.');
+    // Return empty string instead of throwing to allow the process to continue
+    console.log('⚠️ OCR failed but continuing with available data...');
+    return '';
   }
 }
 

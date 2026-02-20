@@ -10,6 +10,7 @@ export interface EventData {
   rawText: string;
   imageUrl?: string;
   sourceUrl?: string;
+  origin?: string;
 }
 
 export interface OCRResponse {

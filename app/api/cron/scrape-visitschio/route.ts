@@ -6,6 +6,17 @@ import { revalidatePath } from 'next/cache';
 
 export const maxDuration = 300; // 5 minutes for the cron job
 
+function getExternalIdFromUrl(url: string): string {
+    try {
+        const u = new URL(url);
+        const segments = u.pathname.split('/').filter(Boolean);
+        // Usa l'ultimo segmento del path come id esterno (es. "22906-cleopatra")
+        return segments[segments.length - 1] || url;
+    } catch {
+        return url;
+    }
+}
+
 export async function GET(request: NextRequest) {
     // Check for Vercel Cron Secret or a custom secret
     const authHeader = request.headers.get('authorization');
@@ -86,6 +97,8 @@ export async function GET(request: NextRequest) {
                                 rawText: '', // We don't have the full raw text here easily
                                 imageUrl: eventData.imageUrl,
                                 sourceUrl: url,
+                                externalId: getExternalIdFromUrl(url),
+                                origin: 'visitschio',
                             }
                         });
                         processedEvents.push(savedEvent.id);

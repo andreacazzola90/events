@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
       rawText: typeof eventData.rawText === 'string' ? eventData.rawText : '',
       imageUrl: imageUrl || null,
       sourceUrl: eventData.sourceUrl || null,
+      origin: 'user',
     };
 
     console.log('[API /events POST] Saving event with data:', JSON.stringify(eventDataToSave, null, 2));

@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 
 export default function AuthPage() {
@@ -90,7 +89,7 @@ function LoginForm() {
                 router.push('/account');
                 router.refresh();
             }
-        } catch (err) {
+        } catch {
             setError('Errore durante il login');
         } finally {
             setLoading(false);
@@ -133,7 +132,7 @@ function LoginForm() {
             </div>
             <button
                 type="submit"
-                className="w-full bg-linear-to-r from-pink-500 to-purple-600 text-white font-bold py-3 rounded-lg transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25 disabled:opacity-50 disabled:hover:scale-100"
+                className="btn btn-primary w-full font-bold disabled:opacity-50"
                 disabled={loading}
             >
                 {loading ? (
@@ -156,7 +155,6 @@ function RegisterForm() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
-    const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

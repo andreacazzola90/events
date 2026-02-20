@@ -4,6 +4,8 @@ import { useCallback, useState, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { EventData } from '@/types/event';
 import LoadingAnimation from './LoadingAnimation';
+import { toast } from 'react-toastify';
+import { logClientError } from '../lib/error-tool';
 
 interface ImageUploaderProps {
     onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any) => void;
@@ -62,10 +64,29 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             const errorMessage = error instanceof Error
                 ? error.message
                 : 'Impossibile elaborare l\'immagine';
-            console.error('[ImageUploader] ❌ Error:', errorMessage);
-            if (error instanceof Error && error.stack) {
-                console.error('[ImageUploader] Stack:', error.stack);
+            const isExpectedOcrMessage = errorMessage.startsWith('Nessun testo leggibile trovato nell\'immagine');
+
+            if (isExpectedOcrMessage) {
+                // Errore atteso lato business: loggalo come warning senza farlo apparire come errore di Next.js
+                console.warn('[ImageUploader] OCR warning:', errorMessage);
+                logClientError({
+                    message: errorMessage,
+                    source: 'ImageUploader',
+                    severity: 'warning',
+                });
+            } else {
+                console.error('[ImageUploader] ❌ Error:', errorMessage);
+                if (error instanceof Error && error.stack) {
+                    console.error('[ImageUploader] Stack:', error.stack);
+                }
+                logClientError({
+                    message: errorMessage,
+                    source: 'ImageUploader',
+                    severity: 'error',
+                });
             }
+            // Mostra un toast all'utente per gli errori critici (OCR, API, ecc.)
+            toast.error(errorMessage);
             onError(errorMessage);
         } finally {
             setIsProcessing(false);

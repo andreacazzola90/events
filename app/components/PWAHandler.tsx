@@ -26,12 +26,8 @@ export default function PWAHandler() {
                 });
         }
 
-        // Handle app install prompt
-        let deferredPrompt: any;
-
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
-            deferredPrompt = e;
             console.log('[PWA] Install prompt available');
 
             // You can show a custom install button here
@@ -40,7 +36,6 @@ export default function PWAHandler() {
 
         window.addEventListener('appinstalled', () => {
             console.log('[PWA] App installed successfully');
-            deferredPrompt = null;
         });
 
         // Log if running as standalone PWA

@@ -3,7 +3,6 @@ import { extractIdFromSlug, generateUniqueSlug } from '../../../lib/slug-utils';
 import { TransitionLink } from '../../components/TransitionLink';
 import { prisma } from '../../lib/prisma';
 import { notFound } from 'next/navigation';
-import EventActions from './EventActions';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 

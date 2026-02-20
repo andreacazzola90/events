@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { usePageTransition } from '../lib/PageTransitionContext';
 
 interface PageTransitionProps {
@@ -10,6 +11,7 @@ interface PageTransitionProps {
 
 export function PageTransition({ children, className = '' }: PageTransitionProps) {
     const { isTransitioning } = usePageTransition();
+    const pathname = usePathname();
     const [isVisible, setIsVisible] = useState(true);
     const [shouldRender, setShouldRender] = useState(true);
 
@@ -28,6 +30,13 @@ export function PageTransition({ children, className = '' }: PageTransitionProps
             }, 50); // Piccolo delay per assicurare il rendering
         }
     }, [isTransitioning]);
+
+    // Scrolla in cima ad ogni cambio route
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        }
+    }, [pathname]);
 
     return (
         <div

@@ -26,11 +26,11 @@ export default function MappaPage() {
                             Visualizza tutti gli eventi sulla mappa in base alla loro posizione
                         </p>
                     </div>
-                    <div className="card w-full max-w-full">
+                    <div className="card bg-base-100 shadow-xl w-full max-w-full">
                         <EventMap />
                     </div>
-                    <div className="badge mt-4 inline-block">
-                        💡 <strong>Suggerimento:</strong> Clicca sui marker sulla mappa per vedere i dettagli di ogni evento. La geocodifica delle località avviene automaticamente tramite OpenStreetMap.
+                    <div className="badge badge-outline badge-secondary mt-4 inline-flex items-center gap-2">
+                        💡 <span className="font-semibold">Suggerimento:</span> Clicca sui marker sulla mappa per vedere i dettagli di ogni evento. La geocodifica delle località avviene automaticamente tramite OpenStreetMap.
                     </div>
                 </div>
             </div>

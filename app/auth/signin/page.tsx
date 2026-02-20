@@ -30,7 +30,7 @@ export default function SignIn() {
                 router.push('/');
                 router.refresh();
             }
-        } catch (err) {
+        } catch {
             setError('Si è verificato un errore durante il login');
         } finally {
             setLoading(false);

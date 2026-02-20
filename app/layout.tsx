@@ -42,8 +42,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
   return (
-    <html lang="it">
+    <html lang="it" data-theme="dicefm">
       <head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/favicon.ico" />
@@ -52,6 +53,11 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="EventScanner" />
+
+        {/* Google Search Console Verification */}
+        {googleSiteVerification && (
+          <meta name="google-site-verification" content={googleSiteVerification} />
+        )}
 
         {/* Google Analytics */}
         <GoogleAnalytics />

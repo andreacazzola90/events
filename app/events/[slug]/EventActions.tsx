@@ -5,10 +5,9 @@ import { useRouter } from 'next/navigation';
 
 interface EventActionsProps {
     slug: string;
-    imageUrl?: string | null;
 }
 
-export default function EventActions({ slug, imageUrl }: EventActionsProps) {
+export default function EventActions({ slug }: EventActionsProps) {
     const router = useRouter();
     const { data: session } = useSession();
 

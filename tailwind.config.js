@@ -41,5 +41,40 @@ module.exports = {
             },
         },
     },
-    plugins: [],
+    plugins: [require('daisyui')],
+    daisyui: {
+        themes: [
+            {
+                dicefm: {
+                    primary: '#ff2d55',
+                    'primary-focus': '#c6002b',
+                    'primary-content': '#ffffff',
+
+                    secondary: '#ffe600',
+                    'secondary-focus': '#c7b800',
+                    'secondary-content': '#171717',
+
+                    accent: '#00e0b8',
+                    'accent-focus': '#00a98b',
+                    'accent-content': '#171717',
+
+                    neutral: '#1a1a1a',
+                    'neutral-content': '#f9f9f9',
+
+                    'base-100': '#0a0a0a',
+                    'base-200': '#1a1a1a',
+                    'base-300': '#333333',
+                    'base-content': '#ffffff',
+
+                    info: '#00b5ff',
+                    success: '#00e0b8',
+                    warning: '#ffe600',
+                    error: '#ff2d55',
+                },
+            },
+            'business',
+            'dark',
+        ],
+        darkTheme: 'dicefm',
+    },
 }

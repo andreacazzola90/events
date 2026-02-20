@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uploadImageToSupabase } from '../../lib/supabase';
-import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
+import { revalidatePath, unstable_cache } from 'next/cache';
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
       rawText: typeof eventData.rawText === 'string' ? eventData.rawText : '',
       imageUrl: imageUrl || null,
       sourceUrl: eventData.sourceUrl || null,
+      origin: 'user',
     };
 
     console.log('[API /events POST] Saving event with data:', JSON.stringify(eventDataToSave, null, 2));
@@ -140,9 +141,6 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    // Create a unique key based on the query parameters
-    const cacheKey = JSON.stringify({ where, limit });
-    
     // We need to pass the arguments to the cached function. 
     // Note: unstable_cache memoizes based on the arguments passed to the returned function.
     // However, the second argument to unstable_cache (keyParts) is static. 

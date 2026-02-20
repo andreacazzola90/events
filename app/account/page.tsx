@@ -109,13 +109,13 @@ export default function AccountPage() {
                             <div className="flex flex-col gap-4">
                                 <button
                                     onClick={() => router.push('/crea')}
-                                    className="inline-flex items-center gap-3 bg-linear-to-r from-pink-500 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-pink-500/25"
+                                    className="btn btn-primary btn-lg inline-flex items-center gap-3 rounded-2xl font-bold text-lg"
                                 >
                                     ✨ Create Event
                                 </button>
                                 <button
                                     onClick={handleLogout}
-                                    className="inline-flex items-center gap-3 bg-white/10 text-white px-8 py-4 rounded-2xl font-semibold border border-white/20 transition-all duration-300 hover:bg-white/20 hover:scale-105"
+                                    className="btn btn-outline btn-secondary btn-lg inline-flex items-center gap-3 rounded-2xl font-bold text-lg"
                                 >
                                     🚪 Logout
                                 </button>
@@ -150,7 +150,7 @@ export default function AccountPage() {
                             {userEvents.map((event) => (
                                 <div
                                     key={event.id}
-                                    className="event-card cursor-pointer group"
+                                    className="card bg-base-100/5 border border-base-200/40 cursor-pointer group hover:border-primary/60 hover:shadow-xl transition-all duration-300"
                                     onClick={() => router.push(`/events/${generateUniqueSlug(event.title, event.id)}`)}
                                 >
                                     {/* Event Image */}
@@ -168,7 +168,7 @@ export default function AccountPage() {
                                         )}
 
                                         {/* Owner Badge */}
-                                        <div className="absolute top-3 right-3 bg-green-500 text-white px-2 py-1 rounded-lg text-xs font-semibold">
+                                        <div className="badge badge-success absolute top-3 right-3 text-xs font-semibold">
                                             YOURS
                                         </div>
                                     </div>
@@ -205,7 +205,7 @@ export default function AccountPage() {
                                                 e.stopPropagation();
                                                 router.push(`/events/${generateUniqueSlug(event.title, event.id)}/edit`);
                                             }}
-                                            className="w-full mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-200 border border-white/20 hover:scale-105"
+                                            className="btn btn-outline btn-primary w-full mt-4"
                                         >
                                             ✏️ Edit Event
                                         </button>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { trackEventCreate, trackGTMEvent } from '../lib/gtm';
+import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { useRouter } from 'next/navigation';
@@ -11,6 +11,8 @@ import EventDisplay from '../components/EventDisplay';
 import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
 import DebugInfoDisplay from '../components/DebugInfoDisplay';
+import { toast } from 'react-toastify';
+import { logClientError } from '../lib/error-tool';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -228,7 +230,15 @@ export default function CreaEvento() {
             window.location.href = '/?refresh=' + Date.now();
         } catch (error) {
             console.error('Error saving event:', error);
-            setError(error instanceof Error ? error.message : 'Errore nel salvataggio dell\'evento');
+            const msg = error instanceof Error ? error.message : 'Errore nel salvataggio dell\'evento';
+            setError(msg);
+            toast.error(msg);
+            logClientError({
+                message: msg,
+                source: 'CreaEvento.handleSaveSingle',
+                severity: 'error',
+                details: error instanceof Error ? { stack: error.stack } : undefined,
+            });
             setSaving(false);
         }
     };
@@ -236,7 +246,9 @@ export default function CreaEvento() {
     const handleLinkSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!linkUrl.trim()) {
-            setError('Inserisci un link valido');
+            const msg = 'Inserisci un link valido';
+            setError(msg);
+            toast.error(msg);
             return;
         }
 
@@ -281,7 +293,8 @@ export default function CreaEvento() {
                 const normalized = data.events.map((ev: EventData) => normalizeEventFields(ev));
                 setEvents(normalized);
                 setImageUrl(data.imageUrl || null);
-                setDebugInfo(null); // Link extraction doesn't support debug info yet
+                // Ora anche il flusso link ha debug (groq + google)
+                setDebugInfo(data.debug || null);
                 setLinkUrl('');
             } else {
                 setError('Nessun evento trovato dal link');
@@ -291,14 +304,43 @@ export default function CreaEvento() {
 
             if (error instanceof Error) {
                 if (error.name === 'AbortError') {
-                    setError('La richiesta ha impiegato troppo tempo. Il server potrebbe essere occupato, riprova tra qualche minuto.');
+                    const msg = 'La richiesta ha impiegato troppo tempo. Il server potrebbe essere occupato, riprova tra qualche minuto.';
+                    setError(msg);
+                    toast.error(msg);
+                    logClientError({
+                        message: msg,
+                        source: 'CreaEvento.handleLinkSubmit',
+                        severity: 'warning',
+                    });
                 } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_NETWORK_CHANGED')) {
-                    setError('Problema di connessione di rete. Controlla la connessione internet e riprova.');
+                    const msg = 'Problema di connessione di rete. Controlla la connessione internet e riprova.';
+                    setError(msg);
+                    toast.error(msg);
+                    logClientError({
+                        message: msg,
+                        source: 'CreaEvento.handleLinkSubmit',
+                        severity: 'warning',
+                    });
                 } else {
-                    setError(error.message || 'Errore durante l\'elaborazione del link. Riprova.');
+                    const msg = error.message || 'Errore durante l\'elaborazione del link. Riprova.';
+                    setError(msg);
+                    toast.error(msg);
+                    logClientError({
+                        message: msg,
+                        source: 'CreaEvento.handleLinkSubmit',
+                        severity: 'error',
+                        details: { rawMessage: error.message },
+                    });
                 }
             } else {
-                setError('Errore durante l\'elaborazione del link. Riprova.');
+                const msg = 'Errore durante l\'elaborazione del link. Riprova.';
+                setError(msg);
+                toast.error(msg);
+                logClientError({
+                    message: msg,
+                    source: 'CreaEvento.handleLinkSubmit',
+                    severity: 'error',
+                });
             }
         } finally {
             setLoadingLink(false);
@@ -400,7 +442,7 @@ export default function CreaEvento() {
                                                 <button
                                                     type="submit"
                                                     disabled={loadingLink}
-                                                    className="w-full bg-linear-to-r from-pink-500 to-purple-600 text-white py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25 disabled:opacity-50 disabled:hover:scale-100"
+                                                    className="btn btn-primary w-full disabled:opacity-50"
                                                 >
                                                     ✨ Extract Event
                                                 </button>

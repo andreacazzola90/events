@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { createCanvas } from 'canvas';
-import fs from 'fs';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -42,7 +41,7 @@ async function uploadPlaceholder() {
     try {
         console.log('📤 Uploading placeholder image to Supabase...');
 
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
             .from('events')
             .upload('placeholder-event.jpg', buffer, {
                 contentType: 'image/jpeg',

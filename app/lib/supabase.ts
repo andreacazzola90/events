@@ -80,7 +80,7 @@ export async function uploadImageToSupabase(
     const optimizedBuffer = await optimizeImage(fileBuffer);
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(bucket)
       .upload(filename, optimizedBuffer, {
         contentType: 'image/jpeg',

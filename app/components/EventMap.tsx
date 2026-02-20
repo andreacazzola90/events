@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -108,7 +108,6 @@ export default function EventMap() {
         // Più permissivo: accetta anche nomi di luoghi senza numeri
         // Esempi: "Teatro Comunale", "Piazza Duomo", "Milano"
         const hasLetters = /[a-zA-Z]{3,}/.test(location);
-        const hasNumber = /\d+/.test(location);
 
         // Accetta se ha almeno 3 lettere (nome di luogo)
         return hasLetters;
@@ -298,7 +297,7 @@ export default function EventMap() {
                 return coords;
             }
             return {};
-        } catch (err) {
+        } catch {
             // Silenzia l'errore: non mostrare nulla in console, ignora l'evento
             return {};
         }
@@ -435,7 +434,7 @@ export default function EventMap() {
             </div>
 
             {/* Sidebar - Bottom on Mobile, Left on Desktop (1/4 width) */}
-            <div className="w-full lg:w-1/4 h-[400px] lg:h-full bg-white backdrop-blur-lg border-t lg:border-t-0 lg:border-r border-gray-200 overflow-y-auto custom-scrollbar flex-shrink-0 order-2 lg:order-1 relative">
+            <div className="w-full lg:w-1/4 h-[400px] lg:h-full bg-white backdrop-blur-lg border-t lg:border-t-0 lg:border-r border-gray-200 overflow-y-auto custom-scrollbar shrink-0 order-2 lg:order-1 relative">
                 <div className="p-6 border-b border-gray-100 bg-white sticky top-0 z-20 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -463,7 +462,7 @@ export default function EventMap() {
                             <button
                                 onClick={handleUseMyLocation}
                                 disabled={isGeolocating}
-                                className="w-10 h-10 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center flex-shrink-0"
+                                className="w-10 h-10 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center shrink-0"
                                 title="Usa la mia posizione"
                             >
                                 {isGeolocating ? '⏳' : '🎯'}
@@ -527,7 +526,7 @@ export default function EventMap() {
                             )}
                             <div className="flex gap-4">
                                 {event.imageUrl ? (
-                                    <div className="relative flex-shrink-0">
+                                    <div className="relative shrink-0">
                                         <img
                                             src={event.imageUrl}
                                             alt=""
@@ -535,7 +534,7 @@ export default function EventMap() {
                                         />
                                     </div>
                                 ) : (
-                                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center text-3xl shadow-inner border border-gray-200 flex-shrink-0">
+                                    <div className="w-20 h-20 rounded-2xl bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center text-3xl shadow-inner border border-gray-200 shrink-0">
                                         📅
                                     </div>
                                 )}

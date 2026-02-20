@@ -4,10 +4,57 @@ import { EventData } from '../app/types/event';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
 import { extractTextFromImage } from '../app/lib/ocr';
 import { compressImage } from '../app/lib/image-utils';
+import { groupEventsByDate } from './event-utils';
+import { buildEventExtractionHints } from './event-hints';
+import { googleSearch } from './google-search';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
+
+// Utility: assicura che un URL sia assoluto e nel formato https://www.<dominio>/..., usando l'URL di partenza come base per i path relativi
+function ensureAbsoluteUrl(possibleUrl: string | undefined, baseUrl: string): string | undefined {
+    if (!possibleUrl) return undefined;
+    const trimmed = possibleUrl.trim();
+    if (!trimmed) return undefined;
+
+    const forceHttpsWww = (input: string): string => {
+        try {
+            let urlStr = input;
+            if (/^\/\//.test(urlStr)) {
+                urlStr = `https:${urlStr}`;
+            } else if (!/^https?:\/\//i.test(urlStr)) {
+                urlStr = `https://${urlStr}`;
+            }
+
+            const u = new URL(urlStr);
+            u.protocol = 'https:';
+            if (!u.hostname.toLowerCase().startsWith('www.')) {
+                u.hostname = `www.${u.hostname}`;
+            }
+            return u.toString();
+        } catch {
+            if (/[a-z0-9-]+\.[a-z]{2,}/i.test(input)) {
+                const cleaned = input.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+                return `https://www.${cleaned}`;
+            }
+            return input;
+        }
+    };
+
+    // Se è già un URL assoluto o un dominio, forziamo https://www.
+    if (/^https?:\/\//i.test(trimmed) || /^\/\//.test(trimmed) || /^www\./i.test(trimmed) || /[a-z0-9-]+\.[a-z]{2,}/i.test(trimmed)) {
+        return forceHttpsWww(trimmed);
+    }
+
+    // Prova a risolvere path relativo rispetto all'URL scansionato e poi normalizza
+    try {
+        const resolved = new URL(trimmed, baseUrl);
+        return forceHttpsWww(resolved.toString());
+    } catch {
+        return trimmed;
+    }
+}
 
 export async function processEventLink(url: string) {
     console.log('Processing URL:', url);
@@ -437,11 +484,11 @@ export async function processEventLink(url: string) {
             try {
                 console.log('🔄 Trying simplified OCR on webpage image...');
                 imageText = await extractTextFromImageSimple(imageFile);
-            } catch (simpleOcrError) {
+            } catch {
                 console.log('⚠️ OCR semplificato fallito, provo Tesseract...');
                 try {
                     imageText = await extractTextFromImage(imageFile);
-                } catch (tesseractError) {
+                } catch {
                     console.warn('⚠️ OCR fallito su entrambi i metodi');
                 }
             }
@@ -455,7 +502,10 @@ export async function processEventLink(url: string) {
         combinedText = `TESTO DALLA PAGINA WEB:\n${pageText}\n\nTESTO DALL'IMMAGINE (OCR):\n${imageText}`;
     }
 
-    // 2. Usa Groq per estrarre le informazioni dell'evento
+    // 2. Costruisci indizi euristici per aiutare Groq (date, orari, prezzi, luoghi)
+    const heuristicHints = buildEventExtractionHints(combinedText);
+
+    // 3. Usa Groq per estrarre le informazioni dell'evento
     console.log('=== GROQ API CALL ===');
     const currentDate = new Date().toISOString().split('T')[0];
 
@@ -463,7 +513,7 @@ export async function processEventLink(url: string) {
 Rispondi SOLO con un oggetto JSON valido nel seguente formato:
 {
   "title": "Titolo evento",
-  "description": "Descrizione dettagliata (MINIMO 100 CARATTERI - se breve, elabora il contesto)",
+    "description": "Descrizione dettagliata (MINIMO 100 CARATTERI - se breve, elabora il contesto)",
   "date": "YYYY-MM-DD",
   "time": "HH:MM",
   "location": "Luogo completo (Includi SEMPRE nome locale + indirizzo, es: 'Cineforum Altovicentino - Via Pietro Maraschin 81, Schio')",
@@ -478,12 +528,14 @@ GESTIONE PREZZO:
 - Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa "Gratuito".
 - Se è esplicitamente indicato come offerta, usa "Offerta Libera".
 - IMPORTANTE: NON usare "Offerta Libera" se trovi dei prezzi numerici o se non sei sicuro.
-- Se non trovi NESSUNA informazione sul prezzo, lascia il campo VUOTO ("").
+- Se non trovi NESSUNA informazione sul prezzo, usa la stringa "non definito, ma speriamo gratis".
 - PRIORITÀ: Se vedi [VISITCHIO EVENT INFO] con "Prezzo Info:", usa QUELLA informazione come priorità assoluta.
 
 GESTIONE CATEGORIA:
 - Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro.
-- Altrimenti usa una categoria specifica (es. "conferenza", "workshop").
+- Altrimenti usa una categoria specifica (es. "conferenza", "workshop", "festival", "mercato").
+- NON inventare categorie lunghe: massimo 1-2 parole.
+- Usa le parole chiave del testo per scegliere (es. "concerto", "live", "dj set" → musica/nightlife; "spettacolo teatrale" → teatro; "degustazione", "cena", "aperitivo" → cibo; "laboratorio bambini", "family" → famiglia).
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
@@ -499,7 +551,10 @@ GESTIONE DATE:
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
 - Converti SEMPRE in formato YYYY-MM-DD
 
-CONTENUTO DA ANALIZZARE:
+INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
+${heuristicHints}
+
+CONTENUTO DA ANALIZZARE (TESTO COMPLETO TRONCATO A 12000 CARATTERI):
 ${combinedText.slice(0, 12000)}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
@@ -544,10 +599,13 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
     events = events.map(event => ({
         ...event,
         imageUrl: finalImageUrl || undefined,
-        sourceUrl: url
+        sourceUrl: ensureAbsoluteUrl(url, url) || url
     }));
 
-    // Enrichment logic
+    // Group by date: same-day "incontri" stay in one event, different days → multiple events
+    events = groupEventsByDate(events);
+
+    // Enrichment logic (step 1: riempire campi mancanti dal testo)
     for (let i = 0; i < events.length; i++) {
         const event = events[i];
         const missing = [];
@@ -574,12 +632,144 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
                 if (enrichData.location) event.location = enrichData.location;
                 if (enrichData.price) event.price = enrichData.price;
                 if (enrichData.organizer) event.organizer = enrichData.organizer;
-            } catch (e) {}
+            } catch {}
         }
     }
+
+    // Capture Groq raw (pre-verifica Google)
+    const groqRawData = JSON.parse(JSON.stringify(events));
+    let googleRawData: any = null;
+
+    // Enrichment logic (step 2: verifica Google, se configurata)
+    if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX) {
+        console.log('🌍 [processEventLink] Starting Google Search Verification...');
+
+        const verifyEvent = async (event: EventData) => {
+            try {
+                const query = `${event.title} ${event.location} ${event.date} event`;
+                const searchResults = await googleSearch(query);
+
+                if (searchResults.length === 0) {
+                    console.log('⚠️ No search results found, skipping verification for', event.title);
+                    return { verifiedEvent: event, searchResults: [] };
+                }
+
+                const verificationPrompt = `
+                Sei un esperto fact-checker di eventi.
+                
+                DATI ESTRATTI DALLA PAGINA/IMMAGINE:
+                ${JSON.stringify(event, null, 2)}
+                
+                RISULTATI RICERCA GOOGLE (FONTI ESTERNE):
+                ${JSON.stringify(searchResults, null, 2)}
+                
+                COMPITO:
+                Verifica e correggi i dati dell'evento usando le fonti esterne.
+                
+                REGOLE:
+                1. Se i risultati di ricerca confermano i dati, MANTIENILI.
+                2. Se i risultati forniscono dettagli mancanti (es. indirizzo completo, orario preciso, prezzo), AGGIUNGILI.
+                3. Se i risultati CONTRADDICONO i dati (es. data sbagliata, luogo diverso), CORREGGI i dati usando la fonte più affidabile.
+                4. Se i risultati non c'entrano nulla, MANTIENI i dati originali.
+                5. Estrai il link più pertinente all'evento (es. pagina ufficiale) e inseriscilo nel campo "sourceUrl".
+                
+                Rispondi SOLO con l'oggetto JSON corretto dell'evento (senza markdown).`;
+
+                const verificationCompletion = await groq.chat.completions.create({
+                    messages: [
+                        { role: 'system', content: 'Sei un assistente AI che verifica dati di eventi. Rispondi SEMPRE con un oggetto JSON valido.' },
+                        { role: 'user', content: verificationPrompt }
+                    ],
+                    model: 'llama-3.3-70b-versatile',
+                    response_format: { type: 'json_object' },
+                    temperature: 0.1,
+                });
+
+                const verifiedJsonStr = verificationCompletion.choices[0]?.message?.content || '';
+                const firstBrace = verifiedJsonStr.indexOf('{');
+                const lastBrace = verifiedJsonStr.lastIndexOf('}');
+
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    const verifiedEvent = JSON.parse(verifiedJsonStr.slice(firstBrace, lastBrace + 1));
+                    console.log('✨ [processEventLink] Event verified and updated:', verifiedEvent.title);
+                    return { verifiedEvent, searchResults };
+                }
+            } catch (err) {
+                console.error('❌ [processEventLink] Verification failed for event:', event.title, err);
+            }
+
+            return { verifiedEvent: event, searchResults: [] };
+        };
+
+        const verificationResults = await Promise.all(events.map(verifyEvent));
+        events = verificationResults.map(r => r.verifiedEvent);
+        googleRawData = verificationResults.map(r => ({
+            event: r.verifiedEvent.title,
+            searchResults: r.searchResults,
+            verifiedData: r.verifiedEvent,
+        }));
+        console.log('✅ [processEventLink] Google Verification Complete');
+    } else {
+        console.log('ℹ️ [processEventLink] Skipping Google Verification (keys missing)');
+    }
+
+    // Se manca la URL di origine, prova a ricavarla dai risultati Google o dall'URL di partenza
+    if (googleRawData && Array.isArray(googleRawData)) {
+        events = events.map((event, index) => {
+            const current = event.sourceUrl?.trim();
+            const isRelative = current ? !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current) : false;
+            if (current && !isRelative) {
+                return { ...event, sourceUrl: ensureAbsoluteUrl(current, url) || current };
+            }
+            const firstResult: any = googleRawData[index]?.searchResults?.[0];
+            const link = (firstResult?.link as string | undefined) || undefined;
+            // Se Google non ha dato nulla di utile, usa almeno l'URL scansionato
+            const fallbackUrl = link || url;
+            return fallbackUrl ? { ...event, sourceUrl: ensureAbsoluteUrl(fallbackUrl, url) || fallbackUrl } : event;
+        });
+    } else {
+        // Nessun dato Google: se manca sourceUrl, usa l'URL scansionato
+        events = events.map(event => {
+            const current = event.sourceUrl?.trim();
+            if (current) {
+                return { ...event, sourceUrl: ensureAbsoluteUrl(current, url) || current };
+            }
+            return url ? { ...event, sourceUrl: ensureAbsoluteUrl(url, url) || url } : event;
+        });
+    }
+
+    // Normalizza i campi mancanti: usa placeholder "non trovato" (tranne prezzo e rawText)
+    events = events.map(event => {
+        const normalized: EventData = { ...event } as EventData;
+
+        const normalize = (value: string | undefined) =>
+            value && value.trim().length > 0 ? value : 'non trovato';
+
+        normalized.title = normalize(normalized.title);
+        normalized.description = normalize(normalized.description);
+        normalized.date = normalize(normalized.date);
+        normalized.time = normalize(normalized.time);
+        normalized.location = normalize(normalized.location);
+        normalized.organizer = normalize(normalized.organizer);
+        normalized.category = normalize(normalized.category);
+
+        // Prezzo: usa il messaggio "non definito, ma speriamo gratis" se mancante
+        normalized.price = event.price && event.price.trim().length > 0
+            ? event.price
+            : 'non definito, ma speriamo gratis';
+
+        // rawText può rimanere vuoto se non disponibile
+
+        return normalized;
+    });
 
     return {
         events,
         imageUrl: finalImageUrl,
+        debug: {
+            ocrRaw: combinedText,
+            groqRaw: groqRawData,
+            googleRaw: googleRawData,
+        },
     };
 }

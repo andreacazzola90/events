@@ -1,6 +1,3 @@
-// Simple HTTP-based scraper as fallback when Chromium fails
-import { NextResponse } from 'next/server';
-
 export async function httpScraper(url: string): Promise<{ pageText: string; finalImageUrl: string | null }> {
   console.log('🌐 Using HTTP fallback scraper for:', url);
   

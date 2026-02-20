@@ -79,7 +79,7 @@ export default function EditEventPage() {
             } else {
                 setError("Evento non trovato");
             }
-        } catch (error) {
+        } catch {
             setError("Errore nel caricamento dell'evento");
         } finally {
             setLoading(false);
@@ -108,7 +108,6 @@ export default function EditEventPage() {
         if (!event) return;
         setSaving(true);
         try {
-            let imageUrl = event.imageUrl;
             // Se c'è una nuova immagine, carica con FormData
             if (newImage) {
                 const formData = new FormData();
@@ -154,7 +153,7 @@ export default function EditEventPage() {
                     setError("Errore nel salvataggio dell'evento");
                 }
             }
-        } catch (error) {
+        } catch {
             setError("Errore nel salvataggio dell'evento");
         } finally {
             setSaving(false);

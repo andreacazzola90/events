@@ -20,7 +20,7 @@ import './commands';
 // require('./commands')
 
 // Ignore uncaught exceptions from React hydration errors
-Cypress.on('uncaught:exception', (err, runnable) => {
+Cypress.on('uncaught:exception', (err) => {
   // Ignore React hydration errors and other non-critical errors
   if (
     err.message.includes('Hydration') ||

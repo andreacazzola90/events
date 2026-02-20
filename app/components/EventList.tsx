@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { EventData } from '@/types/event';
 import { generateUniqueSlug } from '../../lib/slug-utils';
 import { TransitionLink } from './TransitionLink';
-import { trackSearch, trackGTMEvent } from '../lib/gtm';
+import { trackSearch } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
 
@@ -47,8 +45,42 @@ interface Event {
     updatedAt: string;
 }
 
+// Mappa categoria → classi colore del badge (bg + shadow)
+function getCategoryBadgeClasses(rawCategory: string): string {
+    const cat = rawCategory.toLowerCase();
+
+    switch (cat) {
+        case 'musica':
+        case 'music':
+            return 'bg-blue-500/90 shadow-blue-500/40';
+        case 'nightlife':
+            return 'bg-fuchsia-500/90 shadow-fuchsia-500/40';
+        case 'cultura':
+        case 'culture':
+            return 'bg-emerald-500/90 shadow-emerald-500/40';
+        case 'cibo':
+        case 'food':
+            return 'bg-amber-500/90 shadow-amber-500/40';
+        case 'sport':
+            return 'bg-lime-500/90 shadow-lime-500/40';
+        case 'famiglia':
+        case 'family':
+            return 'bg-sky-500/90 shadow-sky-500/40';
+        case 'teatro':
+        case 'theater':
+            return 'bg-indigo-500/90 shadow-indigo-500/40';
+        case 'festa':
+        case 'party':
+            return 'bg-rose-500/90 shadow-rose-500/40';
+        case 'passeggiata':
+        case 'walk':
+            return 'bg-green-500/90 shadow-green-500/40';
+        default:
+            return 'bg-slate-500/90 shadow-slate-500/40';
+    }
+}
+
 export default function EventList() {
-    const router = useRouter();
     const [events, setEvents] = useState<Event[]>([]);
     const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
@@ -57,6 +89,8 @@ export default function EventList() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [onlyToday, setOnlyToday] = useState(false);
+    const [locationFilter, setLocationFilter] = useState('');
+    const [organizerFilter, setOrganizerFilter] = useState('');
 
     useEffect(() => {
         fetchEvents();
@@ -105,15 +139,13 @@ export default function EventList() {
 
     useEffect(() => {
         filterEvents();
-    }, [events, search, category, dateFrom, dateTo, onlyToday]);
+    }, [events, search, category, dateFrom, dateTo, onlyToday, locationFilter, organizerFilter]);
 
     const fetchEvents = async () => {
         try {
             const params = new URLSearchParams();
-            if (search) params.append('search', search);
-            if (category) params.append('category', category);
-            if (dateFrom) params.append('dateFrom', dateFrom);
-            if (dateTo) params.append('dateTo', dateTo);
+            // Prendi un set sufficientemente ampio di eventi, il filtraggio avviene lato client
+            params.append('limit', '200');
 
             console.log('[EventList] Fetching events from API...');
             const response = await fetch(`/api/events?${params.toString()}`);
@@ -161,11 +193,21 @@ export default function EventList() {
             }
         }
 
-        setFilteredEvents(filtered);
-    };
+        if (locationFilter) {
+            const needle = locationFilter.toLowerCase();
+            filtered = filtered.filter(event =>
+                (event.location || '').toLowerCase().includes(needle)
+            );
+        }
 
-    const handleFilterChange = () => {
-        fetchEvents();
+        if (organizerFilter) {
+            const needle = organizerFilter.toLowerCase();
+            filtered = filtered.filter(event =>
+                (event.organizer || '').toLowerCase().includes(needle)
+            );
+        }
+
+        setFilteredEvents(filtered);
     };
 
     const [filtersOpen, setFiltersOpen] = useState(false);
@@ -195,9 +237,9 @@ export default function EventList() {
                 <div className={`${filtersOpen ? 'block' : 'hidden'} lg:block p-6 border-t lg:border-t-0 border-white/10`}>
                     <form
                         className="flex flex-col lg:flex-row gap-4 items-center"
-                        onSubmit={e => { e.preventDefault(); handleFilterChange(); }}
+                        onSubmit={e => { e.preventDefault(); }}
                     >
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
                             <input
                                 type="text"
                                 placeholder="Search events..."
@@ -231,6 +273,20 @@ export default function EventList() {
                                 className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                                 disabled={onlyToday}
                             />
+                            <input
+                                type="text"
+                                placeholder="Filtra per luogo..."
+                                value={locationFilter}
+                                onChange={(e) => setLocationFilter(e.target.value)}
+                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
+                            />
+                            <input
+                                type="text"
+                                placeholder="Filtra per organizzatore..."
+                                value={organizerFilter}
+                                onChange={(e) => setOrganizerFilter(e.target.value)}
+                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
+                            />
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
@@ -243,12 +299,6 @@ export default function EventList() {
                                 />
                                 Today only
                             </label>
-                            <button
-                                type="submit"
-                                className="w-full sm:w-auto bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
-                            >
-                                Filter
-                            </button>
                         </div>
                     </form>
                 </div>
@@ -267,7 +317,7 @@ export default function EventList() {
                         <TransitionLink
                             key={event.id}
                             href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                            className="event-card cursor-pointer group block no-underline"
+                            className="card bg-base-100/5 border border-base-200/40 cursor-pointer group block no-underline hover:border-primary/60 hover:shadow-xl transition-all duration-300"
                         >
                             {/* Event Image */}
                             <div className="relative overflow-hidden">
@@ -283,9 +333,9 @@ export default function EventList() {
                                     </div>
                                 )}
 
-                                {/* Price Badge */}
+                                {/* Price Badge - più visibile */}
                                 {event.price && (
-                                    <div className="absolute top-3 right-3 bg-black/80 text-white px-2 py-1 rounded-lg text-sm font-semibold">
+                                    <div className="absolute top-3 right-3 rounded-full px-3 py-1 text-xs sm:text-sm font-semibold bg-pink-500/95 text-white shadow-lg shadow-pink-500/40 border border-white/40 backdrop-blur-sm">
                                         {event.price}
                                     </div>
                                 )}
@@ -322,7 +372,9 @@ export default function EventList() {
                                                 month: 'short'
                                             });
                                         })()}</span>
-                                        {event.time && <span className="text-gray-500">• {event.time}</span>}
+                                        {event.time && event.time.trim().toLowerCase() !== 'non trovato' && (
+                                            <span className="text-gray-500">• {event.time}</span>
+                                        )}
                                     </div>
 
                                     {event.location && (
@@ -340,10 +392,12 @@ export default function EventList() {
                                     )}
                                 </div>
 
-                                {/* Category Badge */}
+                                {/* Category Badge - più visibile */}
                                 {event.category && (
                                     <div className="pt-2">
-                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                                        <span
+                                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-white border border-white/30 backdrop-blur-sm shadow-md ${getCategoryBadgeClasses(event.category)}`}
+                                        >
                                             {event.category}
                                         </span>
                                     </div>

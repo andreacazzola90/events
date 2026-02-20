@@ -1,30 +1,6 @@
 
 'use client';
 
-// Helper to open Google Calendar with event data
-function openGoogleCalendar(event: EventData) {
-    // Format date: DD/MM/YYYY or YYYY-MM-DD to YYYYMMDD
-    let startDate = event.date;
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(startDate)) {
-        const [d, m, y] = startDate.split('/');
-        startDate = `${y}${m}${d}`;
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-        startDate = startDate.replace(/-/g, '');
-    }
-    // Format time: HH:MM to HHMM
-    let startTime = event.time ? event.time.replace(':', '') : '0000';
-    // Default duration: 2 hours
-    let endTime = (parseInt(startTime) + 200).toString().padStart(4, '0');
-    // If time overflows, just add 2 hours (not robust for 24h wrap)
-    const start = `${startDate}T${startTime}00`;
-    const end = `${startDate}T${endTime}00`;
-    const details = encodeURIComponent(event.description || '');
-    const location = encodeURIComponent(event.location || '');
-    const title = encodeURIComponent(event.title || 'Evento');
-    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
-    window.open(url, '_blank');
-}
-
 import { EventData } from '@/types/event';
 import { CalendarIcon, ClockIcon, MapPinIcon } from './EventIcons';
 const CategoryIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01" /></svg>;
@@ -32,7 +8,6 @@ const UserIcon = (props: any) => <svg {...props} fill="none" stroke="currentColo
 const PriceIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 8v8m0 0a4 4 0 1 1 0-8 4 4 0 1 1 0 8zm0 0h4m-4 0H8" /></svg>;
 import { STANDARD_CATEGORIES } from '../../lib/constants';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
-import { generateUniqueSlug } from '../../lib/slug-utils';
 import { useState, useEffect, useRef } from 'react';
 import SaveAnimation from './SaveAnimation';
 
@@ -43,8 +18,6 @@ interface EventDisplayProps {
 
 export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
     const [isEditing, setIsEditing] = useState(false);
-    const [copySuccess, setCopySuccess] = useState<'formatted' | 'raw' | null>(null);
-    const [showOcr, setShowOcr] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
@@ -302,7 +275,9 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                 <EditableField label="Data" field="date" />
                             </div>
                             <div className="event-field-time">
-                                <EditableField label="Ora" field="time" />
+                                {(isEditing || (eventData.time && eventData.time.trim().toLowerCase() !== 'non trovato')) && (
+                                    <EditableField label="Ora" field="time" />
+                                )}
                             </div>
                             <div className="event-field-location flex items-start space-x-4">
                                 <MapPinIcon className="location-icon w-5 h-5 text-blue-500 mt-2" />

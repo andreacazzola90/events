@@ -24,13 +24,13 @@ export default function Home() {
                         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
                             <Link
                                 href="/crea"
-                                className="inline-flex items-center gap-3 bg-linear-to-r from-pink-500 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-pink-500/25"
+                                className="btn btn-primary btn-lg inline-flex items-center gap-3 rounded-2xl font-bold text-lg"
                             >
                                 ✨ Crea Evento
                             </Link>
                             <Link
                                 href="/mappa"
-                                className="inline-flex items-center gap-3 bg-white/10 text-white px-8 py-4 rounded-2xl font-semibold text-lg border border-white/20 transition-all duration-300 hover:bg-white/20 hover:scale-105"
+                                className="btn btn-outline btn-secondary btn-lg inline-flex items-center gap-3 rounded-2xl font-semibold text-lg"
                             >
                                 🗺️ Esplora Mappa
                             </Link>

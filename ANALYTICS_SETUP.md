@@ -1,4 +1,10 @@
-# Google Analytics & Google Tag Manager Setup Guide
+# Google Analytics, Tag Manager & Search Console Setup Guide
+
+## Stato Configurazione
+
+- ✅ **Google Analytics 4**: Configurato (ID: `G-6MW2JW0PGY`)
+- ✅ **Google Tag Manager**: Configurato (ID: `GTM-MDKFZXCQ`)
+- ⚙️ **Google Search Console**: Pronto per la verifica (richiede configurazione utente)
 
 ## Configurazione Variabili d'Ambiente
 
@@ -6,8 +12,11 @@ Nel file `.env`, aggiungi le seguenti variabili:
 
 ```env
 # Google Analytics & GTM Configuration
-NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
-NEXT_PUBLIC_GTM_ID=GTM-XXXXXXXX
+NEXT_PUBLIC_GA_MEASUREMENT_ID=G-6MW2JW0PGY
+NEXT_PUBLIC_GTM_ID=GTM-MDKFZXCQ
+
+# Google Search Console Verification
+NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=your-verification-code-here
 ```
 
 ## Come ottenere i codici
@@ -26,6 +35,20 @@ NEXT_PUBLIC_GTM_ID=GTM-XXXXXXXX
 2. Crea un nuovo contenitore per il tuo sito
 3. Copia l'ID del contenitore (formato: GTM-XXXXXXXX)
 4. Inseriscilo in `NEXT_PUBLIC_GTM_ID`
+
+### Google Search Console
+
+1. Vai su [Google Search Console](https://search.google.com/search-console/)
+2. Clicca su "Aggiungi proprietà"
+3. Inserisci l'URL del tuo sito (es. `https://tuosito.com`)
+4. Scegli il metodo di verifica "Tag HTML"
+5. Copia solo il codice di verifica dalla stringa `google-site-verification=XXXXXXXXXX`
+   - **Esempio**: Se il tag è `<meta name="google-site-verification" content="abc123xyz" />`, copia solo `abc123xyz`
+6. Inseriscilo in `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` nel file `.env`
+7. Riavvia il server di sviluppo o rideploya su Vercel
+8. Torna su Google Search Console e clicca "Verifica"
+
+> **Nota**: La verifica è immediata. Una volta verificato, Google Search Console inizierà a raccogliere dati sul tuo sito (indicizzazione, performance di ricerca, errori, ecc.)
 
 ## Eventi Tracciati Automaticamente
 

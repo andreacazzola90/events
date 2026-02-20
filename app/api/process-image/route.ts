@@ -3,6 +3,9 @@ import { extractTextFromImageSimple } from '../../lib/ocr-simple';
 import { extractTextFromImage } from '../../lib/ocr';
 import Groq from 'groq-sdk';
 import { compressImage } from '../../lib/image-utils';
+import { groupEventsByDate } from '../../../lib/event-utils';
+import { buildEventExtractionHints } from '../../../lib/event-hints';
+import type { EventData } from '../../types/event';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -57,7 +60,10 @@ export async function POST(request: NextRequest) {
       throw new Error('Nessun testo leggibile trovato nell\'immagine. Assicurati che l\'immagine contenga testo chiaro e ben visibile.');
     }
 
-    // Step 2: Use Groq AI to parse the extracted text into structured event data
+    // Step 2: Build heuristic hints to aiutare Groq a riconoscere date/orari/prezzi
+    const heuristicHints = buildEventExtractionHints(rawText);
+
+    // Step 3: Use Groq AI to parse the extracted text into structured event data
     console.log('=== GROQ API CALL (IMAGE) ===');
     console.log('Environment check:');
     console.log('- GROQ_API_KEY configured:', !!process.env.GROQ_API_KEY);
@@ -161,22 +167,31 @@ ISTRUZIONI CRITICHE:
 
 REGOLE PER OGNI EVENTO:
 - TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
+  * Evita titoli generici come "Evento", "Concerto" da soli.
+  * Se nel testo vedi sia il nome del locale che dell'artista, usa come titolo la parte più specifica (di solito artista/spettacolo) e lascia il locale solo in "location".
   * Esempi CORRETTI: "Marco Carola DJ Set", "Teatro: Amleto", "Rock Night con The Beatles"
   * Esempi SBAGLIATI: "Evento 1", "Concerto", "Spettacolo"
 - DESCRIZIONE: Crea una descrizione DETTAGLIATA e UNICA (MINIMO 100 CARATTERI)
   * Includi: artisti/ospiti, genere musicale/tipo, dettagli specifici, ospiti speciali, contesto
   * Se il testo originale è breve, elabora il contesto o aggiungi dettagli generici pertinenti al tipo di evento
   * NON copiare l'intero testo grezzo
-  * Esempio: "DJ set di techno con Marco Carola. Opening: Tale of Us. Musica elettronica underground. Una serata imperdibile per gli amanti del genere..."
+  * FORMATTAZIONE: Usa più righe e, quando ci sono elenchi (programma orari, punti elenco), trasformali in lista puntata con una riga per elemento.
+    - Esempio: "- 16:00 Apertura porte", "- 17:00 Concerto principale", "- 19:00 Afterparty".
+  * Esempio: "DJ set di techno con Marco Carola.\n- Opening: Tale of Us\n- Musica elettronica underground\n- Serata imperdibile per gli amanti del genere"
 - DATA e ORARIO: SPECIFICI per ogni evento
   * CONVERTI sempre in YYYY-MM-DD e HH:MM
   * Se manca l'anno, usa ${new Date().getFullYear()}
 - LOCATION: Indirizzo completo (se uguale per tutti, ripetilo)
-- ORGANIZER: Se presente e condiviso, ripetilo
+- ORGANIZER: Identifica chi organizza l'evento.
+  * Cerca frasi come: "organizzato da", "organizzata da", "a cura di", "presentato da", "in collaborazione con", "con il patrocinio di".
+  * Fai attenzione a nomi di associazioni/enti: "Associazione ...", "ASD ...", "APS ...", "Pro Loco ...", "Comune di ...", "Cineforum Altovicentino", "Visit Schio", "Azienda ...", "Azienda Agricola ...", "Società Agricola ...", "Agriturismo ...", ecc.
+  * Se non trovi niente di esplicito, ma c'è un nome di associazione o ente vicino al titolo o in fondo al volantino, usa quello come organizer.
+  * Usa anche gli INDIZI ESTRATTI AUTOMATICAMENTE: se nella sezione "RIGHE CHE SEMBRANO ORGANIZZATORI" trovi un nome (es. "Azienda Borelle"), usalo per il campo "organizer" e NON per il campo "location", anche se contiene un toponimo.
 - CATEGORY: Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro.
   * Altrimenti usa una categoria specifica in italiano (es. "conferenza", "workshop", "mercato", "festival").
   * NON inventare categorie troppo lunghe o complesse. Usa 1-2 parole.
-- PREZZO: Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa SEMPRE il termine "Gratuito". Se c'è un prezzo, indicalo (es. "10€"). Se è a offerta, usa "Offerta Libera". Se non trovi NESSUNA informazione sul prezzo, lascia il campo VUOTO ("").
+  * Cerca parole chiave nel testo per scegliere la categoria (es. "concerto", "dj set" → musica/nightlife; "spettacolo teatrale" → teatro; "degustazione", "cena" → cibo; "laboratorio bambini" → famiglia, ecc.).
+- PREZZO: Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa SEMPRE il termine "Gratuito". Se c'è un prezzo, indicalo (es. "10€"). Se è a offerta, usa "Offerta Libera". Se non trovi NESSUNA informazione sul prezzo, usa la stringa "non definito, ma speriamo gratis".
 
 ANALISI DEL LAYOUT:
 - Eventi in lista verticale (uno sotto l'altro)
@@ -190,7 +205,10 @@ GESTIONE DATE:
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
 - Converti SEMPRE in formato YYYY-MM-DD
 
-CONTENUTO DA ANALIZZARE:
+INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
+${heuristicHints}
+
+TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
 ${rawText}
 
 Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
@@ -228,7 +246,7 @@ IMPORTANTE:
 - Se c'è UN SOLO evento, restituisci eventCount: 1 con un solo oggetto nell'array
 - Ogni evento DEVE avere titolo e descrizione UNICI e SPECIFICI
 - NON copiare l'intero rawText in ogni evento - lascia rawText vuoto
-- Se un campo non è trovato, usa "" (stringa vuota)
+- Se un campo (tranne rawText) non è trovato, usa la stringa "non trovato"
 - NON usare null o undefined
 - Estrai TUTTE le informazioni: se vedi prezzi diversi, date diverse, orari diversi, usali per gli eventi corrispondenti`
     : 
@@ -244,10 +262,16 @@ REGOLE FONDAMENTALI:
    - Formato output: "HH:MM" o "HH:MM-HH:MM" per range
 5. Il LUOGO deve includere: nome locale + via/indirizzo + città (tutto quello che trovi)
 6. La CATEGORIA: Suggerisci una di queste se appropriata: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro. Altrimenti usa una categoria specifica (es. "conferenza", "workshop").
-7. Il PREZZO: Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa SEMPRE il termine "Gratuito". Se c'è un prezzo, indicalo (es. "10€"). Se è a offerta, usa "Offerta Libera". Se non trovi NESSUNA informazione sul prezzo, lascia il campo VUOTO ("").
+7. Il PREZZO: Se l'evento è gratuito (es. "gratis", "ingresso libero"), usa SEMPRE il termine "Gratuito". Se c'è un prezzo, indicalo (es. "10€"). Se è a offerta, usa "Offerta Libera". Se non trovi NESSUNA informazione sul prezzo, usa la stringa "non definito, ma speriamo gratis".
 8. La DESCRIZIONE deve contenere tutti i dettagli rimanenti: artisti, lineup, informazioni aggiuntive.
-   - DEVE ESSERE LUNGA ALMENO 100 CARATTERI.
-   - Se il testo è breve, elabora il contesto, descrivi il tipo di evento o aggiungi dettagli pertinenti.
+  - DEVE ESSERE LUNGA ALMENO 100 CARATTERI.
+  - Se il testo è breve, elabora il contesto, descrivi il tipo di evento o aggiungi dettagli pertinenti.
+  - FORMATTAZIONE: se nel testo ci sono elenchi (es. programma con orari, punti elenco, voci separate da ritorni a capo), trasformali in una lista puntata su più righe nel campo "description", ad esempio:
+    "Programma:\n- 16:00 Apertura porte\n- 17:00 Concerto principale\n- 19:00 Afterparty".
+9. L'ORGANIZZATORE (organizer):
+  - Cerca frasi come: "organizzato da", "organizzata da", "a cura di", "presentato da", "in collaborazione con", "con il patrocinio di".
+  - Fai attenzione a nomi di associazioni/enti: "Associazione ...", "ASD ...", "APS ...", "Pro Loco ...", "Comune di ...", "Cineforum Altovicentino", "Visit Schio", "Azienda ...", "Azienda Agricola ...", "Società Agricola ...", "Agriturismo ...", ecc.
+  - Usa anche gli INDIZI ESTRATTI AUTOMATICAMENTE: se nella sezione "RIGHE CHE SEMBRANO ORGANIZZATORI" trovi un nome (es. "Azienda Borelle"), mettilo in "organizer" e NON in "location", anche se compare insieme a un indirizzo.
 
 ANALISI SEMANTICA:
 - Identifica il contesto (è un concerto? una mostra? una conferenza?)
@@ -260,7 +284,10 @@ GESTIONE DATE:
 - Se vedi "domani", "questo sabato", "prossimo weekend", calcolale rispetto a questa data
 - Converti SEMPRE in formato YYYY-MM-DD
 
-CONTENUTO DA ANALIZZARE:
+INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
+${heuristicHints}
+
+TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
 ${rawText}
 
 Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
@@ -278,7 +305,7 @@ Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
 }
 
 IMPORTANTE: 
-- Se un campo non è trovato nel testo, usa "" (stringa vuota)
+- Se un campo (tranne rawText) non è trovato nel testo, usa la stringa "non trovato"
 - NON usare null o undefined
 - Il campo rawText deve essere sempre presente`;
 
@@ -320,12 +347,12 @@ REGOLE:
     const groqDuration = Date.now() - groqStartTime;
     console.log(`Groq API responded in ${groqDuration}ms`);
 
-    const responseText = completion.choices[0]?.message?.content || '';
+      const responseText = completion.choices[0]?.message?.content || '';
     console.log('=== GROQ RESPONSE ===');
     console.log('Response length:', responseText.length);
 
     // Parse JSON from response - cerca anche array JSON
-    let eventData = null;
+    let eventData: EventData | { events: EventData[] } | null = null;
     let first = responseText.indexOf('{');
     let last = responseText.lastIndexOf('}');
     
@@ -348,25 +375,28 @@ REGOLE:
       const parsedData = JSON.parse(jsonStr);
       console.log('📦 Parsed data structure:', JSON.stringify(parsedData, null, 2));
       
-      // Gestisci sia evento singolo che eventi multipli
+      // Normalizza sempre in array di eventi
+      let eventsArray: EventData[] = [];
       if (parsedData.events && Array.isArray(parsedData.events)) {
-        // Eventi multipli
-        console.log(`✅ Estratti ${parsedData.eventCount} eventi`);
-        console.log('Eventi estratti:', parsedData.events.map((e: { title: string }) => e.title));
-        
-        // Se c'è un solo evento, ritorna come oggetto singolo
-        // Se ci sono più eventi, ritorna con formato {events: [...]}
-        if (parsedData.events.length === 1) {
-          eventData = parsedData.events[0];
-          console.log('📤 Returning single event from array');
-        } else {
-          eventData = { events: parsedData.events };
-          console.log(`📤 Returning ${parsedData.events.length} events as array`);
-        }
+        eventsArray = parsedData.events as EventData[];
       } else {
-        // Evento singolo (formato vecchio)
-        eventData = parsedData;
-        console.log('✅ Dati evento singolo estratti con successo');
+        eventsArray = [parsedData as EventData];
+      }
+
+      // Raggruppa per data: più incontri nello stesso giorno → unico evento
+      const grouped = groupEventsByDate(eventsArray);
+      console.log('📊 Grouping by date completed:', {
+        originalCount: eventsArray.length,
+        groupedCount: grouped.length,
+      });
+
+      // Riconverti in struttura eventData (singolo o array)
+      if (grouped.length === 1) {
+        eventData = grouped[0];
+        console.log('📤 Returning single grouped event');
+      } else {
+        eventData = { events: grouped };
+        console.log(`📤 Returning ${grouped.length} grouped events as array`);
       }
       
     // ... (previous code)
@@ -452,18 +482,18 @@ REGOLE:
         };
 
         // Verify all events
-        if (eventData.events && Array.isArray(eventData.events)) {
+        if (eventData && 'events' in eventData && Array.isArray(eventData.events)) {
           console.log(`🔍 Verifying ${eventData.events.length} events...`);
           const verificationResults = await Promise.all(eventData.events.map(verifyEvent));
-          eventData.events = verificationResults.map(r => r.verifiedEvent);
-          googleRawData = verificationResults.map(r => ({
+          eventData.events = verificationResults.map((r: { verifiedEvent: EventData; searchResults: unknown[] }) => r.verifiedEvent);
+          googleRawData = verificationResults.map((r: { verifiedEvent: EventData; searchResults: unknown[] }) => ({
             event: r.verifiedEvent.title,
             searchResults: r.searchResults,
             verifiedData: r.verifiedEvent
           }));
-        } else {
+        } else if (eventData) {
           console.log('🔍 Verifying single event...');
-          const result = await verifyEvent(eventData);
+          const result = await verifyEvent(eventData as EventData);
           eventData = result.verifiedEvent;
           googleRawData = {
             searchResults: result.searchResults,
@@ -476,9 +506,151 @@ REGOLE:
         console.log('ℹ️ Skipping Google Verification (Keys missing)');
       }
 
+      // Normalizza eventi finali
+      let finalEvents: EventData[] = [];
+      if (eventData && 'events' in eventData && Array.isArray(eventData.events)) {
+        finalEvents = eventData.events as EventData[];
+      } else if (eventData) {
+        finalEvents = [eventData as EventData];
+      }
+
+      // Utility per normalizzare URL in forma assoluta quando possibile
+      const normalizeUrl = (value?: string): string | undefined => {
+        if (!value) return value;
+        const trimmed = value.trim();
+        if (!trimmed) return undefined;
+
+        // Evita di toccare path puramente relativi (es. "/evento/123")
+        if (trimmed.startsWith('/') && !/^\/\//.test(trimmed)) {
+          return trimmed;
+        }
+
+        const forceHttpsWww = (input: string): string => {
+          try {
+            // Aggiungi protocollo di default se manca
+            let urlStr = input;
+            if (/^\/\//.test(urlStr)) {
+              urlStr = `https:${urlStr}`;
+            } else if (!/^https?:\/\//i.test(urlStr)) {
+              urlStr = `https://${urlStr}`;
+            }
+
+            const u = new URL(urlStr);
+            u.protocol = 'https:';
+            if (!u.hostname.toLowerCase().startsWith('www.')) {
+              u.hostname = `www.${u.hostname}`;
+            }
+            return u.toString();
+          } catch {
+            // Fallback molto semplice se non è parsabile ma contiene un dominio
+            if (/[a-z0-9-]+\.[a-z]{2,}/i.test(input)) {
+              const cleaned = input.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+              return `https://www.${cleaned}`;
+            }
+            return input;
+          }
+        };
+
+        // Già assoluto o dominio: forziamo https://www.
+        if (/^https?:\/\//i.test(trimmed) || /^\/\//.test(trimmed) || /^www\./i.test(trimmed) || /[a-z0-9-]+\.[a-z]{2,}/i.test(trimmed)) {
+          return forceHttpsWww(trimmed);
+        }
+
+        return trimmed;
+      };
+
+      // Se manca la URL di origine (o è chiaramente relativa), prova a ricavarla dai risultati Google
+      if (googleRawData) {
+        if (Array.isArray(googleRawData)) {
+          finalEvents = finalEvents.map((event, index) => {
+            const current = event.sourceUrl?.trim();
+            const isRelative = current ? !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current) : false;
+            if (current && !isRelative) return { ...event, sourceUrl: normalizeUrl(current) };
+            const firstResult: any = googleRawData[index]?.searchResults?.[0];
+            const link = firstResult?.link as string | undefined;
+            return link ? { ...event, sourceUrl: normalizeUrl(link) } : event;
+          });
+        } else if (googleRawData.searchResults) {
+          const firstResult: any = googleRawData.searchResults[0];
+          const link = firstResult?.link as string | undefined;
+          const current = finalEvents[0]?.sourceUrl?.trim();
+          const isRelative = current ? !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current) : false;
+          if (link && finalEvents[0] && (!current || isRelative)) {
+            finalEvents[0] = { ...finalEvents[0], sourceUrl: normalizeUrl(link) };
+          } else if (current) {
+            finalEvents[0] = { ...finalEvents[0], sourceUrl: normalizeUrl(current) };
+          }
+        }
+      }
+
+      // Fallback aggiuntivo: se dopo la verifica Google alcuni eventi non hanno ancora un URL affidabile,
+      // prova una nuova ricerca usando il testo del JSON (titolo/organizzatore/luogo/descrizione)
+      if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX) {
+        const eventsNeedingUrl = finalEvents.filter(event => {
+          const current = event.sourceUrl?.trim();
+          if (!current) return true;
+          const isRelative = !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current);
+          return isRelative;
+        });
+
+        if (eventsNeedingUrl.length > 0) {
+          console.log('🌍 Additional URL search for events without sourceUrl...');
+          const { googleSearch: secondaryGoogleSearch } = await import('../../../lib/google-search');
+
+          for (const event of eventsNeedingUrl) {
+            try {
+              const descSnippet = (event.description || '').replace(/\s+/g, ' ').slice(0, 160);
+              const parts = [event.title, event.organizer, event.location, descSnippet].filter(Boolean) as string[];
+              const query = parts.join(' ');
+              if (!query || query.trim().length < 5) continue;
+
+              const results = await secondaryGoogleSearch(query);
+              if (results.length > 0) {
+                // Scegli il risultato più probabile (al momento il primo è sufficiente)
+                const best = results[0];
+                event.sourceUrl = normalizeUrl(best.link) || event.sourceUrl;
+                console.log('🔗 Added sourceUrl from secondary search for event:', event.title, '→', best.link);
+              }
+            } catch (e) {
+              console.warn('⚠️ Secondary URL search failed for event:', event.title, e);
+            }
+          }
+        }
+      }
+
+      // Normalizza i campi mancanti: usa placeholder "non trovato" (tranne prezzo e rawText)
+      finalEvents = finalEvents.map(event => {
+        const normalized: EventData = { ...event } as EventData;
+
+        const normalize = (value: string | undefined) =>
+          value && value.trim().length > 0 ? value : 'non trovato';
+
+        normalized.title = normalize(normalized.title);
+        normalized.description = normalize(normalized.description);
+        normalized.date = normalize(normalized.date);
+        normalized.time = normalize(normalized.time);
+        normalized.location = normalize(normalized.location);
+        normalized.organizer = normalize(normalized.organizer);
+        normalized.category = normalize(normalized.category);
+
+        // Normalizza URL (se presente) in forma assoluta quando possibile
+        if (normalized.sourceUrl) {
+          normalized.sourceUrl = normalizeUrl(normalized.sourceUrl) || normalized.sourceUrl;
+        }
+
+        // Prezzo: usa il messaggio "non definito, ma speriamo gratis" se mancante
+        normalized.price = event.price && event.price.trim().length > 0
+          ? event.price
+          : 'non definito, ma speriamo gratis';
+
+        // rawText può rimanere vuoto se non disponibile
+
+        return normalized;
+      });
+
       // Construct final response with debug info
       const response = {
-        events: eventData.events || [eventData],
+        events: finalEvents,
         debug: {
           ocrRaw: rawText,
           groqRaw: groqRawData,

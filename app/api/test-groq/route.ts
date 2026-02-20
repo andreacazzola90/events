@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
 /**
  * Endpoint di test per verificare che Groq funzioni su Vercel
  * Accedi a: https://tuo-dominio.vercel.app/api/test-groq
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     console.log('=== TEST GROQ API ===');
     console.log('Environment:', process.env.VERCEL ? 'Vercel' : 'Local');

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import * as Sentry from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer", "tesseract.js", "sharp"],
@@ -8,4 +9,6 @@ const nextConfig: NextConfig = {
   }),
 };
 
-export default nextConfig;
+export default Sentry.withSentryConfig(nextConfig, {
+  silent: true,
+});

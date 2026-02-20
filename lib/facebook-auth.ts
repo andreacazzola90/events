@@ -231,7 +231,7 @@ export class FacebookAuth {
             await new Promise(resolve => setTimeout(resolve, 1000));
             break;
           }
-        } catch (e) {
+        } catch {
           // Continue trying other selectors
         }
       }
@@ -257,7 +257,7 @@ export class FacebookAuth {
             await new Promise(resolve => setTimeout(resolve, 1000));
             break;
           }
-        } catch (e) {
+        } catch {
           // Continue trying other selectors
         }
       }
@@ -281,7 +281,7 @@ export class FacebookAuth {
             await new Promise(resolve => setTimeout(resolve, 1000));
             break;
           }
-        } catch (e) {
+        } catch {
           // Continue trying other selectors
         }
       }
@@ -318,7 +318,7 @@ export class FacebookAuth {
       console.log('🔄 Checking for additional network activity...');
       try {
         await page.waitForLoadState?.('networkidle', { timeout: 10000 });
-      } catch (e) {
+      } catch {
         // waitForLoadState might not exist in puppeteer, that's ok
       }
       

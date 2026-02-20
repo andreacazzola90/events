@@ -1,7 +1,5 @@
 "use client";
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import UserMenu from './UserMenu';
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { TransitionLink } from './TransitionLink';
@@ -70,7 +68,7 @@ export default function Header() {
                     <div className="hidden md:block">
                         <TransitionLink
                             href="/crea"
-                            className="inline-flex items-center gap-2 bg-linear-to-r from-pink-500 to-purple-600 text-white px-6 py-2 rounded-full font-semibold text-sm transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
+                            className="btn btn-primary btn-sm rounded-full inline-flex items-center gap-2 font-semibold text-sm"
                         >
                             ✨ Crea Evento
                         </TransitionLink>
@@ -93,7 +91,7 @@ export default function Header() {
 
             {/* Mobile Menu - Full Screen Solid Overlay */}
             {mobileOpen && (
-                <div className="md:hidden fixed inset-0 z-[100] bg-black flex flex-col animate-fade-in-simple">
+                <div className="md:hidden fixed inset-0 z-100 bg-black flex flex-col animate-fade-in-simple">
                     {/* Mobile Menu Header (to keep the logo and close button visible) */}
                     <div className="h-16 px-6 flex items-center justify-between border-b border-white/5">
                         <div className="flex items-center gap-3">
@@ -138,7 +136,7 @@ export default function Header() {
                         {/* Mobile CTA */}
                         <TransitionLink
                             href="/crea"
-                            className="flex items-center justify-center gap-3 bg-linear-to-r from-pink-500 to-purple-600 text-white px-8 py-6 rounded-2xl font-black text-2xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] mt-8"
+                            className="btn btn-primary btn-lg flex items-center justify-center gap-3 rounded-2xl font-black text-2xl mt-8"
                             onClick={() => setMobileOpen(false)}
                         >
                             ✨ Crea Evento

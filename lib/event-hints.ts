@@ -1,5 +1,3 @@
-import type { EventData } from '@/types/event';
-
 function collectMatches(text: string, regexes: RegExp[], max = 10): string[] {
   const found = new Set<string>();
   for (const base of regexes) {

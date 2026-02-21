@@ -10,7 +10,7 @@ export default function AuthPage() {
 
     useEffect(() => {
         if (session) {
-            router.replace('/account');
+            router.replace('/me');
         }
     }, [session, router]);
 
@@ -86,7 +86,7 @@ function LoginForm() {
                 setError('Email o password non corretti');
             } else if (result?.ok) {
                 // Login riuscito, reindirizza e ricarica la sessione
-                router.push('/account');
+                router.push('/me');
                 router.refresh();
             }
         } catch {

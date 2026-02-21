@@ -3,6 +3,7 @@ import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons
 import { extractIdFromSlug, generateUniqueSlug } from '../../../lib/slug-utils';
 import { TransitionLink } from '../../components/TransitionLink';
 import { prisma } from '../../lib/prisma';
+import FavoriteButton from '../../components/FavoriteButton';
 import { notFound } from 'next/navigation';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
@@ -95,6 +96,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         <div className="lg:w-1/4 event-image-sticky">
                             {event.imageUrl && (
                                 <div className="relative group event-image-container">
+                                    <FavoriteButton eventId={event.id} />
                                     <Image
                                         src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
                                         alt={event.title}

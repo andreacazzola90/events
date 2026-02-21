@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { uploadImageToSupabase } from '../../lib/supabase';
 import { geocodeLocation } from '@/lib/geocoding';
 import { revalidatePath, unstable_cache } from 'next/cache';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,6 +54,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });
     }
 
+    // Recupera la sessione per collegare l'evento all'utente loggato (se presente)
+    const session: any = await getServerSession(authOptions as any);
+
     // Ensure all fields are present with proper defaults
     const eventDataToSave: any = {
       title: eventData.title || '',
@@ -67,6 +72,14 @@ export async function POST(request: NextRequest) {
       sourceUrl: eventData.sourceUrl || null,
       origin: 'user',
     };
+
+    // Collega l'evento all'utente autenticato, se disponibile
+    if (session?.user?.id) {
+      const userId = parseInt((session.user as any).id as string, 10);
+      if (!Number.isNaN(userId)) {
+        eventDataToSave.createdById = userId;
+      }
+    }
 
     // Geocode location once at creation time to store coordinates
     if (eventDataToSave.location) {
@@ -118,6 +131,7 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 20;
+    const userIdParam = searchParams.get('userId');
 
     const where: any = {};
 
@@ -136,6 +150,13 @@ export async function GET(request: NextRequest) {
       where.date = {};
       if (dateFrom) where.date.gte = dateFrom;
       if (dateTo) where.date.lte = dateTo;
+    }
+
+    if (userIdParam) {
+      const parsed = parseInt(userIdParam, 10);
+      if (!Number.isNaN(parsed)) {
+        where.createdById = parsed;
+      }
     }
 
     // Use unstable_cache to cache the database query
@@ -186,7 +207,7 @@ export async function GET(request: NextRequest) {
                   data: {
                     latitude: coords.latitude,
                     longitude: coords.longitude,
-                  },
+                  } as any,
                 });
               }
             } catch (geoError) {

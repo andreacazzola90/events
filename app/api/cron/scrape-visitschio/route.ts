@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
                                 sourceUrl: url,
                                 externalId: getExternalIdFromUrl(url),
                                 origin: 'visitschio',
-                            }
+                            } as any,
                         });
                         processedEvents.push(savedEvent.id);
                         console.log(`Saved event: ${savedEvent.title} (ID: ${savedEvent.id})`);

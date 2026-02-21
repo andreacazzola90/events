@@ -21,6 +21,7 @@ export default function AccountPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
     const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
+    const [favoriteEvents, setFavoriteEvents] = useState<UserEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -37,10 +38,20 @@ export default function AccountPage() {
 
     const fetchUserEvents = async () => {
         try {
-            const response = await fetch('/api/events?userId=' + (session?.user as any)?.id);
-            if (response.ok) {
-                const data = await response.json();
+            const userId = (session?.user as any)?.id;
+            const [eventsRes, favoritesRes] = await Promise.all([
+                fetch('/api/events?userId=' + userId),
+                fetch('/api/favorites'),
+            ]);
+
+            if (eventsRes.ok) {
+                const data = await eventsRes.json();
                 setUserEvents(data);
+            }
+
+            if (favoritesRes.ok) {
+                const favData = await favoritesRes.json();
+                setFavoriteEvents(favData);
             }
         } catch (error) {
             console.error('Error fetching user events:', error);
@@ -213,6 +224,76 @@ export default function AccountPage() {
                                         >
                                             ✏️ Edit Event
                                         </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Favorite Events Section */}
+                <div className="glass-effect rounded-2xl p-8">
+                    <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span className="text-2xl">❤️</span>
+                        Favorite Events
+                    </h2>
+                    {favoriteEvents.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">
+                            Nessun evento tra i preferiti al momento.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {favoriteEvents.map((event) => (
+                                <div
+                                    key={event.id}
+                                    className="card bg-base-100/5 border border-base-200/40 cursor-pointer group hover:border-pink-500/60 hover:shadow-xl transition-all duration-300"
+                                    onClick={() => router.push(`/events/${generateUniqueSlug(event.title, event.id)}`)}
+                                >
+                                    <div className="relative overflow-hidden">
+                                        {event.imageUrl ? (
+                                            <Image
+                                                src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
+                                                alt={event.title}
+                                                width={600}
+                                                height={400}
+                                                className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
+                                                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-40 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
+                                                <div className="text-4xl opacity-50">🎵</div>
+                                            </div>
+                                        )}
+
+                                        <div className="badge badge-error absolute top-3 right-3 text-xs font-semibold">
+                                            FAV
+                                        </div>
+                                    </div>
+
+                                    <div className="p-5 space-y-3">
+                                        <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
+                                            {event.title}
+                                        </h3>
+                                        <p className="text-gray-400 text-sm line-clamp-2">
+                                            {event.description}
+                                        </p>
+
+                                        <div className="space-y-1 text-sm text-gray-300">
+                                            <div className="flex items-center gap-2">
+                                                <span>📅</span>
+                                                <span>{event.date} • {event.time}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 line-clamp-1">
+                                                <span>📍</span>
+                                                <span className="truncate">{event.location}</span>
+                                            </div>
+                                            {event.category && (
+                                                <div className="flex items-center gap-2">
+                                                    <span>🏷️</span>
+                                                    <span>{event.category}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))}

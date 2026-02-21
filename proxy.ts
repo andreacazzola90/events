@@ -14,6 +14,7 @@ export default withAuth({
 export const config = {
   matcher: [
     '/api/favorites/:path*',  // API to manage favorites (requires login)
-    '/profile/:path*',        // User profile (requires login)
+    '/account/:path*',        // User profile (requires login)
+    '/me/:path*',             // Alias profile route (requires login)
   ],
 };

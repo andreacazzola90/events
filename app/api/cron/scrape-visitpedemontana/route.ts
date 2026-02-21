@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
                 sourceUrl: url,
                 externalId: getExternalIdFromUrl(url),
                 origin: 'visitpedemontana',
-              },
+              } as any,
             });
 
             processedEvents.push(savedEvent.id);

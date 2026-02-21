@@ -7,6 +7,7 @@ import { TransitionLink } from './TransitionLink';
 import { trackSearch } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
+import FavoriteButton from './FavoriteButton';
 
 // Funzione per pulire il testo da caratteri strani
 function cleanText(text: string): string {
@@ -92,9 +93,24 @@ export default function EventList() {
     const [onlyToday, setOnlyToday] = useState(false);
     const [locationFilter, setLocationFilter] = useState('');
     const [organizerFilter, setOrganizerFilter] = useState('');
+    const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
 
     useEffect(() => {
         fetchEvents();
+
+        // Carica i preferiti iniziali per l'utente loggato (se presente)
+        const fetchFavorites = async () => {
+            try {
+                const res = await fetch('/api/favorites', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data: { id: number }[] = await res.json();
+                setFavoriteIds(new Set(data.map(e => e.id)));
+            } catch {
+                // Ignora errori: per utenti non loggati / problemi di rete
+            }
+        };
+
+        fetchFavorites();
 
         // Re-fetch when page becomes visible (after navigation)
         const handleVisibilityChange = () => {
@@ -213,6 +229,18 @@ export default function EventList() {
 
     const [filtersOpen, setFiltersOpen] = useState(false);
 
+    const handleFavoriteToggleLocal = (eventId: number, newValue: boolean) => {
+        setFavoriteIds(prev => {
+            const next = new Set(prev);
+            if (newValue) {
+                next.add(eventId);
+            } else {
+                next.delete(eventId);
+            }
+            return next;
+        });
+    };
+
     if (loading) {
         return <div className="text-center py-8">Caricamento eventi...</div>;
     }
@@ -322,6 +350,11 @@ export default function EventList() {
                         >
                             {/* Event Image */}
                             <div className="relative overflow-hidden">
+                                <FavoriteButton
+                                    eventId={event.id}
+                                    initialIsFavorite={favoriteIds.has(event.id)}
+                                    onToggle={(newValue) => handleFavoriteToggleLocal(event.id, newValue)}
+                                />
                                 {event.imageUrl ? (
                                     <Image
                                         src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}

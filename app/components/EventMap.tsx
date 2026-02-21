@@ -18,6 +18,8 @@ interface EventData {
     date: string;
     time: string;
     location: string;
+    latitude?: number | null;
+    longitude?: number | null;
     organizer: string;
     category: string;
     price: string;
@@ -101,18 +103,6 @@ export default function EventMap() {
         };
     }, []);
 
-    // Utility: verifica se la stringa sembra un indirizzo
-    const isLikelyAddress = (location: string) => {
-        if (!location || location.trim().length === 0) return false;
-
-        // Più permissivo: accetta anche nomi di luoghi senza numeri
-        // Esempi: "Teatro Comunale", "Piazza Duomo", "Milano"
-        const hasLetters = /[a-zA-Z]{3,}/.test(location);
-
-        // Accetta se ha almeno 3 lettere (nome di luogo)
-        return hasLetters;
-    };
-
     const fetchEventsWithCoordinates = async () => {
         try {
             setLoading(true);
@@ -129,25 +119,12 @@ export default function EventMap() {
             const eventsData = await response.json();
             console.log('[EventMap] Fetched events from API:', eventsData.length);
             console.log('[EventMap] Event locations:', eventsData.map((e: EventData) => ({ title: e.title, location: e.location })));
-
-            // Geocode each event location
-            const eventsWithCoords = await Promise.all(
-                eventsData.map(async (event: EventData) => {
-                    if (!isLikelyAddress(event.location)) {
-                        // Non tentare la geocodifica, ignora
-                        console.log('[EventMap] ❌ Skipping geocoding for:', event.title, '- Invalid location:', event.location);
-                        return { ...event };
-                    }
-                    console.log('[EventMap] 🔍 Attempting geocoding for:', event.title, '- Location:', event.location);
-                    const coords = await geocodeLocation(event.location);
-                    if (coords.lat && coords.lng) {
-                        console.log('[EventMap] ✅ Geocoded:', event.title, '- Coords:', coords);
-                    } else {
-                        console.log('[EventMap] ⚠️ Geocoding failed for:', event.title, '- Location:', event.location);
-                    }
-                    return { ...event, ...coords };
-                })
-            );
+            // Use precomputed coordinates stored in the database
+            const eventsWithCoords: EventWithCoordinates[] = eventsData.map((event: EventData) => {
+                const lat = event.latitude ?? (event as any).lat ?? undefined;
+                const lng = event.longitude ?? (event as any).lng ?? undefined;
+                return { ...event, lat, lng };
+            });
 
             const validEvents = eventsWithCoords.filter(e => e.lat && e.lng);
             console.log('[EventMap] Events with valid coordinates:', validEvents.length, '/', eventsData.length);

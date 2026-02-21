@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { processEventLink } from '../../../../lib/event-processor';
 import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
 import { revalidatePath } from 'next/cache';
+import { geocodeLocation } from '@/lib/geocoding';
 
 export const maxDuration = 300; // 5 minutes for the cron job
 
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
             },
             select: { sourceUrl: true }
         });
-        const existingUrls = new Set(existingEvents.map(e => e.sourceUrl));
+        const existingUrls = new Set(existingEvents.map((e: { sourceUrl: string | null }) => e.sourceUrl));
         const newEventLinks = eventLinks.filter(url => !existingUrls.has(url));
 
         console.log(`${newEventLinks.length} new events to process.`);
@@ -83,6 +84,15 @@ export async function GET(request: NextRequest) {
                 
                 if (result.events && result.events.length > 0) {
                     for (const eventData of result.events) {
+                        // Optional server-side geocoding at import time
+                        let latitude: number | null = null;
+                        let longitude: number | null = null;
+                        if (eventData.location) {
+                            const coords = await geocodeLocation(eventData.location);
+                            latitude = coords.latitude;
+                            longitude = coords.longitude;
+                        }
+
                         // Save to database
                         const savedEvent = await prisma.event.create({
                             data: {
@@ -91,6 +101,8 @@ export async function GET(request: NextRequest) {
                                 date: eventData.date || '',
                                 time: eventData.time || '',
                                 location: eventData.location || '',
+                                latitude,
+                                longitude,
                                 organizer: eventData.organizer || '',
                                 category: (eventData.category || 'other').toLowerCase().trim(),
                                 price: eventData.price || '',

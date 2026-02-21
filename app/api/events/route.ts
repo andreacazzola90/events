@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uploadImageToSupabase } from '../../lib/supabase';
+import { geocodeLocation } from '@/lib/geocoding';
 import { revalidatePath, unstable_cache } from 'next/cache';
 
 export async function POST(request: NextRequest) {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Ensure all fields are present with proper defaults
-    const eventDataToSave = {
+    const eventDataToSave: any = {
       title: eventData.title || '',
       description: eventData.description || '',
       date: eventData.date || '',
@@ -66,6 +67,18 @@ export async function POST(request: NextRequest) {
       sourceUrl: eventData.sourceUrl || null,
       origin: 'user',
     };
+
+    // Geocode location once at creation time to store coordinates
+    if (eventDataToSave.location) {
+      try {
+        const coords = await geocodeLocation(eventDataToSave.location);
+        eventDataToSave.latitude = coords.latitude;
+        eventDataToSave.longitude = coords.longitude;
+        console.log('[API /events POST] Geocoded location to coordinates:', coords);
+      } catch (geoError) {
+        console.warn('[API /events POST] Failed to geocode location, continuing without coordinates:', geoError);
+      }
+    }
 
     console.log('[API /events POST] Saving event with data:', JSON.stringify(eventDataToSave, null, 2));
 
@@ -148,7 +161,44 @@ export async function GET(request: NextRequest) {
     // But to be safe and explicit with tags, we use the tag 'events-list'.
     
     const events = await getCachedEvents(where, limit);
-    
+
+    // Backfill coordinates for events that still don't have them
+    try {
+      const eventsNeedingCoords = events.filter((event: any) =>
+        event.location && (event.latitude == null || event.longitude == null)
+      );
+
+      if (eventsNeedingCoords.length > 0) {
+        console.log('[API /events GET] Backfilling coordinates for events:', eventsNeedingCoords.map((e: any) => ({ id: e.id, title: e.title, location: e.location })));
+
+        await Promise.allSettled(
+          eventsNeedingCoords.map(async (event: any) => {
+            try {
+              const coords = await geocodeLocation(event.location);
+              if (coords.latitude != null && coords.longitude != null) {
+                // Update in memory so this response already includes coordinates
+                event.latitude = coords.latitude;
+                event.longitude = coords.longitude;
+
+                // Persist to database for future requests
+                await prisma.event.update({
+                  where: { id: event.id },
+                  data: {
+                    latitude: coords.latitude,
+                    longitude: coords.longitude,
+                  },
+                });
+              }
+            } catch (geoError) {
+              console.warn('[API /events GET] Failed to backfill coordinates for event', event.id, geoError);
+            }
+          })
+        );
+      }
+    } catch (backfillError) {
+      console.warn('[API /events GET] Coordinate backfill failed, continuing without it:', backfillError);
+    }
+
     return NextResponse.json(events, {
       headers: {
         'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30', // Cache for 60s, allow stale for 30s

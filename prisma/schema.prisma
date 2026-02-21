@@ -14,6 +14,8 @@ model Event {
   date        String
   time        String
   location    String
+  latitude    Float?
+  longitude   Float?
   organizer   String
   category    String     @default("other")
   price       String

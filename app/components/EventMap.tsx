@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import Image from 'next/image';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -381,10 +382,13 @@ export default function EventMap() {
                                 <Popup maxWidth={300}>
                                     <div className="p-2">
                                         {event.imageUrl && (
-                                            <img
+                                            <Image
                                                 src={event.imageUrl}
                                                 alt={event.title}
+                                                width={400}
+                                                height={300}
                                                 className="w-full h-48 object-cover rounded mb-2"
+                                                sizes="(min-width: 1024px) 25vw, 50vw"
                                             />
                                         )}
                                         <h3 className="font-bold text-lg mb-1">{event.title}</h3>
@@ -504,10 +508,13 @@ export default function EventMap() {
                             <div className="flex gap-4">
                                 {event.imageUrl ? (
                                     <div className="relative shrink-0">
-                                        <img
+                                        <Image
                                             src={event.imageUrl}
-                                            alt=""
+                                            alt={event.title}
+                                            width={80}
+                                            height={80}
                                             className="w-20 h-20 rounded-2xl object-cover shadow-lg group-hover:scale-105 transition-transform duration-500"
+                                            sizes="80px"
                                         />
                                     </div>
                                 ) : (

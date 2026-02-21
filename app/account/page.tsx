@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -156,10 +157,13 @@ export default function AccountPage() {
                                     {/* Event Image */}
                                     <div className="relative overflow-hidden">
                                         {event.imageUrl ? (
-                                            <img
+                                            <Image
                                                 src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
                                                 alt={event.title}
+                                                width={600}
+                                                height={400}
                                                 className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
+                                                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                                             />
                                         ) : (
                                             <div className="w-full h-40 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">

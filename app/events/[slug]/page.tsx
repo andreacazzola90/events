@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons';
 import { extractIdFromSlug, generateUniqueSlug } from '../../../lib/slug-utils';
 import { TransitionLink } from '../../components/TransitionLink';
@@ -94,10 +95,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         <div className="lg:w-1/4 event-image-sticky">
                             {event.imageUrl && (
                                 <div className="relative group event-image-container">
-                                    <img
+                                    <Image
                                         src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
                                         alt={event.title}
+                                        width={800}
+                                        height={600}
                                         className="w-full h-64 sm:h-80 lg:h-[400px] xl:h-[450px] object-cover transition-all duration-700"
+                                        sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 100vw"
                                     />
                                     {/* Gradient Overlay */}
                                     <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -183,10 +187,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         className="glass-effect p-6 rounded-xl cursor-pointer hover:shadow-glow hover:scale-105 transition-all duration-300 border border-white/10 hover:border-primary/50 group block"
                                     >
                                         {sameDayEvent.imageUrl && (
-                                            <img
+                                            <Image
                                                 src={sameDayEvent.imageUrl.startsWith('/uploads/') ? sameDayEvent.imageUrl : sameDayEvent.imageUrl}
                                                 alt={sameDayEvent.title}
+                                                width={400}
+                                                height={300}
                                                 className="w-full h-48 object-cover rounded-lg mb-3"
+                                                sizes="(min-width: 1024px) 33vw, 50vw"
                                             />
                                         )}
                                         <h3 className="font-bold text-xl mb-2 text-white group-hover:text-primary transition-colors truncate">{sameDayEvent.title}</h3>
@@ -213,10 +220,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         className="glass-effect p-4 rounded-lg cursor-pointer hover:shadow-glow hover:scale-105 transition-all duration-300 border border-white/10 hover:border-primary/50 group block"
                                     >
                                         {similarEvent.imageUrl && (
-                                            <img
+                                            <Image
                                                 src={similarEvent.imageUrl.startsWith('/uploads/') ? similarEvent.imageUrl : similarEvent.imageUrl}
                                                 alt={similarEvent.title}
+                                                width={400}
+                                                height={300}
                                                 className="w-full h-48 object-cover rounded mb-2"
+                                                sizes="(min-width: 1024px) 33vw, 50vw"
                                             />
                                         )}
                                         <h3 className="font-semibold text-lg text-white group-hover:text-primary transition-colors truncate">{similarEvent.title}</h3>

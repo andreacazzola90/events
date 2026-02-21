@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { generateUniqueSlug } from '../../lib/slug-utils';
 import { TransitionLink } from './TransitionLink';
@@ -322,10 +323,13 @@ export default function EventList() {
                             {/* Event Image */}
                             <div className="relative overflow-hidden">
                                 {event.imageUrl ? (
-                                    <img
+                                    <Image
                                         src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
                                         alt={event.title}
+                                        width={600}
+                                        height={400}
                                         className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
+                                        sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                                     />
                                 ) : (
                                     <div className="w-full h-48 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">

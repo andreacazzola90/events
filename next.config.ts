@@ -18,6 +18,7 @@ const imagesConfig = supabaseHostname
   : {};
 
 const nextConfig = {
+  turbopack: {},
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer", "tesseract.js", "sharp"],
   ...imagesConfig,
   // Only use standalone output for Vercel deployment, not for local development

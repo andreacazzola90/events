@@ -12,6 +12,10 @@ const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
 
+type ProcessEventLinkOptions = {
+    verbose?: boolean;
+};
+
 // Utility: assicura che un URL sia assoluto e nel formato https://www.<dominio>/..., usando l'URL di partenza come base per i path relativi
 function ensureAbsoluteUrl(possibleUrl: string | undefined, baseUrl: string): string | undefined {
     if (!possibleUrl) return undefined;
@@ -56,8 +60,21 @@ function ensureAbsoluteUrl(possibleUrl: string | undefined, baseUrl: string): st
     }
 }
 
-export async function processEventLink(url: string) {
-    console.log('Processing URL:', url);
+export async function processEventLink(url: string, options?: ProcessEventLinkOptions) {
+    const verbose = options?.verbose ?? true;
+    const logger = {
+        log: (...args: any[]) => {
+            if (verbose) console.log(...args);
+        },
+        warn: (...args: any[]) => {
+            if (verbose) console.warn(...args);
+        },
+        error: (...args: any[]) => {
+            console.error(...args);
+        },
+    };
+
+    logger.log('Processing URL:', url);
 
     // Check if it's a Facebook URL and reject it
     const isFacebookUrl = url.includes('facebook.com') || 
@@ -75,7 +92,7 @@ export async function processEventLink(url: string) {
     }
 
     // 1. Scrape della pagina con Puppeteer
-    console.log('Launching browser...');
+    logger.log('Launching browser...');
     let browser = null;
     let finalImageUrl: string | null = null;
     let pageText = '';
@@ -112,10 +129,10 @@ export async function processEventLink(url: string) {
                         'Sec-Fetch-User': '?1'
                     });
                 } catch (headerError) {
-                    console.warn('Could not set headers (may already be set by browser):', headerError);
+                    logger.warn('Could not set headers (may already be set by browser):', headerError);
                 }
                 
-                console.log('Navigating to URL...');
+                logger.log('Navigating to URL...');
                 
                 let navigationSuccess = false;
                 let lastError = null;
@@ -123,7 +140,7 @@ export async function processEventLink(url: string) {
                 
                 for (let retry = 0; retry < maxRetries; retry++) {
                     try {
-                        console.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
+                        logger.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
                         
                         const waitOptions = retry === 0 
                             ? { waitUntil: 'domcontentloaded' as const, timeout: 15000 }
@@ -131,13 +148,13 @@ export async function processEventLink(url: string) {
                             ? { waitUntil: 'load' as const, timeout: 20000 }
                             : { waitUntil: 'networkidle2' as const, timeout: 30000 };
                         
-                        console.log('🔄 Navigating with human-like behavior...');
+                        logger.log('🔄 Navigating with human-like behavior...');
                         const preNavDelay = Math.floor(Math.random() * 1500) + 500;
                         await new Promise(resolve => setTimeout(resolve, preNavDelay));
                         
                         await page.goto(url, waitOptions);
                         
-                        console.log('📖 Simulating human reading behavior...');
+                        logger.log('📖 Simulating human reading behavior...');
                         const postNavDelay = Math.floor(Math.random() * 2000) + 2000;
                         await new Promise(resolve => setTimeout(resolve, postNavDelay));
                     
@@ -148,15 +165,15 @@ export async function processEventLink(url: string) {
                             });
                             await new Promise(resolve => setTimeout(resolve, 1000));
                         } catch (scrollError) {
-                            console.warn('⚠️ Could not simulate scrolling:', scrollError);
+                            logger.warn('⚠️ Could not simulate scrolling:', scrollError);
                         }
                         navigationSuccess = true;
                         break;
                     } catch (navError) {
-                        console.warn(`Navigation attempt ${retry + 1} failed:`, navError);
+                        logger.warn(`Navigation attempt ${retry + 1} failed:`, navError);
                         lastError = navError;
                         if (retry < maxRetries - 1) {
-                            console.log('Retrying navigation in 1 second...');
+                            logger.log('Retrying navigation in 1 second...');
                             await new Promise(resolve => setTimeout(resolve, 1000));
                         }
                     }
@@ -166,7 +183,7 @@ export async function processEventLink(url: string) {
                     throw new Error(`Failed to navigate to ${url} after ${maxRetries} attempts. Last error: ${lastError}`);
                 }
 
-                console.log('Extracting page text...');
+                logger.log('Extracting page text...');
                 try {
                     pageText = await page.evaluate(() => {
                         const removeUnwantedElements = () => {
@@ -328,18 +345,18 @@ export async function processEventLink(url: string) {
                         const mainText = (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
                         return visitSchioInfo + mainText;
                     });
-                    console.log(`📄 Extracted ${pageText.length} characters from main content`);
+                    logger.log(`📄 Extracted ${pageText.length} characters from main content`);
                 } catch (textError) {
-                    console.warn('Could not extract page text:', textError);
+                    logger.warn('Could not extract page text:', textError);
                     try {
                         pageText = await page.evaluate(() => document.title || '');
                     } catch (titleError) {
-                        console.error('Could not extract even title:', titleError);
+                        logger.error('Could not extract even title:', titleError);
                         pageText = 'Unable to extract page content';
                     }
                 }
             
-                console.log('Looking for images...');
+                logger.log('Looking for images...');
                 const imageUrl = await page.evaluate(() => {
                     const fbImg = document.querySelector('img[data-imgperflogname]');
                     if (fbImg && (fbImg as HTMLImageElement).src) return (fbImg as HTMLImageElement).src;
@@ -419,7 +436,7 @@ export async function processEventLink(url: string) {
 
                 finalImageUrl = imageUrl;
                 if (!finalImageUrl) {
-                    console.log('No image found, taking screenshot...');
+                    logger.log('No image found, taking screenshot...');
                     const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 80 });
                     const screenshotBase64 = Buffer.from(screenshotBuffer).toString('base64');
                     finalImageUrl = `data:image/jpeg;base64,${screenshotBase64}`;
@@ -435,7 +452,7 @@ export async function processEventLink(url: string) {
         finalImageUrl = (scrapingResult as any).finalImageUrl;
 
     } catch (browserError) {
-        console.error('Errore durante lo scraping con browser:', browserError);
+        logger.error('Errore durante lo scraping con browser:', browserError);
         await closeBrowser(browser);
         
         if (browserError instanceof Error && browserError.message.includes('timed out')) {
@@ -447,15 +464,15 @@ export async function processEventLink(url: string) {
             browserError.message.includes('Code: 127') ||
             browserError.message.includes('shared libraries')
         )) {
-            console.log('🔄 Browser failed due to missing libraries, trying HTTP fallback...');
+            logger.log('🔄 Browser failed due to missing libraries, trying HTTP fallback...');
             try {
                 const { httpScraper } = await import('./http-scraper');
                 const fallbackResult = await httpScraper(url);
                 pageText = fallbackResult.pageText;
                 finalImageUrl = fallbackResult.finalImageUrl;
-                console.log('✅ HTTP fallback scraping successful');
+                logger.log('✅ HTTP fallback scraping successful');
             } catch (fallbackError) {
-                console.error('❌ HTTP fallback also failed:', fallbackError);
+                logger.error('❌ HTTP fallback also failed:', fallbackError);
                 throw new Error('Impossibile accedere alla pagina web. Il sito potrebbe non essere accessibile o avere restrizioni.');
             }
         } else {
@@ -467,7 +484,7 @@ export async function processEventLink(url: string) {
     let imageText = '';
     if (finalImageUrl) {
         try {
-            console.log('🔍 Analizzando l\'immagine con OCR...');
+            logger.log('🔍 Analizzando l\'immagine con OCR...');
             let imageBlob: Blob;
             if (finalImageUrl.startsWith('data:')) {
                 const base64Data = finalImageUrl.split(',')[1];
@@ -482,18 +499,18 @@ export async function processEventLink(url: string) {
             const imageFile = await compressImage(rawImageFile, 1024 * 1024);
 
             try {
-                console.log('🔄 Trying simplified OCR on webpage image...');
+                logger.log('🔄 Trying simplified OCR on webpage image...');
                 imageText = await extractTextFromImageSimple(imageFile);
             } catch {
-                console.log('⚠️ OCR semplificato fallito, provo Tesseract...');
+                logger.log('⚠️ OCR semplificato fallito, provo Tesseract...');
                 try {
                     imageText = await extractTextFromImage(imageFile);
                 } catch {
-                    console.warn('⚠️ OCR fallito su entrambi i metodi');
+                    logger.warn('⚠️ OCR fallito su entrambi i metodi');
                 }
             }
         } catch (ocrError) {
-            console.warn('⚠️ Impossibile processare l\'immagine con OCR:', ocrError);
+            logger.warn('⚠️ Impossibile processare l\'immagine con OCR:', ocrError);
         }
     }
 
@@ -506,7 +523,7 @@ export async function processEventLink(url: string) {
     const heuristicHints = buildEventExtractionHints(combinedText);
 
     // 3. Usa Groq per estrarre le informazioni dell'evento
-    console.log('=== GROQ API CALL ===');
+    logger.log('=== GROQ API CALL ===');
     const currentDate = new Date().toISOString().split('T')[0];
 
     const prompt = `Estrai le informazioni dell'evento dal seguente testo di una pagina web.

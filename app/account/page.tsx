@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { generateUniqueSlug } from '../../lib/slug-utils';
 
 interface UserEvent {
@@ -23,6 +24,9 @@ export default function AccountPage() {
     const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
     const [favoriteEvents, setFavoriteEvents] = useState<UserEvent[]>([]);
     const [loading, setLoading] = useState(true);
+    const [visitschioResult, setVisitschioResult] = useState<any | null>(null);
+    const [visitpedemontanaResult, setVisitpedemontanaResult] = useState<any | null>(null);
+    const [runningCron, setRunningCron] = useState<'visitschio' | 'visitpedemontana' | null>(null);
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -63,6 +67,117 @@ export default function AccountPage() {
     const handleLogout = async () => {
         await signOut({ redirect: false });
         router.push('/');
+    };
+
+    const isAdmin =
+        (session?.user as any)?.role === 'admin' || session?.user?.email === 'andreacazzola90@gmail.com';
+
+    const runCron = async (type: 'visitschio' | 'visitpedemontana') => {
+        setRunningCron(type);
+        try {
+            const endpoint =
+                type === 'visitschio'
+                    ? '/api/admin/run-cron/visitschio'
+                    : '/api/admin/run-cron/visitpedemontana';
+            const res = await fetch(endpoint, { method: 'POST' });
+            const data = await res.json();
+
+            const payload = (data as any).data ?? data;
+            const duplicates = ((payload as any)?.duplicates as any[]) || [];
+            if (duplicates.length > 0) {
+                toast.info(`${duplicates.length} eventi erano già presenti e non sono stati ricreati.`);
+            }
+            if (type === 'visitschio') {
+                setVisitschioResult(data);
+            } else {
+                setVisitpedemontanaResult(data);
+            }
+        } catch (err) {
+            const errorPayload = { error: 'Failed to run cron', details: (err as Error).message };
+            if (type === 'visitschio') {
+                setVisitschioResult(errorPayload);
+            } else {
+                setVisitpedemontanaResult(errorPayload);
+            }
+        } finally {
+            setRunningCron(null);
+        }
+    };
+
+    const renderCronResult = (result: any) => {
+        if (!result) {
+            return <div className="text-gray-400 text-xs">No run yet.</div>;
+        }
+
+        const payload = (result as any).data ?? result;
+        const status = (payload as any)?.status ?? 'n/a';
+        const found = (payload as any)?.found ?? 'n/a';
+        const created = (payload as any)?.processed ?? 'n/a';
+        const newlyFound = (payload as any)?.new ?? 'n/a';
+        const events = ((payload as any)?.events as any[]) || [];
+        const errors = ((payload as any)?.errors as any[]) || [];
+
+        return (
+            <div className="space-y-3 text-xs text-gray-200">
+                <div className="text-[11px] text-gray-300">
+                    Status: <span className="font-semibold">{String(status)}</span> • Found: {String(found)} • New: {String(newlyFound)} • Saved: {String(created)}
+                </div>
+
+                {events.length > 0 ? (
+                    <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                        {events.map((ev: any, idx: number) => (
+                            <div
+                                key={ev.id ?? idx}
+                                className="border border-white/10 rounded-lg p-2 bg-white/5 text-[11px]"
+                            >
+                                <div className="font-semibold text-white line-clamp-2">
+                                    {ev.title || 'Senza titolo'}
+                                </div>
+                                <div className="text-gray-300 mt-0.5">
+                                    {ev.date || 'Data non disponibile'}
+                                    {ev.time ? ` • ${ev.time}` : ''}
+                                </div>
+                                {ev.location && (
+                                    <div className="text-gray-400 mt-0.5 truncate">
+                                        📍 {ev.location}
+                                    </div>
+                                )}
+                                {ev.sourceUrl && (
+                                    <a
+                                        href={ev.sourceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-pink-300 hover:text-pink-200 underline mt-1 inline-block"
+                                    >
+                                        Apri sorgente
+                                    </a>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-[11px] text-gray-400">
+                        Nessun evento creato in questo run.
+                    </div>
+                )}
+
+                {errors.length > 0 && (
+                    <details className="text-[11px] text-red-300">
+                        <summary className="cursor-pointer">Errori ({errors.length})</summary>
+                        <pre className="mt-1 whitespace-pre-wrap">
+                            {JSON.stringify(errors, null, 2)}
+                        </pre>
+                    </details>
+                )}
+
+                <details className="text-[11px] text-gray-500">
+                    <summary className="cursor-pointer">Mostra JSON completo</summary>
+                    <pre className="mt-1 bg-black/40 p-2 rounded-lg overflow-auto max-h-40">
+                        {JSON.stringify(result, null, 2)}
+                    </pre>
+                </details>
+            </div>
+        );
     };
 
     if (status === 'loading' || loading) {
@@ -116,6 +231,17 @@ export default function AccountPage() {
                                             <p className="text-white font-mono text-sm">{(session.user as any)?.id || 'N/A'}</p>
                                         </div>
                                     </div>
+                                    {isAdmin && (
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-linear-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center">
+                                                <span className="text-xl">⭐</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-400 text-sm">Role</span>
+                                                <p className="text-emerald-300 font-semibold text-lg">Admin</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-col gap-4">
@@ -337,6 +463,44 @@ export default function AccountPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Admin Cron Controls */}
+                {isAdmin && (
+                    <div className="glass-effect rounded-2xl p-8">
+                        <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                            <span className="text-2xl">🛠️</span>
+                            <span>Admin Tools</span>
+                        </h2>
+                        <div className="space-y-6">
+                            <div className="flex flex-wrap gap-4">
+                                <button
+                                    onClick={() => runCron('visitschio')}
+                                    className="btn btn-primary inline-flex items-center gap-2"
+                                    disabled={runningCron !== null}
+                                >
+                                    {runningCron === 'visitschio' ? 'Running VisitSchio Cron…' : 'Run VisitSchio Cron Now'}
+                                </button>
+                                <button
+                                    onClick={() => runCron('visitpedemontana')}
+                                    className="btn btn-secondary inline-flex items-center gap-2"
+                                    disabled={runningCron !== null}
+                                >
+                                    {runningCron === 'visitpedemontana' ? 'Running VisitPedemontana Cron…' : 'Run VisitPedemontana Cron Now'}
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <h3 className="font-semibold text-white mb-2">VisitSchio Result</h3>
+                                    {renderCronResult(visitschioResult)}
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-white mb-2">VisitPedemontana Result</h3>
+                                    {renderCronResult(visitpedemontanaResult)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </main>
     );

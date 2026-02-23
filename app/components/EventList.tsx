@@ -47,6 +47,59 @@ interface Event {
     updatedAt: string;
 }
 
+type PriceLabel = 'gratis' | 'pagamento' | 'non definito';
+
+// Normalizza il prezzo in tre etichette: gratis / pagamento / non definito
+function getPriceLabel(rawPrice: string | null | undefined): PriceLabel {
+    if (!rawPrice) return 'non definito';
+
+    const price = rawPrice.toLowerCase();
+
+    // Casi gratuiti espliciti
+    if (
+        price.includes('gratis') ||
+        price.includes('ingresso libero') ||
+        price.includes('ingresso gratuito') ||
+        price.includes('ingresso libero') ||
+        price.includes('free')
+    ) {
+        return 'gratis';
+    }
+
+    // Il valore di default usato dall'estrazione quando non trova info
+    if (price.includes('non definito')) {
+        return 'non definito';
+    }
+
+    // Se troviamo numeri/euro o riferimenti a biglietti/pagamento, consideriamo "pagamento"
+    if (
+        /\d/.test(price) ||
+        price.includes('€') ||
+        price.includes('euro') ||
+        price.includes('bigliett') ||
+        price.includes('prevendita') ||
+        price.includes('ticket') ||
+        price.includes('vivaticket') ||
+        price.includes('ticketone')
+    ) {
+        return 'pagamento';
+    }
+
+    return 'non definito';
+}
+
+function getPriceBadgeClasses(label: PriceLabel): string {
+    switch (label) {
+        case 'gratis':
+            return 'bg-emerald-500/95 text-white shadow-emerald-500/40';
+        case 'pagamento':
+            return 'bg-pink-500/95 text-white shadow-pink-500/40';
+        case 'non definito':
+        default:
+            return 'bg-slate-500/80 text-white shadow-slate-500/30';
+    }
+}
+
 // Mappa categoria → classi colore del badge (bg + shadow)
 function getCategoryBadgeClasses(rawCategory: string): string {
     const cat = rawCategory.toLowerCase();
@@ -370,12 +423,17 @@ export default function EventList() {
                                     </div>
                                 )}
 
-                                {/* Price Badge - più visibile */}
-                                {event.price && (
-                                    <div className="absolute top-3 right-3 rounded-full px-3 py-1 text-xs sm:text-sm font-semibold bg-pink-500/95 text-white shadow-lg shadow-pink-500/40 border border-white/40 backdrop-blur-sm">
-                                        {event.price}
-                                    </div>
-                                )}
+                                {/* Price Badge - normalizzato in 3 stati */}
+                                {(() => {
+                                    const label = getPriceLabel(event.price);
+                                    return (
+                                        <div
+                                            className={`absolute top-3 right-3 rounded-full px-3 py-1 text-xs sm:text-sm font-semibold border border-white/40 backdrop-blur-sm shadow-lg ${getPriceBadgeClasses(label)}`}
+                                        >
+                                            {label}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Event Details */}

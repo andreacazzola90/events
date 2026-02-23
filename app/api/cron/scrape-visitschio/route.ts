@@ -29,34 +29,81 @@ export async function GET(request: NextRequest) {
     let browser = null;
     let eventLinks: string[] = [];
 
+    // Considera "oggi" senza orario per filtrare gli eventi passati
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     try {
-        // 1. Scrape the events list page
+        // 1. Scrape the events list pages (with pagination)
         browser = await getBrowser({
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-        
-        console.log('Navigating to VisitSchio events list...');
-        await page.goto('https://www.visitschio.it/it/eventi', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Extract all event links
-        eventLinks = await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a[href*="/it/eventi/"]'));
-            return links
-                .map(a => (a as HTMLAnchorElement).href)
-                .filter(href => {
-                    // Filter out category links and keep only event detail links
-                    // Event links usually have a slug or ID at the end
-                    const parts = href.split('/');
-                    return parts.length > 5 && !href.endsWith('/eventi') && !href.endsWith('/eventi/');
-                });
-        });
+        const visitedPages = new Set<string>();
+        const allEventLinks = new Set<string>();
+        let currentUrl = 'https://www.visitschio.it/it/eventi';
+        const maxPages = 20;
 
-        // Remove duplicates
-        eventLinks = [...new Set(eventLinks)];
-        console.log(`Found ${eventLinks.length} potential event links.`);
+        for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+            if (visitedPages.has(currentUrl)) {
+                break;
+            }
+            visitedPages.add(currentUrl);
+            await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+            const { pageEventLinks, nextPageUrl } = await page.evaluate(() => {
+                const toAbsolute = (href: string) => {
+                    try {
+                        return new URL(href, window.location.origin).toString();
+                    } catch {
+                        return href;
+                    }
+                };
+
+                const links = Array.from(document.querySelectorAll('a[href*="/it/eventi/"]')) as HTMLAnchorElement[];
+                const pageEventLinks = links
+                    .map(a => toAbsolute(a.href))
+                    .filter(href => {
+                        const parts = href.split('/');
+                        return parts.length > 5 && !href.endsWith('/eventi') && !href.endsWith('/eventi/');
+                    });
+
+                let nextPageUrl: string | null = null;
+
+                const relNext = document.querySelector('a[rel="next"]') as HTMLAnchorElement | null;
+                if (relNext) {
+                    nextPageUrl = toAbsolute(relNext.href);
+                } else {
+                    const anchors = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
+                    const candidate = anchors.find(a => {
+                        const text = (a.textContent || '').trim();
+                        return /successiv|prossim|avanti|›|»/i.test(text);
+                    });
+                    if (candidate) {
+                        nextPageUrl = toAbsolute(candidate.href);
+                    }
+                }
+
+                return {
+                    pageEventLinks: Array.from(new Set(pageEventLinks)),
+                    nextPageUrl,
+                };
+            });
+
+            (pageEventLinks as string[]).forEach((url: string) => allEventLinks.add(url));
+
+            if (!nextPageUrl) {
+                break;
+            }
+
+            currentUrl = nextPageUrl;
+        }
+
+        eventLinks = Array.from(allEventLinks);
+        console.log(`[VisitSchio] Collected ${eventLinks.length} potential event links across ${visitedPages.size} page(s).`);
 
         await closeBrowser(browser);
         browser = null;
@@ -74,16 +121,71 @@ export async function GET(request: NextRequest) {
         console.log(`${newEventLinks.length} new events to process.`);
 
         // 3. Process new events (one by one to avoid overloading or timeouts)
-        const processedEvents = [];
-        const errors = [];
+        const processedEvents: number[] = [];
+        const processedEventDetails: {
+            id: number;
+            title: string;
+            date: string;
+            time: string;
+            location: string;
+            sourceUrl: string | null;
+        }[] = [];
+        const duplicateEvents: {
+            title: string;
+            date: string;
+            existingId: number;
+        }[] = [];
+        const errors: { url: string; error: string }[] = [];
+        const linkSummary: { url: string; visited: boolean; status: 'pending' | 'saved' | 'no-new-events' | 'error' }[] =
+            newEventLinks.map(url => ({ url, visited: false, status: 'pending' }));
 
         for (const url of newEventLinks) {
+            const summaryEntry = linkSummary.find(entry => entry.url === url) ||
+                (() => {
+                    const entry = { url, visited: false, status: 'pending' as const };
+                    linkSummary.push(entry);
+                    return entry;
+                })();
+
+            let savedForThisUrl = false;
             try {
-                console.log(`Processing: ${url}`);
-                const result = await processEventLink(url);
-                
+                const result = await processEventLink(url, { verbose: false });
+
                 if (result.events && result.events.length > 0) {
                     for (const eventData of result.events) {
+                        // Filtra gli eventi già passati (in base alla data estratta)
+                        if (eventData.date) {
+                            const eventDate = new Date(eventData.date);
+                            if (!isNaN(eventDate.getTime())) {
+                                const eventDay = new Date(eventDate);
+                                eventDay.setHours(0, 0, 0, 0);
+                                if (eventDay < today) {
+                                    continue;
+                                }
+                            }
+                        }
+                        // Duplicate check by title + date + location
+                        const candidateTitle = eventData.title || 'Senza titolo';
+                        const candidateDate = eventData.date || '';
+                        const candidateLocation = eventData.location || '';
+                        if (candidateTitle && candidateDate && candidateLocation) {
+                            const existing = await prisma.event.findFirst({
+                                where: {
+                                    title: candidateTitle,
+                                    date: candidateDate,
+                                    location: candidateLocation,
+                                },
+                            });
+                            if (existing) {
+                                duplicateEvents.push({
+                                    title: candidateTitle,
+                                    date: candidateDate,
+                                    existingId: existing.id,
+                                });
+                                continue;
+                            }
+                        }
+
                         // Optional server-side geocoding at import time
                         let latitude: number | null = null;
                         let longitude: number | null = null;
@@ -114,12 +216,24 @@ export async function GET(request: NextRequest) {
                             } as any,
                         });
                         processedEvents.push(savedEvent.id);
-                        console.log(`Saved event: ${savedEvent.title} (ID: ${savedEvent.id})`);
+                        processedEventDetails.push({
+                            id: savedEvent.id,
+                            title: savedEvent.title,
+                            date: savedEvent.date,
+                            time: savedEvent.time,
+                            location: savedEvent.location,
+                            sourceUrl: savedEvent.sourceUrl,
+                        });
+                        savedForThisUrl = true;
                     }
                 }
+                summaryEntry.visited = true;
+                summaryEntry.status = savedForThisUrl ? 'saved' : 'no-new-events';
             } catch (error) {
-                console.error(`Error processing ${url}:`, error);
+                console.error(`[VisitSchio] Error processing ${url}:`, error);
                 errors.push({ url, error: error instanceof Error ? error.message : 'Unknown error' });
+                summaryEntry.visited = true;
+                summaryEntry.status = 'error';
             }
         }
 
@@ -129,12 +243,22 @@ export async function GET(request: NextRequest) {
             revalidatePath('/api/events', 'page');
         }
 
+        console.log('[VisitSchio] Scraping summary (per link):');
+        try {
+            console.table(linkSummary);
+        } catch {
+            console.log(JSON.stringify(linkSummary, null, 2));
+        }
+
         return NextResponse.json({
             status: 'success',
             found: eventLinks.length,
             new: newEventLinks.length,
             processed: processedEvents.length,
-            errors: errors.length > 0 ? errors : undefined
+            events: processedEventDetails,
+            duplicates: duplicateEvents,
+            errors: errors.length > 0 ? errors : undefined,
+            links: linkSummary,
         });
 
     } catch (error) {

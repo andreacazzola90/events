@@ -16,10 +16,18 @@ const imagesConfig = {
             },
           ]
         : []),
-      // Host esterno per immagini evento (es. VicenzaToday)
+      // Host esterni per immagini evento
       {
         protocol: "https",
         hostname: "www.vicenzatoday.it",
+      },
+      {
+        protocol: "https",
+        hostname: "www.visitschio.it",
+      },
+      {
+        protocol: "https",
+        hostname: "visitpedemontana.com",
       },
     ],
   },

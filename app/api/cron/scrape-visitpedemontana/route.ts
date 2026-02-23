@@ -29,8 +29,12 @@ export async function GET(request: NextRequest) {
   let browser: any = null;
   let eventLinks: string[] = [];
 
+  // Considera "oggi" senza orario per filtrare gli eventi passati
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   try {
-    // 1. Apri la pagina lista eventi
+    // 1. Apri la pagina lista eventi (con supporto alla paginazione)
     browser = await getBrowser({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -41,51 +45,96 @@ export async function GET(request: NextRequest) {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     );
 
-    const listUrl = 'https://visitpedemontana.com/news-ed-eventi/#/eventi';
-    console.log('Navigating to VisitPedemontana events list...', listUrl);
-    await page.goto(listUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    const baseListUrl = 'https://visitpedemontana.com/news-ed-eventi/#/eventi';
+    const visitedPages = new Set<string>();
+    const allEventLinks = new Set<string>();
+    let currentUrl = baseListUrl;
+    const maxPages = 20;
 
-    // Dai un attimo di tempo all'app per caricare gli eventi (SPA con #/eventi)
-    await page.waitForTimeout(3000);
+    for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+      if (visitedPages.has(currentUrl)) {
+        console.log(`[VisitPedemontana] Page already visited, stopping at ${currentUrl}`);
+        break;
+      }
+      visitedPages.add(currentUrl);
 
-    // 2. Estrai tutti i link agli eventi
-    eventLinks = await page.evaluate(() => {
-      const anchors = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
-      const origin = window.location.origin;
+      console.log(`[VisitPedemontana] Navigating to events list page ${pageIndex + 1}: ${currentUrl}`);
+      await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-      const urls = anchors
-        .map(a => {
+      // Dai un attimo di tempo all'app per caricare gli eventi (SPA con #/eventi)
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      const { pageEventLinks, nextPageUrl, debugAnchors } = await page.evaluate(() => {
+        const origin = window.location.origin;
+        const toAbsolute = (href: string) => {
           try {
-            return new URL(a.href, origin).toString();
+            return new URL(href, origin).toString();
           } catch {
-            return null;
+            return href;
           }
-        })
-        .filter((href): href is string => !!href)
-        .filter(href => {
-          // Considera solo link sul dominio visitpedemontana
-          if (!href.includes('visitpedemontana.com')) return false;
+        };
 
-          // Ignora la pagina di lista stessa e ancore hash pure
-          if (href.endsWith('/news-ed-eventi/#/eventi') || href.endsWith('/news-ed-eventi/')) return false;
+        const anchors = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
 
-          const url = new URL(href);
-          const path = url.pathname;
+        const urls = anchors
+          .map(a => {
+            try {
+              return toAbsolute(a.href);
+            } catch {
+              return null;
+            }
+          })
+          .filter((href): href is string => !!href)
+          .filter(href => {
+            // Tieni solo link del dominio visitpedemontana, escludendo ovvi non-link
+            if (!href.includes('visitpedemontana.com')) return false;
+            if (href.endsWith('/news-ed-eventi/#/eventi') || href.endsWith('/news-ed-eventi/')) return false;
+            if (href === '#' || href.endsWith('/#')) return false;
+            if (href.startsWith('javascript:')) return false;
 
-          // Mantieni solo URL che sembrano pagine dettaglio eventi
-          // Es: /eventi/<slug> oppure /news-ed-eventi/<categoria>/<slug>
-          const parts = path.split('/').filter(Boolean);
-          if (parts.length < 2) return false;
+            // Per ora consideriamo tutti gli altri link del dominio come candidati
+            return true;
+          });
 
-          // se contiene "eventi" e ha qualcosa dopo, consideriamolo dettaglio
-          const eventiIndex = parts.indexOf('eventi');
-          return eventiIndex !== -1 && eventiIndex < parts.length - 1;
-        });
+        let nextPageUrl: string | null = null;
+        const relNext = document.querySelector('a[rel="next"]') as HTMLAnchorElement | null;
+        if (relNext) {
+          nextPageUrl = toAbsolute(relNext.href);
+        } else {
+          const candidates = anchors.filter(a => {
+            const text = (a.textContent || '').trim();
+            return /successiv|prossim|avanti|›|»/i.test(text);
+          });
+          if (candidates.length > 0) {
+            nextPageUrl = toAbsolute(candidates[0].href);
+          }
+        }
 
-      return Array.from(new Set(urls));
-    });
+        return {
+          pageEventLinks: Array.from(new Set(urls)),
+          nextPageUrl,
+          debugAnchors: anchors.slice(0, 20).map(a => a.href),
+        };
+      });
 
-    console.log(`VisitPedemontana: found ${eventLinks.length} potential event links.`);
+      (pageEventLinks as string[]).forEach((url: string) => allEventLinks.add(url));
+
+      if (pageEventLinks.length === 0) {
+        console.log('[VisitPedemontana] No event links extracted on this page. Sample anchors:', debugAnchors);
+      } else {
+        console.log(`[VisitPedemontana] Extracted ${pageEventLinks.length} event candidate links on this page.`);
+      }
+
+      if (!nextPageUrl) {
+        console.log('[VisitPedemontana] No next page link found, stopping pagination.');
+        break;
+      }
+
+      currentUrl = nextPageUrl;
+    }
+
+    eventLinks = Array.from(allEventLinks);
+    console.log(`VisitPedemontana: collected ${eventLinks.length} potential event links across ${visitedPages.size} page(s).`);
 
     await closeBrowser(browser);
     browser = null;
@@ -109,15 +158,67 @@ export async function GET(request: NextRequest) {
 
     // 4. Processa i nuovi eventi uno per volta
     const processedEvents: number[] = [];
+    const processedEventDetails: {
+      id: number;
+      title: string;
+      date: string;
+      time: string;
+      location: string;
+      sourceUrl: string | null;
+    }[] = [];
+    const duplicateEvents: {
+      title: string;
+      date: string;
+      existingId: number;
+    }[] = [];
     const errors: { url: string; error: string }[] = [];
+    const linkSummary: { url: string; visited: boolean; status: 'pending' | 'saved' | 'no-new-events' | 'error' }[] =
+      newEventLinks.map(url => ({ url, visited: false, status: 'pending' }));
 
     for (const url of newEventLinks) {
+      const summaryEntry = linkSummary.find(entry => entry.url === url) ||
+        (() => {
+          const entry = { url, visited: false, status: 'pending' as const };
+          linkSummary.push(entry);
+          return entry;
+        })();
+
+      let savedForThisUrl = false;
       try {
-        console.log(`[VisitPedemontana] Processing: ${url}`);
-        const result = await processEventLink(url);
+        const result = await processEventLink(url, { verbose: false });
 
         if (result.events && result.events.length > 0) {
           for (const eventData of result.events) {
+            // Filtra gli eventi già passati (in base alla data estratta)
+            if (eventData.date) {
+              const eventDate = new Date(eventData.date);
+              if (!isNaN(eventDate.getTime())) {
+                const eventDay = new Date(eventDate);
+                eventDay.setHours(0, 0, 0, 0);
+                if (eventDay < today) {
+                  continue;
+                }
+              }
+            }
+
+            // Duplicate check by title + date + location
+            const candidateTitle = eventData.title || 'Senza titolo';
+            const candidateDate = eventData.date || '';
+            const candidateLocation = eventData.location || '';
+            if (candidateTitle && candidateDate && candidateLocation) {
+              const existing = await prisma.event.findFirst({
+                where: {
+                  title: candidateTitle,
+                  date: candidateDate,
+                  location: candidateLocation,
+                },
+              });
+              if (existing) {
+                duplicateEvents.push({ title: candidateTitle, date: candidateDate, existingId: existing.id });
+                continue;
+              }
+            }
+
             let latitude: number | null = null;
             let longitude: number | null = null;
             if (eventData.location) {
@@ -148,14 +249,24 @@ export async function GET(request: NextRequest) {
             });
 
             processedEvents.push(savedEvent.id);
-            console.log(`[VisitPedemontana] Saved event: ${savedEvent.title} (ID: ${savedEvent.id})`);
+            processedEventDetails.push({
+              id: savedEvent.id,
+              title: savedEvent.title,
+              date: savedEvent.date,
+              time: savedEvent.time,
+              location: savedEvent.location,
+              sourceUrl: savedEvent.sourceUrl,
+            });
+            savedForThisUrl = true;
           }
-        } else {
-          console.log(`[VisitPedemontana] No events extracted for URL: ${url}`);
         }
+        summaryEntry.visited = true;
+        summaryEntry.status = savedForThisUrl ? 'saved' : 'no-new-events';
       } catch (error) {
         console.error(`[VisitPedemontana] Error processing ${url}:`, error);
         errors.push({ url, error: error instanceof Error ? error.message : 'Unknown error' });
+        summaryEntry.visited = true;
+        summaryEntry.status = 'error';
       }
     }
 
@@ -165,12 +276,22 @@ export async function GET(request: NextRequest) {
       revalidatePath('/api/events', 'page');
     }
 
+    console.log('[VisitPedemontana] Scraping summary (per link):');
+    try {
+      console.table(linkSummary);
+    } catch {
+      console.log(JSON.stringify(linkSummary, null, 2));
+    }
+
     return NextResponse.json({
       status: 'success',
       found: eventLinks.length,
       new: newEventLinks.length,
       processed: processedEvents.length,
+      events: processedEventDetails,
+      duplicates: duplicateEvents,
       errors: errors.length > 0 ? errors : undefined,
+      links: linkSummary,
     });
   } catch (error) {
     console.error('[VisitPedemontana] Cron job failed:', error);

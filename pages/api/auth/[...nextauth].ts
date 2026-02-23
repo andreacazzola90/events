@@ -38,7 +38,8 @@ export const authOptions: any = {
         return {
           id: user.id.toString(),
           email: user.email,
-          name: (user as any).name || null
+          name: (user as any).name || null,
+          role: (user as any).role || 'user',
         };
       }
     })
@@ -56,6 +57,7 @@ export const authOptions: any = {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
+        token.role = user.role;
       }
       return token;
     },
@@ -64,6 +66,7 @@ export const authOptions: any = {
         session.user.id = token.id as string;
         session.user.email = token.email as string;
         session.user.name = token.name as string;
+        (session.user as any).role = token.role as string | undefined;
       }
       return session;
     }

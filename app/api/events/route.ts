@@ -81,6 +81,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check for duplicate events (same title, date and location)
+    if (eventDataToSave.title && eventDataToSave.date && eventDataToSave.location) {
+      const existing = await prisma.event.findFirst({
+        where: {
+          title: eventDataToSave.title,
+          date: eventDataToSave.date,
+          location: eventDataToSave.location,
+        },
+      });
+
+      if (existing) {
+        console.log('[API /events POST] Duplicate event detected, skipping create. Existing ID:', existing.id);
+        return NextResponse.json(
+          {
+            error: 'EVENT_DUPLICATE',
+            message: 'Questo evento è già stato creato (stesso titolo, data e luogo).',
+            existingEventId: existing.id,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // Geocode location once at creation time to store coordinates
     if (eventDataToSave.location) {
       try {
@@ -220,7 +243,23 @@ export async function GET(request: NextRequest) {
       console.warn('[API /events GET] Coordinate backfill failed, continuing without it:', backfillError);
     }
 
-    return NextResponse.json(events, {
+    // If this is a global listing (no specific userId), de-duplicate
+    // events by (title, date, location), keeping only the first
+    let responseEvents: any[] = events;
+    if (!userIdParam) {
+      const seenKeys = new Set<string>();
+      responseEvents = events.filter((event: any) => {
+        const key = `${(event.title || '').trim()}|||${(event.date || '').trim()}|||${(event.location || '').trim()}`;
+        if (!key.trim()) return true; // if key is empty, don't dedupe aggressively
+        if (seenKeys.has(key)) {
+          return false;
+        }
+        seenKeys.add(key);
+        return true;
+      });
+    }
+
+    return NextResponse.json(responseEvents, {
       headers: {
         'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30', // Cache for 60s, allow stale for 30s
       },

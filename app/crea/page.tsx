@@ -122,7 +122,22 @@ export default function CreaEvento() {
                         body: formData,
                     });
                     if (!saveResponse.ok) {
-                        throw new Error(`Failed to save event: ${eventData.title}`);
+                        let message = `Failed to save event: ${eventData.title}`;
+                        try {
+                            const body = await saveResponse.json();
+                            if (saveResponse.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
+                                message = body?.message || 'Questo evento è già stato creato.';
+                                toast.info(message);
+                                console.warn('[Crea] Duplicate event skipped in batch save:', message);
+                                continue;
+                            }
+                            if (body?.message || body?.error) {
+                                message = body.message || body.error;
+                            }
+                        } catch {
+                            // ignore JSON parse errors, use default message
+                        }
+                        throw new Error(message);
                     }
 
                     // Track event creation
@@ -139,7 +154,22 @@ export default function CreaEvento() {
                         body: JSON.stringify(eventData),
                     });
                     if (!response.ok) {
-                        throw new Error(`Failed to save event: ${eventData.title}`);
+                        let message = `Failed to save event: ${eventData.title}`;
+                        try {
+                            const body = await response.json();
+                            if (response.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
+                                message = body?.message || 'Questo evento è già stato creato.';
+                                toast.info(message);
+                                console.warn('[Crea] Duplicate event skipped in batch save (JSON):', message);
+                                continue;
+                            }
+                            if (body?.message || body?.error) {
+                                message = body.message || body.error;
+                            }
+                        } catch {
+                            // ignore JSON parse errors, use default message
+                        }
+                        throw new Error(message);
                     }
 
                     // Track event creation
@@ -187,9 +217,24 @@ export default function CreaEvento() {
                     method: 'POST',
                     body: formData,
                 });
-
                 if (!saveResponse.ok) {
-                    throw new Error('Failed to save event');
+                    let message = 'Failed to save event';
+                    try {
+                        const body = await saveResponse.json();
+                        if (saveResponse.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
+                            message = body?.message || 'Questo evento è già stato creato.';
+                            toast.info(message);
+                            console.warn('[Crea] Duplicate event detected on single save (FormData):', message);
+                            setSaving(false);
+                            return;
+                        }
+                        if (body?.message || body?.error) {
+                            message = body.message || body.error;
+                        }
+                    } catch {
+                        // ignore JSON parse errors, use default message
+                    }
+                    throw new Error(message);
                 }
 
                 savedEvent = await saveResponse.json();
@@ -202,9 +247,24 @@ export default function CreaEvento() {
                     },
                     body: JSON.stringify(updatedData),
                 });
-
                 if (!response.ok) {
-                    throw new Error('Failed to save event');
+                    let message = 'Failed to save event';
+                    try {
+                        const body = await response.json();
+                        if (response.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
+                            message = body?.message || 'Questo evento è già stato creato.';
+                            toast.info(message);
+                            console.warn('[Crea] Duplicate event detected on single save (JSON):', message);
+                            setSaving(false);
+                            return;
+                        }
+                        if (body?.message || body?.error) {
+                            message = body.message || body.error;
+                        }
+                    } catch {
+                        // ignore JSON parse errors, use default message
+                    }
+                    throw new Error(message);
                 }
 
                 savedEvent = await response.json();

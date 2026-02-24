@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eventscanner-v3'; // Incrementa versione per forzare update
+const CACHE_NAME = 'eventscanner-v4'; // Incrementa versione per forzare update
 const STATIC_CACHE = [
     '/',
     '/crea',
@@ -48,6 +48,56 @@ self.addEventListener('fetch', (event) => {
 
     // Skip cross-origin requests
     if (!event.request.url.startsWith(self.location.origin)) {
+        return;
+    }
+
+    const requestUrl = new URL(event.request.url);
+
+    // Compatibility path: support legacy Web Share Target POST that may still hit /crea
+    if (event.request.method === 'POST' && requestUrl.pathname === '/crea') {
+        event.respondWith((async () => {
+            try {
+                const contentType = event.request.headers.get('content-type') || '';
+                if (!contentType.includes('multipart/form-data')) {
+                    return fetch(event.request);
+                }
+
+                const formData = await event.request.clone().formData();
+                return fetch('/api/share-target', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                    redirect: 'follow',
+                });
+            } catch (error) {
+                console.error('[SW] Failed to forward legacy share POST /crea:', error);
+                return fetch(event.request);
+            }
+        })());
+        return;
+    }
+
+    // Avoid stale Next.js runtime/assets that can trigger "server action not found"
+    if (requestUrl.pathname.startsWith('/_next/')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
+    // Navigation requests should prefer network to avoid stale app shell after deploy
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request)
+                .then((fetchResponse) => {
+                    if (fetchResponse.ok) {
+                        const responseToCache = fetchResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, responseToCache);
+                        });
+                    }
+                    return fetchResponse;
+                })
+                .catch(() => caches.match(event.request).then((cachedResponse) => cachedResponse || caches.match('/')))
+        );
         return;
     }
 

@@ -6,6 +6,12 @@ import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 import { generateUniqueSlug } from '../../../lib/slug-utils';
+import { authenticateExtensionRequest } from '../../../lib/extension-auth';
+import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extension-cors';
+
+export async function OPTIONS(request: NextRequest) {
+  return extensionCorsPreflight(request);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +58,10 @@ export async function POST(request: NextRequest) {
         console.log('[API /events POST] Image uploaded to Supabase:', imageUrl);
       }
     } else {
-      return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });
+      return withExtensionCors(
+        NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 }),
+        request
+      );
     }
 
     // Recupera la sessione per collegare l'evento all'utente loggato (se presente)
@@ -80,6 +89,11 @@ export async function POST(request: NextRequest) {
       if (!Number.isNaN(userId)) {
         eventDataToSave.createdById = userId;
       }
+    } else {
+      const extensionUser = await authenticateExtensionRequest(request);
+      if (extensionUser?.userId) {
+        eventDataToSave.createdById = extensionUser.userId;
+      }
     }
 
     // Check for duplicate events (same title, date and location)
@@ -94,13 +108,16 @@ export async function POST(request: NextRequest) {
 
       if (existing) {
         console.log('[API /events POST] Duplicate event detected, skipping create. Existing ID:', existing.id);
-        return NextResponse.json(
-          {
-            error: 'EVENT_DUPLICATE',
-            message: 'Questo evento è già stato creato (stesso titolo, data e luogo).',
-            existingEventId: existing.id,
-          },
-          { status: 409 }
+        return withExtensionCors(
+          NextResponse.json(
+            {
+              error: 'EVENT_DUPLICATE',
+              message: 'Questo evento è già stato creato (stesso titolo, data e luogo).',
+              existingEventId: existing.id,
+            },
+            { status: 409 }
+          ),
+          request
         );
       }
     }
@@ -151,19 +168,25 @@ export async function POST(request: NextRequest) {
       console.warn('[API /events POST] Event detail pre-warm failed, continuing:', prewarmError);
     }
     
-    return NextResponse.json({ ...event, slug: eventSlug }, { 
-      status: 201,
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      }
-    });
+    return withExtensionCors(
+      NextResponse.json({ ...event, slug: eventSlug }, {
+        status: 201,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        }
+      }),
+      request
+    );
   } catch (error) {
     console.error('[API /events POST] Error saving event:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ 
-      error: 'Failed to save event', 
-      details: errorMessage 
-    }, { status: 500 });
+    return withExtensionCors(
+      NextResponse.json({
+        error: 'Failed to save event',
+        details: errorMessage
+      }, { status: 500 }),
+      request
+    );
   }
 }
 

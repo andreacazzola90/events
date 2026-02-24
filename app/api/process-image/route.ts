@@ -6,6 +6,7 @@ import { compressImage } from '../../lib/image-utils';
 import { groupEventsByDate } from '../../../lib/event-utils';
 import { buildEventExtractionHints } from '../../../lib/event-hints';
 import type { EventData } from '../../types/event';
+import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extension-cors';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -18,9 +19,12 @@ export async function POST(request: NextRequest) {
     const file = formData.get('image');
 
     if (!file || !(file instanceof File)) {
-      return NextResponse.json(
-        { error: 'No image file provided' },
-        { status: 400 }
+      return withExtensionCors(
+        NextResponse.json(
+          { error: 'No image file provided' },
+          { status: 400 }
+        ),
+        request
       );
     }
 
@@ -28,28 +32,40 @@ export async function POST(request: NextRequest) {
     // Log per debug
     console.log('Ricevuto file:', file.name, 'Size:', file.size, 'Type:', file.type);
 
-    // Compress image if needed before OCR (max 1024KB)
-    const processedFile = await compressImage(file, 1024 * 1024);
+    // Compress image only as fallback variant (keep original first for better OCR on small text)
+    const compressedFile = await compressImage(file, 1024 * 1024);
 
     let rawText = '';
+    let lastOcrError: unknown = null;
+    const ocrCandidates: File[] = [file];
+    const isCompressedDifferent = compressedFile.size !== file.size || compressedFile.type !== file.type;
+    if (isCompressedDifferent) {
+      ocrCandidates.push(compressedFile);
+    }
 
-    // Step 1: Extract text from image using OCR
-    try {
-      console.log('🔄 Trying simplified OCR approach...');
-      rawText = await extractTextFromImageSimple(processedFile);
-      console.log('✅ Simplified OCR successful');
-    } catch (simpleOcrError) {
-      console.log('⚠️ Simplified OCR failed, trying Tesseract fallback...');
-      
+    // Step 1: Extract text from image using OCR (original first, compressed fallback)
+    for (const [index, candidateFile] of ocrCandidates.entries()) {
+      const variantLabel = index === 0 ? 'original' : 'compressed';
+      console.log(`🔄 OCR attempt on ${variantLabel} image (size: ${candidateFile.size} bytes)`);
+
       try {
-        rawText = await extractTextFromImage(processedFile);
-        console.log('✅ Tesseract OCR successful');
-      } catch (tesseractError) {
-        console.error('❌ Both OCR methods failed:', {
-          simple: simpleOcrError instanceof Error ? simpleOcrError.message : simpleOcrError,
-          tesseract: tesseractError instanceof Error ? tesseractError.message : tesseractError
-        });
-        throw simpleOcrError;
+        const simpleText = await extractTextFromImageSimple(candidateFile);
+        if (simpleText && simpleText.trim().length >= 10) {
+          rawText = simpleText;
+          console.log(`✅ Simplified OCR successful on ${variantLabel} image`);
+          break;
+        }
+
+        console.log(`⚠️ Simplified OCR returned little/no text on ${variantLabel} image, trying fallback OCR...`);
+        const fallbackText = await extractTextFromImage(candidateFile);
+        if (fallbackText && fallbackText.trim().length >= 10) {
+          rawText = fallbackText;
+          console.log(`✅ Fallback OCR successful on ${variantLabel} image`);
+          break;
+        }
+      } catch (candidateError) {
+        lastOcrError = candidateError;
+        console.warn(`⚠️ OCR failed on ${variantLabel} image:`, candidateError);
       }
     }
     
@@ -57,7 +73,10 @@ export async function POST(request: NextRequest) {
 
     // Verifica che ci sia testo estratto
     if (!rawText || rawText.trim().length < 10) {
-      throw new Error('Nessun testo leggibile trovato nell\'immagine. Assicurati che l\'immagine contenga testo chiaro e ben visibile.');
+      if (lastOcrError) {
+        console.warn('Ultimo errore OCR registrato:', lastOcrError);
+      }
+      throw new Error('Nessun testo leggibile trovato nell\'immagine. Prova con uno screenshot più ravvicinato e ben contrastato (testo più grande), oppure ritaglia solo la zona del volantino.');
     }
 
     // Step 2: Build heuristic hints to aiutare Groq a riconoscere date/orari/prezzi
@@ -658,7 +677,7 @@ REGOLE:
         }
       };
 
-      return NextResponse.json(response);
+      return withExtensionCors(NextResponse.json(response), request);
 
     } catch (err) {
       // ... (error handling)
@@ -667,9 +686,16 @@ REGOLE:
     }
   } catch (error) {
     console.error('Errore dettagliato:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process image' },
-      { status: 500 }
+    return withExtensionCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to process image' },
+        { status: 500 }
+      ),
+      request
     );
   }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return extensionCorsPreflight(request);
 }

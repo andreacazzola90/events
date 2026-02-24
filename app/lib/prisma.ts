@@ -5,6 +5,9 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 const prismaDatabaseUrl = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL;
+const prismaLogs = process.env.PRISMA_LOG_QUERIES === 'true'
+  ? ['query', 'error', 'warn']
+  : ['error', 'warn'];
 
 export const prisma = globalForPrisma.prisma || new PrismaClient({
   datasources: {
@@ -12,7 +15,7 @@ export const prisma = globalForPrisma.prisma || new PrismaClient({
       url: prismaDatabaseUrl,
     },
   },
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  log: prismaLogs,
 });
 
 if (process.env.NODE_ENV !== 'production') {

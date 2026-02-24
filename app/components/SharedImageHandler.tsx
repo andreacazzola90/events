@@ -17,46 +17,45 @@ export default function SharedImageHandler({ onProcessed }: SharedImageHandlerPr
 
     useEffect(() => {
         const isShared = searchParams?.get('shared');
+        const shareId = searchParams?.get('shareId');
 
-        if (isShared === 'true') {
+        if (isShared === 'true' && shareId) {
             console.log('[PWA] Handling shared content...');
 
             const handleSharedData = async () => {
                 try {
-                    // Check if there's a shared file in the cache
-                    const cache = await caches.open('shared-images');
-                    const cachedResponse = await cache.match('/shared-image');
+                    const sharedResponse = await fetch(`/api/share-target?shareId=${encodeURIComponent(shareId)}`);
+                    if (!sharedResponse.ok) {
+                        throw new Error('Impossibile recuperare immagine condivisa.');
+                    }
 
-                    if (cachedResponse) {
-                        const blob = await cachedResponse.blob();
-                        const file = new File([blob], 'shared-image.jpg', { type: blob.type });
+                    const blob = await sharedResponse.blob();
+                    const file = new File([blob], 'shared-image.jpg', { type: blob.type || 'image/jpeg' });
 
-                        console.log('[PWA] Processing shared image:', file.name);
+                    console.log('[PWA] Processing shared image:', file.name);
 
-                        // Process the shared image
-                        const imageUrl = URL.createObjectURL(file);
+                    // Process the shared image
+                    const imageUrl = URL.createObjectURL(file);
 
-                        // Trigger image processing
-                        const formData = new FormData();
-                        formData.append('image', file);
+                    // Trigger image processing
+                    const formData = new FormData();
+                    formData.append('image', file);
 
-                        const response = await fetch('/api/process-image', {
-                            method: 'POST',
-                            body: formData,
-                        });
+                    const response = await fetch('/api/process-image', {
+                        method: 'POST',
+                        body: formData,
+                    });
 
-                        if (response.ok) {
-                            const data = await response.json();
-                            // Handle new response structure { events: [], debug: {} }
-                            if (data.events && Array.isArray(data.events)) {
-                                onProcessed(data.events, imageUrl, data.debug);
-                            } else {
-                                onProcessed(data, imageUrl, data.debug);
-                            }
-                        }
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData?.error || 'Errore durante la scansione dell\'immagine condivisa.');
+                    }
 
-                        // Clean up cache
-                        await cache.delete('/shared-image');
+                    const data = await response.json();
+                    if (data.events && Array.isArray(data.events)) {
+                        onProcessed(data.events, imageUrl, data.debug);
+                    } else {
+                        onProcessed(data, imageUrl, data.debug);
                     }
                 } catch (err) {
                     console.error('[PWA] Error handling shared data:', err);

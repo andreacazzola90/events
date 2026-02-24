@@ -86,69 +86,95 @@ async function compressImage(file: File, maxSizeKB: number = 900): Promise<File>
  */
 async function performOCR(imageFile: File): Promise<string> {
   console.log('📡 Calling OCR.space API directly...');
-  
-  let processedBuffer: Buffer;
-  
+
+  const arrayBuffer = await imageFile.arrayBuffer();
+  const inputBuffer = Buffer.from(arrayBuffer);
+  const candidates: Buffer[] = [];
+
   try {
-    // Pre-process image with sharp to improve OCR quality
-    const arrayBuffer = await imageFile.arrayBuffer();
-    const inputBuffer = Buffer.from(arrayBuffer);
-    
-    processedBuffer = await sharp(inputBuffer)
+    const normalized = await sharp(inputBuffer)
       .resize(2000, 2000, { fit: 'inside', withoutEnlargement: false })
       .grayscale()
       .normalize()
       .sharpen()
       .toBuffer();
-      
+    candidates.push(normalized);
+
+    const highContrast = await sharp(inputBuffer)
+      .resize(2200, 2200, { fit: 'inside', withoutEnlargement: false })
+      .grayscale()
+      .normalize()
+      .threshold(170)
+      .sharpen()
+      .toBuffer();
+    candidates.push(highContrast);
+
+    const slightUpscale = await sharp(inputBuffer)
+      .resize(2600, 2600, { fit: 'inside', withoutEnlargement: false })
+      .grayscale()
+      .normalize()
+      .modulate({ brightness: 1.05, saturation: 0 })
+      .sharpen()
+      .toBuffer();
+    candidates.push(slightUpscale);
+
     console.log('✅ Image pre-processed with sharp');
   } catch (sharpError) {
     console.warn('⚠️ Sharp pre-processing failed, using original:', sharpError);
-    const arrayBuffer = await imageFile.arrayBuffer();
-    processedBuffer = Buffer.from(arrayBuffer);
+    candidates.push(inputBuffer);
   }
 
-  // Create FormData for OCR.space API
-  const ocrFormData = new FormData();
-  const blob = new Blob([processedBuffer as any], { type: 'image/jpeg' });
-  ocrFormData.append('file', blob, 'image.jpg');
-  ocrFormData.append('apikey', 'K83907440988957');
-  ocrFormData.append('language', 'ita');
-  ocrFormData.append('isOverlayRequired', 'false');
-  ocrFormData.append('detectOrientation', 'true');
-  ocrFormData.append('scale', 'true');
-  ocrFormData.append('OCREngine', '2');
+  let bestText = '';
+  const languages = ['ita', 'eng'];
 
-  const response = await fetch('https://api.ocr.space/parse/image', {
-    method: 'POST',
-    headers: {
-      'apikey': 'K83907440988957',
-    },
-    body: ocrFormData,
-  });
+  for (const language of languages) {
+    for (const [index, processedBuffer] of candidates.entries()) {
+      const ocrFormData = new FormData();
+      const blob = new Blob([processedBuffer as any], { type: 'image/jpeg' });
+      ocrFormData.append('file', blob, 'image.jpg');
+      ocrFormData.append('apikey', 'K83907440988957');
+      ocrFormData.append('language', language);
+      ocrFormData.append('isOverlayRequired', 'false');
+      ocrFormData.append('detectOrientation', 'true');
+      ocrFormData.append('scale', 'true');
+      ocrFormData.append('OCREngine', '2');
 
-  const data = await response.json();
+      const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        headers: {
+          'apikey': 'K83907440988957',
+        },
+        body: ocrFormData,
+      });
 
-  console.log('📊 OCR.space response:', {
-    isErrored: data.IsErroredOnProcessing,
-    hasResults: !!data.ParsedResults?.[0],
-  });
+      const data = await response.json();
+      const currentText = (data?.ParsedResults?.[0]?.ParsedText || '').trim();
 
-  if (data.IsErroredOnProcessing) {
-    throw new Error(`OCR processing error: ${data.ErrorMessage || 'Unknown error'}`);
+      console.log('📊 OCR.space response:', {
+        variant: index + 1,
+        language,
+        isErrored: data?.IsErroredOnProcessing,
+        textLength: currentText.length,
+      });
+
+      if (currentText.length > bestText.length) {
+        bestText = currentText;
+      }
+
+      if (currentText.length >= 30) {
+        console.log('✅ OCR text extraction successful');
+        return currentText;
+      }
+    }
   }
 
-  if (!data.ParsedResults?.[0]?.ParsedText) {
-    const errorMsg = data.ErrorMessage ? data.ErrorMessage[0] : 'Nessun testo rilevato nell\'immagine';
-    console.warn('⚠️ OCR.space returned no text:', errorMsg);
-    // Don't throw, just return empty string to allow processing to continue
-    return '';
+  if (bestText.length > 0) {
+    console.log('✅ OCR text extraction partial success');
+    return bestText;
   }
 
-  const extractedText = data.ParsedResults[0].ParsedText.trim();
-  console.log('✅ OCR text extraction successful');
-  
-  return extractedText;
+  console.warn('⚠️ OCR.space returned no readable text across variants');
+  return '';
 }
 
 /**

@@ -2,10 +2,13 @@
 
 import EventList from './components/EventList';
 import Link from 'next/link';
+import ChromeExtensionPrompt from './components/ChromeExtensionPrompt';
 
 export default function Home() {
     return (
         <main className="min-h-screen">
+            <ChromeExtensionPrompt />
+
             {/* Hero Section - Dice.fm Style */}
             <section className="hero-section">
                 <div className="max-w-7xl mx-auto px-6 py-16 text-center">

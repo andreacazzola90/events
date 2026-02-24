@@ -9,18 +9,20 @@ interface FavoriteButtonProps {
     onToggle?: (newValue: boolean) => void;
 }
 
-export default function FavoriteButton({ eventId, initialIsFavorite = false, onToggle }: FavoriteButtonProps) {
-    const [isFavorite, setIsFavorite] = useState(initialIsFavorite);
+export default function FavoriteButton({ eventId, initialIsFavorite, onToggle }: FavoriteButtonProps) {
+    const [isFavorite, setIsFavorite] = useState(initialIsFavorite ?? false);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         // Mantieni lo stato locale allineato con il valore iniziale passato dal parent
-        setIsFavorite(initialIsFavorite);
+        if (initialIsFavorite !== undefined) {
+            setIsFavorite(initialIsFavorite);
+        }
     }, [initialIsFavorite]);
 
     useEffect(() => {
-        // Se il parent non fornisce un valore iniziale, prova a caricare lo stato dai preferiti
-        if (initialIsFavorite) {
+        // Se il parent fornisce un valore iniziale (anche false), non fare fetch extra
+        if (initialIsFavorite !== undefined) {
             return;
         }
 

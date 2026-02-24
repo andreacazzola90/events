@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Event Creator Assistant</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Event Creator</h1>
+
+      <section class="card">
+        <h2>Login utente</h2>
+        <input id="email" type="email" placeholder="Email" />
+        <input id="password" type="password" placeholder="Password" />
+        <div class="row">
+          <button id="loginBtn">Login</button>
+          <button id="logoutBtn" class="secondary">Logout</button>
+        </div>
+        <p id="userStatus" class="status muted">Non autenticato</p>
+      </section>
+
+      <section class="card">
+        <h2>Immagine o screenshot</h2>
+        <input id="imageInput" type="file" accept="image/*" />
+        <button id="captureBtn" class="secondary">Seleziona area pagina</button>
+        <button id="clearCaptureBtn" class="secondary">Rimuovi immagine</button>
+        <img id="preview" alt="Anteprima immagine" hidden />
+        <button id="processBtn">Estrai evento dall'immagine</button>
+        <p id="processStatus" class="status muted"></p>
+      </section>
+
+      <section class="card" id="eventSection" hidden>
+        <h2>Evento</h2>
+        <label for="eventSelector">Evento rilevato</label>
+        <select id="eventSelector"></select>
+
+        <label for="title">Titolo</label>
+        <input id="title" type="text" />
+
+        <label for="description">Descrizione</label>
+        <textarea id="description" rows="4"></textarea>
+
+        <div class="grid2">
+          <div>
+            <label for="date">Data</label>
+            <input id="date" type="text" placeholder="YYYY-MM-DD" />
+          </div>
+          <div>
+            <label for="time">Orario</label>
+            <input id="time" type="text" placeholder="HH:MM" />
+          </div>
+        </div>
+
+        <label for="location">Luogo</label>
+        <input id="location" type="text" />
+
+        <div class="grid2">
+          <div>
+            <label for="organizer">Organizzatore</label>
+            <input id="organizer" type="text" />
+          </div>
+          <div>
+            <label for="category">Categoria</label>
+            <input id="category" type="text" />
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label for="price">Prezzo</label>
+            <input id="price" type="text" />
+          </div>
+          <div>
+            <label for="sourceUrl">Source URL</label>
+            <input id="sourceUrl" type="url" />
+          </div>
+        </div>
+
+        <button id="createBtn">Crea evento</button>
+        <p id="createStatus" class="status muted"></p>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

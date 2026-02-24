@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Event Creator Assistant",
+  "description": "Carica immagini o cattura una parte del sito per creare eventi nel tuo portale.",
+  "version": "1.0.0",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Crea evento",
+    "default_popup": "popup.html"
+  }
+}

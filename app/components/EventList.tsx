@@ -216,9 +216,10 @@ export default function EventList() {
             const params = new URLSearchParams();
             // Prendi un set sufficientemente ampio di eventi, il filtraggio avviene lato client
             params.append('limit', '200');
+            params.append('_t', Date.now().toString());
 
             console.log('[EventList] Fetching events from API...');
-            const response = await fetch(`/api/events?${params.toString()}`);
+            const response = await fetch(`/api/events?${params.toString()}`, { cache: 'no-store' });
             if (response.ok) {
                 const data = await response.json();
                 console.log('[EventList] Fetched events:', data.length, 'First event:', data[0]?.title, data[0]?.id);

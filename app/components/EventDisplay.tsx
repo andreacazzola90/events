@@ -10,6 +10,7 @@ import { STANDARD_CATEGORIES } from '../../lib/constants';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef } from 'react';
 import SaveAnimation from './SaveAnimation';
+import { toast } from 'react-toastify';
 
 interface EventDisplayProps {
     eventData: EventData;
@@ -22,6 +23,23 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
+
+    const handleSaveApiError = (errorText: string): never => {
+        let parsedError: any;
+
+        try {
+            parsedError = JSON.parse(errorText);
+        } catch {
+            parsedError = null;
+        }
+
+        if (parsedError?.error === 'EVENT_DUPLICATE') {
+            toast.info(parsedError.message || 'Questo evento è già stato creato.');
+            throw new Error('EVENT_DUPLICATE');
+        }
+
+        throw new Error('Failed to save event: ' + errorText);
+    };
 
     useEffect(() => {
         setImageUrl(eventData.imageUrl);
@@ -145,7 +163,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                 if (!saveResponse.ok) {
                     const errorText = await saveResponse.text();
                     console.error('[EventDisplay] Save failed:', errorText);
-                    throw new Error('Failed to save event: ' + errorText);
+                    handleSaveApiError(errorText);
                 }
 
                 savedEvent = await saveResponse.json();
@@ -162,7 +180,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error('[EventDisplay] Save failed:', errorText);
-                    throw new Error('Failed to save event: ' + errorText);
+                    handleSaveApiError(errorText);
                 }
 
                 savedEvent = await response.json();
@@ -181,11 +199,21 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
             // Wait for animation to complete
             await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // Redirect to homepage
-            console.log('[EventDisplay] Redirecting to homepage');
-            window.location.href = '/?refresh=' + Date.now();
+            // Redirect to new event detail page when available
+            if (savedEvent?.slug) {
+                console.log('[EventDisplay] Redirecting to event detail page:', savedEvent.slug);
+                window.location.href = `/events/${savedEvent.slug}`;
+            } else {
+                console.log('[EventDisplay] Redirecting to homepage');
+                window.location.href = '/?refresh=' + Date.now();
+            }
         } catch (error) {
             console.error('[EventDisplay] Error saving event:', error);
+            if (error instanceof Error && error.message === 'EVENT_DUPLICATE') {
+                setSaveAnimationStatus('hidden');
+                setIsSaving(false);
+                return;
+            }
             alert('Errore nel salvataggio dell\'evento: ' + (error instanceof Error ? error.message : 'Unknown error'));
             setSaveAnimationStatus('hidden');
             setIsSaving(false);
@@ -195,7 +223,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
         <div className="event-display-container space-y-6">
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }} className="event-form">
                 <div className="event-main-layout flex flex-col md:flex-row gap-8">
-                    <div className="event-image-section rounded-lg overflow-hidden shadow-lg w-full md:min-w-[220px] md:max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
+                    <div className="event-image-section rounded-lg overflow-hidden shadow-lg w-full md:min-w-55 md:max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
@@ -203,7 +231,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                 className="event-image w-full h-auto object-cover mb-2"
                             />
                         ) : (
-                            <div className="event-image-placeholder w-full h-[220px] flex items-center justify-center text-gray-400">Nessuna immagine</div>
+                            <div className="event-image-placeholder w-full h-55 flex items-center justify-center text-gray-400">Nessuna immagine</div>
                         )}
                         {isEditing && (
                             <div className="p-4 w-full">
@@ -314,7 +342,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                     <textarea
                                         name="description"
                                         defaultValue={eventData.description}
-                                        className="event-description-textarea flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[100px]"
+                                        className="event-description-textarea flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-25"
                                     />
                                 ) : (
                                     <span className="event-description-text flex-1 py-2">{eventData.description}</span>

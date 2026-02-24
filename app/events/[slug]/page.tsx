@@ -9,20 +9,25 @@ import { notFound } from 'next/navigation';
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
 export async function generateStaticParams() {
-    const events = await prisma.event.findMany({
-        select: {
-            id: true,
-            title: true,
-        },
-        take: 10, // Limit to latest 10 events to avoid DB connection limits during build
-        orderBy: {
-            date: 'desc',
-        },
-    });
+    try {
+        const events = await prisma.event.findMany({
+            select: {
+                id: true,
+                title: true,
+            },
+            take: 10, // Limit to latest 10 events to avoid DB connection limits during build
+            orderBy: {
+                date: 'desc',
+            },
+        });
 
-    return events.map((event) => ({
-        slug: generateUniqueSlug(event.title, event.id),
-    }));
+        return events.map((event) => ({
+            slug: generateUniqueSlug(event.title, event.id),
+        }));
+    } catch (error) {
+        console.error('[events/[slug]] generateStaticParams failed, falling back to runtime rendering:', error);
+        return [];
+    }
 }
 
 async function getEvent(slug: string) {

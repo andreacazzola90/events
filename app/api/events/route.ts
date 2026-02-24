@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uploadImageToSupabase } from '../../lib/supabase';
 import { geocodeLocation } from '@/lib/geocoding';
-import { revalidatePath, unstable_cache } from 'next/cache';
+import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
+import { generateUniqueSlug } from '../../../lib/slug-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -128,9 +129,29 @@ export async function POST(request: NextRequest) {
     revalidatePath('/', 'page');
     revalidatePath('/eventi', 'page');
     revalidatePath('/mappa', 'page');
-    console.log('[API /events POST] Cache revalidated for home, eventi, mappa pages');
+    revalidateTag('events-list', 'max');
+    const eventSlug = generateUniqueSlug(event.title, event.id);
+    const eventDetailPath = `/events/${eventSlug}`;
+    revalidatePath(eventDetailPath, 'page');
+    console.log('[API /events POST] Cache revalidated for home, eventi, mappa pages and events-list tag');
+
+    try {
+      const listingUrl = new URL(`/api/events?limit=200&_rebuild=${Date.now()}`, request.nextUrl.origin).toString();
+      await fetch(listingUrl, { cache: 'no-store' });
+      console.log('[API /events POST] Events listing JSON rebuilt:', listingUrl);
+    } catch (listingRebuildError) {
+      console.warn('[API /events POST] Events listing JSON rebuild failed, continuing:', listingRebuildError);
+    }
+
+    try {
+      const detailUrl = new URL(eventDetailPath, request.nextUrl.origin).toString();
+      await fetch(detailUrl, { cache: 'no-store' });
+      console.log('[API /events POST] Event detail pre-warmed:', detailUrl);
+    } catch (prewarmError) {
+      console.warn('[API /events POST] Event detail pre-warm failed, continuing:', prewarmError);
+    }
     
-    return NextResponse.json(event, { 
+    return NextResponse.json({ ...event, slug: eventSlug }, { 
       status: 201,
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',

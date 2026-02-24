@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eventscanner-v2'; // Incrementa versione per forzare update
+const CACHE_NAME = 'eventscanner-v3'; // Incrementa versione per forzare update
 const STATIC_CACHE = [
     '/',
     '/crea',
@@ -51,34 +51,33 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Cache-First strategy for events API
+    // Network-First strategy for events API (fresh data first, cache fallback offline)
     if (event.request.url.includes('/api/events') && event.request.method === 'GET') {
-        console.log('[SW] Handling API request with Cache-First:', event.request.url);
+        console.log('[SW] Handling API request with Network-First:', event.request.url);
         event.respondWith(
-            caches.match(event.request).then((cachedResponse) => {
-                if (cachedResponse) {
-                    console.log('[SW] Serving from cache:', event.request.url);
-                    // Optional: Update cache in background (Stale-While-Revalidate)
-                    // fetch(event.request).then(response => {
-                    //     if (response.ok) {
-                    //         const responseToCache = response.clone();
-                    //         caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
-                    //     }
-                    // });
-                    return cachedResponse;
-                }
-
-                return fetch(event.request).then((fetchResponse) => {
+            fetch(event.request)
+                .then((fetchResponse) => {
                     if (fetchResponse.ok) {
-                        console.log('[SW] Fetching and caching API response:', event.request.url);
+                        console.log('[SW] Fetched fresh API response, updating cache:', event.request.url);
                         const responseToCache = fetchResponse.clone();
                         caches.open(CACHE_NAME).then((cache) => {
                             cache.put(event.request, responseToCache);
                         });
                     }
                     return fetchResponse;
-                });
-            })
+                })
+                .catch(() => {
+                    console.log('[SW] Network failed for API request, trying cache fallback:', event.request.url);
+                    return caches.match(event.request).then((cachedResponse) => {
+                        if (cachedResponse) {
+                            return cachedResponse;
+                        }
+                        return new Response(JSON.stringify({ error: 'offline' }), {
+                            status: 503,
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    });
+                })
         );
         return;
     }

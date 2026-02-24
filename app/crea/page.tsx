@@ -108,6 +108,9 @@ export default function CreaEvento() {
 
     const handleSaveAll = async (eventsToSave: EventData[]) => {
         try {
+            let successfulSaves = 0;
+            let firstSavedSlug: string | null = null;
+
             for (const eventData of eventsToSave) {
                 // Se c'è un'immagine blob, carica con FormData
                 if (eventData.imageUrl && eventData.imageUrl.startsWith('blob:')) {
@@ -142,6 +145,10 @@ export default function CreaEvento() {
 
                     // Track event creation
                     const savedEvent = await saveResponse.json();
+                    successfulSaves += 1;
+                    if (!firstSavedSlug && savedEvent?.slug) {
+                        firstSavedSlug = savedEvent.slug;
+                    }
                     trackEventCreate(savedEvent);
                     trackEvent('event_create', 'Events', eventData.title);
                 } else {
@@ -174,6 +181,10 @@ export default function CreaEvento() {
 
                     // Track event creation
                     const savedEvent = await response.json();
+                    successfulSaves += 1;
+                    if (!firstSavedSlug && savedEvent?.slug) {
+                        firstSavedSlug = savedEvent.slug;
+                    }
                     trackEventCreate(savedEvent);
                     trackEvent('event_create', 'Events', eventData.title);
                 }
@@ -191,8 +202,12 @@ export default function CreaEvento() {
             setEvents([]);
             setImageUrl(null);
             setDebugInfo(null);
-            // Redirect to homepage to see saved events
-            router.push('/');
+            // Redirect to event detail when exactly one event was created
+            if (successfulSaves === 1 && firstSavedSlug) {
+                router.push(`/events/${firstSavedSlug}`);
+            } else {
+                router.push('/');
+            }
         } catch (error) {
             console.error('Error saving events:', error);
             throw error; // Re-throw to let the MultipleEventsEditor handle it
@@ -286,8 +301,13 @@ export default function CreaEvento() {
             }
 
             // Force hard reload to bypass all cache
-            console.log('Forcing hard reload to homepage');
-            window.location.href = '/?refresh=' + Date.now();
+            if (savedEvent?.slug) {
+                console.log('Redirecting to event detail page:', savedEvent.slug);
+                window.location.href = `/events/${savedEvent.slug}`;
+            } else {
+                console.log('Forcing hard reload to homepage');
+                window.location.href = '/?refresh=' + Date.now();
+            }
         } catch (error) {
             console.error('Error saving event:', error);
             const msg = error instanceof Error ? error.message : 'Errore nel salvataggio dell\'evento';

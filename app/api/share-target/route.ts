@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 type SharedImageEntry = {
-  bytes: Uint8Array;
+  bytes: ArrayBuffer;
   type: string;
   fileName: string;
   createdAt: number;
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       console.log('[Share Target] Shared image:', sharedImage.name, sharedImage.type);
 
       const shareId = crypto.randomUUID();
-      const bytes = new Uint8Array(await sharedImage.arrayBuffer());
+      const bytes = await sharedImage.arrayBuffer();
 
       sharedImagesStore.set(shareId, {
         bytes,
@@ -82,7 +82,9 @@ export async function GET(request: NextRequest) {
 
   sharedImagesStore.delete(shareId);
 
-  return new NextResponse(sharedEntry.bytes, {
+  const imageBlob = new Blob([sharedEntry.bytes], { type: sharedEntry.type });
+
+  return new NextResponse(imageBlob, {
     status: 200,
     headers: {
       'Content-Type': sharedEntry.type,

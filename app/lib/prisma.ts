@@ -1,11 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 // PrismaClient singleton pattern for Next.js
 // This prevents multiple instances in development due to hot reloading
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 const prismaDatabaseUrl = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL;
-const prismaLogs = process.env.PRISMA_LOG_QUERIES === 'true'
+const prismaLogs: Prisma.LogLevel[] = process.env.PRISMA_LOG_QUERIES === 'true'
   ? ['query', 'error', 'warn']
   : ['error', 'warn'];
 

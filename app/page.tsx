@@ -48,17 +48,22 @@ export default function Home() {
                     {/* Section Header */}
                     <div className="text-center mb-12">
                         <h2 className="text-4xl md:text-5xl font-bold mb-4">
-                            Trending Events
+                            Eventi per periodo
                         </h2>
                         <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-                            Check out some of the most popular events coming up, from club nights
-                            and gigs to artist signings and comedy shows.
+                            Seleziona Oggi, Domani o i prossimi giorni per vedere una selezione rapida degli eventi.
                         </p>
                     </div>
 
                     {/* Events List */}
                     <div className="animate-fadeInUp">
-                        <EventList />
+                        <EventList mode="quick" />
+                    </div>
+
+                    <div className="mt-8 text-center">
+                        <Link href="/tutti-gli-eventi" className="btn btn-outline">
+                            Vedi tutti gli eventi
+                        </Link>
                     </div>
                 </div>
             </section>

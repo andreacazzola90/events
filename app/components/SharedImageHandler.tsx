@@ -1,26 +1,45 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { EventData } from '../types/event';
 
 interface SharedImageHandlerProps {
     onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any) => void;
+    onStart?: () => void;
+    onError?: (message: string) => void;
 }
 
 /**
  * Handles shared images from Web Share Target API
  * Wrapped in Suspense boundary in parent
  */
-export default function SharedImageHandler({ onProcessed }: SharedImageHandlerProps) {
+export default function SharedImageHandler({ onProcessed, onStart, onError }: SharedImageHandlerProps) {
     const searchParams = useSearchParams();
+    const processedShareIdRef = useRef<string | null>(null);
 
     useEffect(() => {
         const isShared = searchParams?.get('shared');
         const shareId = searchParams?.get('shareId');
 
+        if (isShared !== 'true') {
+            return;
+        }
+
+        if (!shareId) {
+            onError?.('Nessuna immagine condivisa trovata. Riprova dalla schermata Condividi.');
+            return;
+        }
+
+        // Evita doppia esecuzione in Strict Mode/dev o re-render ripetuti
+        if (processedShareIdRef.current === shareId) {
+            return;
+        }
+        processedShareIdRef.current = shareId;
+
         if (isShared === 'true' && shareId) {
             console.log('[PWA] Handling shared content...');
+            onStart?.();
 
             const handleSharedData = async () => {
                 try {
@@ -59,12 +78,16 @@ export default function SharedImageHandler({ onProcessed }: SharedImageHandlerPr
                     }
                 } catch (err) {
                     console.error('[PWA] Error handling shared data:', err);
+                    const message = err instanceof Error
+                        ? err.message
+                        : 'Errore durante la scansione dell\'immagine condivisa.';
+                    onError?.(message);
                 }
             };
 
             handleSharedData();
         }
-    }, [searchParams, onProcessed]);
+    }, [searchParams, onProcessed, onStart, onError]);
 
     return null; // This component doesn't render anything
 }

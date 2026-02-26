@@ -55,6 +55,7 @@ export default function CreaEvento() {
     const [events, setEvents] = useState<EventData[]>([]);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [processingSharedImage, setProcessingSharedImage] = useState(false);
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -102,6 +103,7 @@ export default function CreaEvento() {
         setEvents(eventsWithImage);
         setImageUrl(newImageUrl);
         setDebugInfo(debug);
+        setProcessingSharedImage(false);
         setError(null);
     };
 
@@ -431,7 +433,18 @@ export default function CreaEvento() {
         <>
             {/* Shared Image Handler with Suspense */}
             <Suspense fallback={null}>
-                <SharedImageHandler onProcessed={handleNewEvents} />
+                <SharedImageHandler
+                    onProcessed={handleNewEvents}
+                    onStart={() => {
+                        setError(null);
+                        setProcessingSharedImage(true);
+                    }}
+                    onError={(message) => {
+                        setProcessingSharedImage(false);
+                        setError(message);
+                        toast.error(message);
+                    }}
+                />
             </Suspense>
 
             <main className="min-h-screen">
@@ -475,6 +488,12 @@ export default function CreaEvento() {
                         {/* Creation Methods - Only show if no events extracted */}
                         {events.length === 0 && (
                             <div className="grid md:grid-cols-2 gap-8">
+                                {processingSharedImage && (
+                                    <div className="md:col-span-2 glass-effect p-8 rounded-2xl border border-white/10 animate-fadeInUp">
+                                        <LoadingAnimation message="Scansione immagine condivisa in corso..." />
+                                    </div>
+                                )}
+
                                 {/* Image Upload Method - First on Mobile */}
                                 <div className="glass-effect p-8 rounded-2xl border border-white/10 order-1 md:order-2">
                                     <div className="text-center mb-6">

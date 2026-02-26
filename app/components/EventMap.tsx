@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
 import Image from 'next/image';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -33,17 +33,91 @@ interface EventWithCoordinates extends EventData {
     lng?: number;
 }
 
+const toFiniteNumber = (value: unknown): number | null => {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === 'string') {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+};
+
+const hasValidCoordinates = (lat: unknown, lng: unknown): boolean => {
+    const validLat = typeof lat === 'number' && Number.isFinite(lat) && lat >= -90 && lat <= 90;
+    const validLng = typeof lng === 'number' && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+    return validLat && validLng;
+};
+
+const isValidLatLngTuple = (coords: [unknown, unknown]): coords is [number, number] => {
+    return hasValidCoordinates(coords[0], coords[1]);
+};
+
+const DEFAULT_MAP_CENTER: [number, number] = [45.7175, 11.3593];
+
 // Component to control map view
 function MapController({ center }: { center: [number, number] | null }) {
     const map = useMap();
 
     useEffect(() => {
-        if (center) {
+        if (!center || !isValidLatLngTuple(center)) return;
+
+        const size = map.getSize();
+        if (!Number.isFinite(size.x) || !Number.isFinite(size.y) || size.x <= 0 || size.y <= 0) {
+            return;
+        }
+
+        try {
             map.flyTo(center, 14, {
                 duration: 1.5
             });
+        } catch {
+            map.setView(center, 14, { animate: false });
         }
     }, [center, map]);
+
+    return null;
+}
+
+// Keep Leaflet responsive after route transitions/layout changes
+function MapLifecycleController({ center }: { center: [number, number] | null }) {
+    const map = useMap();
+
+    useEffect(() => {
+        const refreshMap = () => {
+            try {
+                map.invalidateSize();
+                if (center && isValidLatLngTuple(center)) {
+                    map.setView(center, map.getZoom(), { animate: false });
+                }
+            } catch {
+                // Ignore transient map lifecycle errors during navigation
+            }
+        };
+
+        const rafId = requestAnimationFrame(refreshMap);
+        const timeoutA = window.setTimeout(refreshMap, 120);
+        const timeoutB = window.setTimeout(refreshMap, 400);
+
+        const handleResize = () => refreshMap();
+        const handleVisibility = () => {
+            if (!document.hidden) {
+                refreshMap();
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            window.clearTimeout(timeoutA);
+            window.clearTimeout(timeoutB);
+            window.removeEventListener('resize', handleResize);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [map, center]);
 
     return null;
 }
@@ -53,7 +127,7 @@ export default function EventMap() {
     const [allEvents, setAllEvents] = useState<EventWithCoordinates[]>([]); // Store all events
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+    const [mapCenter, setMapCenter] = useState<[number, number] | null>(DEFAULT_MAP_CENTER);
     const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
 
     // Geographic filter state
@@ -122,25 +196,19 @@ export default function EventMap() {
             console.log('[EventMap] Event locations:', eventsData.map((e: EventData) => ({ title: e.title, location: e.location })));
             // Use precomputed coordinates stored in the database
             const eventsWithCoords: EventWithCoordinates[] = eventsData.map((event: EventData) => {
-                const lat = event.latitude ?? (event as any).lat ?? undefined;
-                const lng = event.longitude ?? (event as any).lng ?? undefined;
-                return { ...event, lat, lng };
+                const lat = toFiniteNumber(event.latitude ?? (event as any).lat);
+                const lng = toFiniteNumber(event.longitude ?? (event as any).lng);
+                return { ...event, lat: lat ?? undefined, lng: lng ?? undefined };
             });
 
-            const validEvents = eventsWithCoords.filter(e => e.lat && e.lng);
+            const validEvents = eventsWithCoords.filter((e) => hasValidCoordinates(e.lat, e.lng));
             console.log('[EventMap] Events with valid coordinates:', validEvents.length, '/', eventsData.length);
             console.log('[EventMap] Valid events:', validEvents.map(e => ({ title: e.title, lat: e.lat, lng: e.lng })));
-            console.log('[EventMap] Filtered out events:', eventsWithCoords.filter(e => !e.lat || !e.lng).map(e => ({ title: e.title, location: e.location })));
+            console.log('[EventMap] Filtered out events:', eventsWithCoords.filter((e) => !hasValidCoordinates(e.lat, e.lng)).map(e => ({ title: e.title, location: e.location, lat: e.lat, lng: e.lng })));
 
             // Store all events for filtering
             setAllEvents(validEvents);
             setEvents(validEvents);
-
-            if (validEvents.length > 0) {
-                const avgLat = validEvents.reduce((sum, e) => sum + (e.lat || 0), 0) / validEvents.length;
-                const avgLng = validEvents.reduce((sum, e) => sum + (e.lng || 0), 0) / validEvents.length;
-                setMapCenter([avgLat, avgLng]);
-            }
 
             setLoading(false);
         } catch (err) {
@@ -171,8 +239,9 @@ export default function EventMap() {
         }
 
         const filtered = allEvents.filter(event => {
-            if (!event.lat || !event.lng) return false;
-            const distance = calculateDistance(userLocation.lat, userLocation.lng, event.lat, event.lng);
+            const coords: [unknown, unknown] = [event.lat, event.lng];
+            if (!isValidLatLngTuple(coords)) return false;
+            const distance = calculateDistance(userLocation.lat, userLocation.lng, coords[0], coords[1]);
             return distance <= maxDistance;
         });
 
@@ -187,9 +256,10 @@ export default function EventMap() {
         setIsGeolocating(true);
         try {
             const coords = await geocodeLocation(filterCity);
-            if (coords.lat && coords.lng) {
-                setUserLocation({ lat: coords.lat, lng: coords.lng });
-                setMapCenter([coords.lat, coords.lng]);
+            const latLng: [unknown, unknown] = [coords.lat, coords.lng];
+            if (isValidLatLngTuple(latLng)) {
+                setUserLocation({ lat: latLng[0], lng: latLng[1] });
+                setMapCenter(latLng);
                 console.log(`[EventMap] City "${filterCity}" geocoded to:`, coords);
             } else {
                 alert('Impossibile trovare la città. Riprova con un nome diverso.');
@@ -237,12 +307,8 @@ export default function EventMap() {
         setFilterCity('');
         setEvents(allEvents);
 
-        // Reset map center to average of all events
-        if (allEvents.length > 0) {
-            const avgLat = allEvents.reduce((sum, e) => sum + (e.lat || 0), 0) / allEvents.length;
-            const avgLng = allEvents.reduce((sum, e) => sum + (e.lng || 0), 0) / allEvents.length;
-            setMapCenter([avgLat, avgLng]);
-        }
+        // Reset map center to Schio
+        setMapCenter(DEFAULT_MAP_CENTER);
     };
 
     // Cache in-memory per la geocodifica
@@ -271,8 +337,10 @@ export default function EventMap() {
                     lat: parseFloat(data[0].lat),
                     lng: parseFloat(data[0].lon)
                 };
-                geocodeCache[location] = coords;
-                return coords;
+                if (hasValidCoordinates(coords.lat, coords.lng)) {
+                    geocodeCache[location] = coords;
+                    return coords;
+                }
             }
             return {};
         } catch {
@@ -318,15 +386,16 @@ export default function EventMap() {
     };
 
     const handleEventClick = (event: EventWithCoordinates) => {
-        if (event.lat && event.lng) {
-            setMapCenter([event.lat, event.lng]);
+        const coords: [unknown, unknown] = [event.lat, event.lng];
+        if (isValidLatLngTuple(coords)) {
+            setMapCenter(coords);
             setSelectedEventId(event.id);
         }
     };
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-[600px] bg-gray-100 rounded-lg">
+            <div className="flex items-center justify-center h-full w-full bg-gray-100 rounded-3xl">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                     <p className="text-gray-600">Caricamento mappa...</p>
@@ -337,7 +406,7 @@ export default function EventMap() {
 
     if (error) {
         return (
-            <div className="flex items-center justify-center h-[600px] bg-red-50 rounded-lg">
+            <div className="flex items-center justify-center h-full w-full bg-red-50 rounded-3xl">
                 <div className="text-center">
                     <p className="text-red-600">{error}</p>
                 </div>
@@ -347,7 +416,7 @@ export default function EventMap() {
 
     if (events.length === 0) {
         return (
-            <div className="flex items-center justify-center h-[600px] bg-gray-100 rounded-lg">
+            <div className="flex items-center justify-center h-full w-full bg-gray-100 rounded-3xl">
                 <div className="text-center">
                     <p className="text-gray-600">Nessun evento da visualizzare sulla mappa</p>
                 </div>
@@ -355,26 +424,37 @@ export default function EventMap() {
         );
     }
 
+    const validatedMapCenter = mapCenter && isValidLatLngTuple(mapCenter) ? mapCenter : null;
+    const mapInitialCenter = validatedMapCenter ?? DEFAULT_MAP_CENTER;
+
     return (
-        <div className="flex flex-col lg:flex-row h-auto lg:h-[700px] rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-white/10 backdrop-blur-md w-full">
-            {/* Map - Top on Mobile, Right on Desktop (3/4 width) */}
-            <div className="w-full lg:w-3/4 h-[400px] lg:h-full relative order-1 lg:order-2">
+        <div className="relative h-full w-full rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-white/10 backdrop-blur-md">
+            <div className="absolute inset-0">
                 <MapContainer
-                    center={mapCenter || [45.71, 11.35]}
+                    center={mapInitialCenter}
                     zoom={10}
+                    zoomControl={false}
                     style={{ height: '100%', width: '100%' }}
                     className="z-0"
                 >
+                    <ZoomControl position="topright" />
                     <TileLayer
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    <MapController center={mapCenter} />
-                    {events.map((event) => (
-                        event.lat && event.lng && (
+                    <MapLifecycleController center={validatedMapCenter} />
+                    <MapController center={validatedMapCenter} />
+                    {events.map((event) => {
+                        const coords: [unknown, unknown] = [event.lat, event.lng];
+
+                        if (!isValidLatLngTuple(coords)) {
+                            return null;
+                        }
+
+                        return (
                             <Marker
                                 key={event.id}
-                                position={[event.lat, event.lng]}
+                                position={coords}
                                 eventHandlers={{
                                     click: () => setSelectedEventId(event.id),
                                 }}
@@ -409,13 +489,12 @@ export default function EventMap() {
                                     </div>
                                 </Popup>
                             </Marker>
-                        )
-                    ))}
+                        );
+                    })}
                 </MapContainer>
             </div>
 
-            {/* Sidebar - Bottom on Mobile, Left on Desktop (1/4 width) */}
-            <div className="w-full lg:w-1/4 h-[400px] lg:h-full bg-white backdrop-blur-lg border-t lg:border-t-0 lg:border-r border-gray-200 overflow-y-auto custom-scrollbar shrink-0 order-2 lg:order-1 relative">
+            <div className="absolute left-3 right-3 top-3 bottom-3 sm:left-6 sm:right-auto sm:top-6 sm:bottom-6 sm:w-95 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl z-500 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 bg-white sticky top-0 z-20 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -495,7 +574,7 @@ export default function EventMap() {
                         )}
                     </div>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 overflow-y-auto custom-scrollbar h-[calc(100%-210px)]">
                     {events.map((event) => (
                         <div
                             key={event.id}

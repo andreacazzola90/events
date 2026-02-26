@@ -1,12 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useEffect } from 'react';
 
 // Importo EventMap dinamicamente per evitare SSR (Leaflet funziona solo client-side)
 const EventMap = dynamic(() => import('../components/EventMap'), {
     ssr: false,
     loading: () => (
-        <div className="flex items-center justify-center h-[600px] bg-gray-100 rounded-lg">
+        <div className="flex items-center justify-center h-full bg-gray-100 rounded-3xl">
             <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <p className="text-gray-600">Caricamento mappa...</p>
@@ -16,22 +17,20 @@ const EventMap = dynamic(() => import('../components/EventMap'), {
 });
 
 export default function MappaPage() {
+    useEffect(() => {
+        const previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+        };
+    }, []);
+
     return (
-        <main className="min-h-screen py-4 md:py-8 px-2 bg-light w-full">
-            <div className="max-w-[1800px] mx-auto px-4 md:px-8">
-                <div className="w-full space-y-8">
-                    <div className="w-full text-center space-y-4">
-                        <h1 className="text-4xl md:text-5xl font-extrabold text-primary drop-shadow-lg tracking-tight">Mappa Eventi</h1>
-                        <p className="text-xl md:text-2xl text-dark/70 font-semibold">
-                            Visualizza tutti gli eventi sulla mappa in base alla loro posizione
-                        </p>
-                    </div>
-                    <div className="card bg-base-100 shadow-xl w-full max-w-full">
-                        <EventMap />
-                    </div>
-                    <div className="badge badge-outline badge-secondary mt-4 inline-flex items-center gap-2">
-                        💡 <span className="font-semibold">Suggerimento:</span> Clicca sui marker sulla mappa per vedere i dettagli di ogni evento. La geocodifica delle località avviene automaticamente tramite OpenStreetMap.
-                    </div>
+        <main className="h-[calc(100vh-4rem)] w-full bg-black">
+            <div className="h-full w-full p-2 sm:p-4">
+                <div className="h-full w-full">
+                    <EventMap />
                 </div>
             </div>
         </main>

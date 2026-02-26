@@ -8,7 +8,7 @@ export default function AuthPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session, status } = useSession();
-    const view = searchParams.get('mode') === 'register' ? 'register' : 'login';
+    const view = searchParams?.get('mode') === 'register' ? 'register' : 'login';
 
     useEffect(() => {
         if (session) {

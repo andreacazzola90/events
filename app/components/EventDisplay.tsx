@@ -45,7 +45,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
         setImageUrl(eventData.imageUrl);
     }, [eventData.imageUrl]);
 
-    function EditableField({ label, field }: { label: string; field: keyof EventData }) {
+    const renderEditableField = (label: string, field: keyof EventData) => {
         let icon = null;
         if (field === 'date') icon = <CalendarIcon className="field-icon date-icon w-5 h-5 text-blue-500" />;
         if (field === 'time') icon = <ClockIcon className="field-icon time-icon w-5 h-5 text-blue-500" />;
@@ -79,7 +79,7 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                 )}
             </div>
         );
-    }
+    };
 
     const handleSave = async () => {
         if (!formRef.current) return;
@@ -300,11 +300,11 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                         {/* Campi dell'evento */}
                         <div className="event-fields space-y-4">
                             <div className="event-field-date">
-                                <EditableField label="Data" field="date" />
+                                {renderEditableField('Data', 'date')}
                             </div>
                             <div className="event-field-time">
                                 {(isEditing || (eventData.time && eventData.time.trim().toLowerCase() !== 'non trovato')) && (
-                                    <EditableField label="Ora" field="time" />
+                                    renderEditableField('Ora', 'time')
                                 )}
                             </div>
                             <div className="event-field-location flex items-start space-x-4">
@@ -328,13 +328,13 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                 )}
                             </div>
                             <div className="event-field-category">
-                                <EditableField label="Categoria" field="category" />
+                                {renderEditableField('Categoria', 'category')}
                             </div>
                             <div className="event-field-organizer">
-                                <EditableField label="Organizzatore" field="organizer" />
+                                {renderEditableField('Organizzatore', 'organizer')}
                             </div>
                             <div className="event-field-price">
-                                <EditableField label="Prezzo" field="price" />
+                                {renderEditableField('Prezzo', 'price')}
                             </div>
                             <div className="event-field-description flex items-start space-x-4">
                                 <span className="description-label text-gray-600 w-24 mt-2">Descrizione:</span>

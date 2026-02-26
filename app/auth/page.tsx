@@ -1,10 +1,10 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
-export default function AuthPage() {
+function AuthPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session, status } = useSession();
@@ -91,6 +91,14 @@ export default function AuthPage() {
                 </div>
             </div>
         </main>
+    );
+}
+
+export default function AuthPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-2xl">Caricamento...</div>}>
+            <AuthPageContent />
+        </Suspense>
     );
 }
 

@@ -5,7 +5,6 @@ import sharp from 'sharp';
  * Compress image if it exceeds the size limit
  * Target: under 1MB for OCR.space API
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function compressImage(file: File, maxSizeKB: number = 900): Promise<File> {
   const fileSizeKB = file.size / 1024;
   console.log(`📏 Image size: ${fileSizeKB.toFixed(2)} KB`);
@@ -212,7 +211,6 @@ export async function extractTextFromImageSimple(imageFile: File): Promise<strin
 /**
  * Convert File to base64 string - works both client and server side
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function fileToBase64(file: File): Promise<string> {
   // Check if we're in browser environment
   if (typeof window !== 'undefined' && window.FileReader) {

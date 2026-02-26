@@ -9,6 +9,9 @@ import { trackEvent } from '../lib/analytics';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
 import FavoriteButton from './FavoriteButton';
 
+type EventListMode = 'full' | 'quick';
+type QuickDateFilter = 'today' | 'tomorrow' | 'weekend' | 'week';
+
 // Funzione per pulire il testo da caratteri strani
 function cleanText(text: string): string {
     if (!text) return '';
@@ -135,7 +138,67 @@ function getCategoryBadgeClasses(rawCategory: string): string {
     }
 }
 
-export default function EventList() {
+function parseEventDate(value: string): Date | null {
+    if (!value) return null;
+
+    if (value.includes('/')) {
+        const [day, month, year] = value.split('/').map(part => parseInt(part, 10));
+        if (!day || !month || !year) return null;
+        const parsed = new Date(year, month - 1, day);
+        parsed.setHours(0, 0, 0, 0);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+}
+
+function getQuickRange(filter: QuickDateFilter): { start: Date; end: Date } {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (filter === 'today') {
+        return { start: today, end: today };
+    }
+
+    if (filter === 'tomorrow') {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return { start: tomorrow, end: tomorrow };
+    }
+
+    if (filter === 'week') {
+        const weekEnd = new Date(today);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        return { start: today, end: weekEnd };
+    }
+
+    const day = today.getDay();
+    let start = new Date(today);
+
+    if (day === 6) {
+        start = today;
+    } else if (day === 0) {
+        start = today;
+    } else {
+        start.setDate(today.getDate() + (6 - day));
+    }
+
+    const end = new Date(start);
+    if (start.getDay() === 6) {
+        end.setDate(start.getDate() + 1);
+    }
+
+    return { start, end };
+}
+
+function isDateInRange(date: Date, start: Date, end: Date): boolean {
+    return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
+}
+
+export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
     const [events, setEvents] = useState<Event[]>([]);
     const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
@@ -147,6 +210,8 @@ export default function EventList() {
     const [locationFilter, setLocationFilter] = useState('');
     const [organizerFilter, setOrganizerFilter] = useState('');
     const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+    const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('today');
+    const [visibleCount, setVisibleCount] = useState(4);
 
     useEffect(() => {
         fetchEvents();
@@ -209,7 +274,13 @@ export default function EventList() {
 
     useEffect(() => {
         filterEvents();
-    }, [events, search, category, dateFrom, dateTo, onlyToday, locationFilter, organizerFilter]);
+    }, [events, search, category, dateFrom, dateTo, onlyToday, locationFilter, organizerFilter, quickDateFilter, mode]);
+
+    useEffect(() => {
+        if (mode === 'quick') {
+            setVisibleCount(4);
+        }
+    }, [quickDateFilter, mode]);
 
     const fetchEvents = async () => {
         try {
@@ -235,6 +306,27 @@ export default function EventList() {
     };
 
     const filterEvents = () => {
+        if (mode === 'quick') {
+            const { start, end } = getQuickRange(quickDateFilter);
+            const quickFiltered = events
+                .filter((event) => {
+                    const parsedDate = parseEventDate(event.date);
+                    if (!parsedDate) return false;
+                    return isDateInRange(parsedDate, start, end);
+                })
+                .sort((a, b) => {
+                    const firstDate = parseEventDate(a.date)?.getTime() || 0;
+                    const secondDate = parseEventDate(b.date)?.getTime() || 0;
+                    if (firstDate === secondDate) {
+                        return a.id - b.id;
+                    }
+                    return firstDate - secondDate;
+                });
+
+            setFilteredEvents(quickFiltered);
+            return;
+        }
+
         let filtered = events;
 
         if (search) {
@@ -301,208 +393,252 @@ export default function EventList() {
 
     return (
         <div className="space-y-8">
-            {/* Filters - Dice.fm Style */}
-            <div className="glass-effect rounded-2xl border border-white/10 overflow-hidden">
-                {/* Mobile Filter Toggle */}
-                <button
-                    onClick={() => setFiltersOpen(!filtersOpen)}
-                    className="w-full lg:hidden flex items-center justify-between p-6 text-white font-bold"
-                >
-                    <div className="flex items-center gap-3">
-                        <span className="text-xl">🔍</span>
-                        <span>Filtra Eventi</span>
-                    </div>
-                    <span className={`transition-transform duration-300 ${filtersOpen ? 'rotate-180' : ''}`}>
-                        ▼
-                    </span>
-                </button>
-
-                <div className={`${filtersOpen ? 'block' : 'hidden'} lg:block p-6 border-t lg:border-t-0 border-white/10`}>
-                    <form
-                        className="flex flex-col lg:flex-row gap-4 items-center"
-                        onSubmit={e => { e.preventDefault(); }}
-                    >
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-                            <input
-                                type="text"
-                                placeholder="Search events..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                            />
-                            <select
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all appearance-none"
+            {mode === 'quick' ? (
+                <div className="glass-effect rounded-2xl border border-white/10 p-4 sm:p-6">
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                        {[
+                            { value: 'today' as const, label: 'oggi' },
+                            { value: 'tomorrow' as const, label: 'domani' },
+                            { value: 'weekend' as const, label: 'this weekend' },
+                            { value: 'week' as const, label: 'this week' },
+                        ].map((option) => (
+                            <button
+                                key={option.value}
+                                onClick={() => setQuickDateFilter(option.value)}
+                                className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-semibold border transition-all ${quickDateFilter === option.value
+                                        ? 'bg-white text-black border-white'
+                                        : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                                    }`}
                             >
-                                <option value="" className="bg-gray-900 text-white">Tutte le Categorie</option>
-                                {STANDARD_CATEGORIES.map(cat => (
-                                    <option key={cat} value={cat} className="bg-gray-900 text-white">
-                                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                                    </option>
-                                ))}
-                            </select>
-                            <input
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                                disabled={onlyToday}
-                            />
-                            <input
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
-                                disabled={onlyToday}
-                            />
-                            <input
-                                type="text"
-                                placeholder="Filtra per luogo..."
-                                value={locationFilter}
-                                onChange={(e) => setLocationFilter(e.target.value)}
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
-                            />
-                            <input
-                                type="text"
-                                placeholder="Filtra per organizzatore..."
-                                value={organizerFilter}
-                                onChange={(e) => setOrganizerFilter(e.target.value)}
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
-                            />
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
-                            <label className="flex items-center gap-2 text-white font-medium cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={onlyToday}
-                                    onChange={e => setOnlyToday(e.target.checked)}
-                                    className="w-4 h-4 text-pink-500 bg-white/10 border-white/20 rounded focus:ring-pink-500 focus:ring-2"
-                                />
-                                Today only
-                            </label>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            {/* Event Grid - Dice.fm Style */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                {filteredEvents.length === 0 ? (
-                    <div className="col-span-full text-center py-16">
-                        <div className="text-6xl mb-4">🎵</div>
-                        <h3 className="text-2xl font-bold text-white mb-2">No events found</h3>
-                        <p className="text-gray-400">Try adjusting your search filters or create a new event</p>
+                                {option.label}
+                            </button>
+                        ))}
                     </div>
-                ) : (
-                    filteredEvents.map((event) => (
-                        <TransitionLink
-                            key={event.id}
-                            href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                            className="card bg-base-100/5 border border-base-200/40 cursor-pointer group block no-underline hover:border-primary/60 hover:shadow-xl transition-all duration-300"
+                </div>
+            ) : (
+                <div className="glass-effect rounded-2xl border border-white/10 overflow-hidden">
+                    {/* Mobile Filter Toggle */}
+                    <button
+                        onClick={() => setFiltersOpen(!filtersOpen)}
+                        className="w-full lg:hidden flex items-center justify-between p-6 text-white font-bold"
+                    >
+                        <div className="flex items-center gap-3">
+                            <span className="text-xl">🔍</span>
+                            <span>Filtra Eventi</span>
+                        </div>
+                        <span className={`transition-transform duration-300 ${filtersOpen ? 'rotate-180' : ''}`}>
+                            ▼
+                        </span>
+                    </button>
+
+                    <div className={`${filtersOpen ? 'block' : 'hidden'} lg:block p-6 border-t lg:border-t-0 border-white/10`}>
+                        <form
+                            className="flex flex-col lg:flex-row gap-4 items-center"
+                            onSubmit={e => { e.preventDefault(); }}
                         >
-                            {/* Event Image */}
-                            <div className="relative overflow-hidden">
-                                <FavoriteButton
-                                    eventId={event.id}
-                                    initialIsFavorite={favoriteIds.has(event.id)}
-                                    onToggle={(newValue) => handleFavoriteToggleLocal(event.id, newValue)}
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+                                <input
+                                    type="text"
+                                    placeholder="Search events..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
                                 />
-                                {event.imageUrl ? (
-                                    <Image
-                                        src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
-                                        alt={event.title}
-                                        width={600}
-                                        height={400}
-                                        className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
-                                        sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                                <select
+                                    value={category}
+                                    onChange={(e) => setCategory(e.target.value)}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all appearance-none"
+                                >
+                                    <option value="" className="bg-gray-900 text-white">Tutte le Categorie</option>
+                                    {STANDARD_CATEGORIES.map(cat => (
+                                        <option key={cat} value={cat} className="bg-gray-900 text-white">
+                                            {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="date"
+                                    value={dateFrom}
+                                    onChange={(e) => setDateFrom(e.target.value)}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                    disabled={onlyToday}
+                                />
+                                <input
+                                    type="date"
+                                    value={dateTo}
+                                    onChange={(e) => setDateTo(e.target.value)}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                    disabled={onlyToday}
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Filtra per luogo..."
+                                    value={locationFilter}
+                                    onChange={(e) => setLocationFilter(e.target.value)}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Filtra per organizzatore..."
+                                    value={organizerFilter}
+                                    onChange={(e) => setOrganizerFilter(e.target.value)}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
+                                />
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+                                <label className="flex items-center gap-2 text-white font-medium cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={onlyToday}
+                                        onChange={e => setOnlyToday(e.target.checked)}
+                                        className="w-4 h-4 text-pink-500 bg-white/10 border-white/20 rounded focus:ring-pink-500 focus:ring-2"
                                     />
-                                ) : (
-                                    <div className="w-full h-48 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
-                                        <div className="text-4xl opacity-50">🎵</div>
-                                    </div>
-                                )}
-
-                                {/* Price Badge - normalizzato in 3 stati */}
-                                {(() => {
-                                    const label = getPriceLabel(event.price);
-                                    return (
-                                        <div
-                                            className={`absolute top-3 right-3 rounded-full px-3 py-1 text-xs sm:text-sm font-semibold border border-white/40 backdrop-blur-sm shadow-lg ${getPriceBadgeClasses(label)}`}
-                                        >
-                                            {label}
-                                        </div>
-                                    );
-                                })()}
+                                    Today only
+                                </label>
                             </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
-                            {/* Event Details */}
-                            <div className="p-5 space-y-3">
-                                <div className="space-y-2">
-                                    <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 transition-colors">
-                                        {cleanText(event.title)}
-                                    </h3>
-                                    <p className="text-gray-400 text-sm line-clamp-2">
-                                        {cleanText(event.description)}
-                                    </p>
+            {(() => {
+                const displayedEvents = mode === 'quick' ? filteredEvents.slice(0, visibleCount) : filteredEvents;
+                const gridClasses = mode === 'quick'
+                    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6'
+                    : 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6';
+
+                return (
+                    <>
+                        <div className={gridClasses}>
+                            {filteredEvents.length === 0 ? (
+                                <div className="col-span-full text-center py-16">
+                                    <div className="text-6xl mb-4">🎵</div>
+                                    <h3 className="text-2xl font-bold text-white mb-2">No events found</h3>
+                                    <p className="text-gray-400">Try adjusting your search filters or create a new event</p>
                                 </div>
+                            ) : (
+                                displayedEvents.map((event) => (
+                                    <TransitionLink
+                                        key={event.id}
+                                        href={`/events/${generateUniqueSlug(event.title, event.id)}`}
+                                        className="card bg-base-100/5 border border-base-200/40 cursor-pointer group block no-underline hover:border-primary/60 hover:shadow-xl transition-all duration-300"
+                                    >
+                                        {/* Event Image */}
+                                        <div className="relative overflow-hidden">
+                                            <FavoriteButton
+                                                eventId={event.id}
+                                                initialIsFavorite={favoriteIds.has(event.id)}
+                                                onToggle={(newValue) => handleFavoriteToggleLocal(event.id, newValue)}
+                                            />
+                                            {event.imageUrl ? (
+                                                <Image
+                                                    src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
+                                                    alt={event.title}
+                                                    width={600}
+                                                    height={400}
+                                                    className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
+                                                    sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-48 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
+                                                    <div className="text-4xl opacity-50">🎵</div>
+                                                </div>
+                                            )}
 
-                                <div className="space-y-1 text-sm">
-                                    <div className="flex items-center gap-2 text-gray-300">
-                                        <span className="w-4">📅</span>
-                                        <span>{(() => {
-                                            // Gestisce sia formato YYYY-MM-DD che DD/MM/YYYY
-                                            let dateObj: Date;
-                                            if (event.date.includes('/')) {
-                                                // Formato DD/MM/YYYY
-                                                const [day, month, year] = event.date.split('/');
-                                                dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                                            } else {
-                                                // Formato YYYY-MM-DD
-                                                dateObj = new Date(event.date);
-                                            }
-                                            return dateObj.toLocaleDateString('it-IT', {
-                                                weekday: 'short',
-                                                day: 'numeric',
-                                                month: 'short'
-                                            });
-                                        })()}</span>
-                                        {event.time && event.time.trim().toLowerCase() !== 'non trovato' && (
-                                            <span className="text-gray-500">• {event.time}</span>
-                                        )}
-                                    </div>
-
-                                    {event.location && (
-                                        <div className="flex items-center gap-2 text-gray-300">
-                                            <span className="w-4 shrink-0">📍</span>
-                                            <span className="truncate">{event.location}</span>
+                                            {/* Price Badge - normalizzato in 3 stati */}
+                                            {(() => {
+                                                const label = getPriceLabel(event.price);
+                                                return (
+                                                    <div
+                                                        className={`absolute top-3 right-3 rounded-full px-3 py-1 text-xs sm:text-sm font-semibold border border-white/40 backdrop-blur-sm shadow-lg ${getPriceBadgeClasses(label)}`}
+                                                    >
+                                                        {label}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
-                                    )}
 
-                                    {event.organizer && (
-                                        <div className="flex items-center gap-2 text-gray-300">
-                                            <span className="w-4 shrink-0">👤</span>
-                                            <span className="truncate">{event.organizer}</span>
+                                        {/* Event Details */}
+                                        <div className="p-5 space-y-3">
+                                            <div className="space-y-2">
+                                                <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 transition-colors">
+                                                    {cleanText(event.title)}
+                                                </h3>
+                                                <p className="text-gray-400 text-sm line-clamp-2">
+                                                    {cleanText(event.description)}
+                                                </p>
+                                            </div>
+
+                                            <div className="space-y-1 text-sm">
+                                                <div className="flex items-center gap-2 text-gray-300">
+                                                    <span className="w-4">📅</span>
+                                                    <span>{(() => {
+                                                        // Gestisce sia formato YYYY-MM-DD che DD/MM/YYYY
+                                                        let dateObj: Date;
+                                                        if (event.date.includes('/')) {
+                                                            // Formato DD/MM/YYYY
+                                                            const [day, month, year] = event.date.split('/');
+                                                            dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                                        } else {
+                                                            // Formato YYYY-MM-DD
+                                                            dateObj = new Date(event.date);
+                                                        }
+                                                        return dateObj.toLocaleDateString('it-IT', {
+                                                            weekday: 'short',
+                                                            day: 'numeric',
+                                                            month: 'short'
+                                                        });
+                                                    })()}</span>
+                                                    {event.time && event.time.trim().toLowerCase() !== 'non trovato' && (
+                                                        <span className="text-gray-500">• {event.time}</span>
+                                                    )}
+                                                </div>
+
+                                                {event.location && (
+                                                    <div className="flex items-center gap-2 text-gray-300">
+                                                        <span className="w-4 shrink-0">📍</span>
+                                                        <span className="truncate">{event.location}</span>
+                                                    </div>
+                                                )}
+
+                                                {event.organizer && (
+                                                    <div className="flex items-center gap-2 text-gray-300">
+                                                        <span className="w-4 shrink-0">👤</span>
+                                                        <span className="truncate">{event.organizer}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Category Badge - più visibile */}
+                                            {event.category && (
+                                                <div className="pt-2">
+                                                    <span
+                                                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-white border border-white/30 backdrop-blur-sm shadow-md ${getCategoryBadgeClasses(event.category)}`}
+                                                    >
+                                                        {event.category}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
+                                    </TransitionLink>
+                                ))
+                            )}
+                        </div>
 
-                                {/* Category Badge - più visibile */}
-                                {event.category && (
-                                    <div className="pt-2">
-                                        <span
-                                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-white border border-white/30 backdrop-blur-sm shadow-md ${getCategoryBadgeClasses(event.category)}`}
-                                        >
-                                            {event.category}
-                                        </span>
-                                    </div>
-                                )}
+                        {mode === 'quick' && filteredEvents.length > visibleCount && (
+                            <div className="flex justify-center pt-2">
+                                <button
+                                    onClick={() => setVisibleCount((prev) => prev + 4)}
+                                    className="btn btn-primary px-8"
+                                >
+                                    Mostra altri
+                                </button>
                             </div>
-                        </TransitionLink>
-                    ))
-                )}
-            </div>
+                        )}
+                    </>
+                );
+            })()}
         </div>
     );
 }

@@ -145,6 +145,7 @@ export async function POST(request: NextRequest) {
     // Revalidate all pages that display events
     revalidatePath('/', 'page');
     revalidatePath('/eventi', 'page');
+    revalidatePath('/tutti-gli-eventi', 'page');
     revalidatePath('/mappa', 'page');
     revalidateTag('events-list', 'max');
     const eventSlug = generateUniqueSlug(event.title, event.id);

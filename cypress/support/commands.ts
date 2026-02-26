@@ -12,11 +12,11 @@
 
 // Custom command to login
 Cypress.Commands.add('login', (email: string, password: string) => {
-  cy.visit('/auth/signin');
+  cy.visit('/auth');
   cy.get('input[name="email"]').type(email);
   cy.get('input[name="password"]').type(password);
   cy.get('button[type="submit"]').click();
-  cy.url().should('not.include', '/auth/signin');
+  cy.url().should('not.include', '/auth');
 });
 
 // Custom command to wait for API response

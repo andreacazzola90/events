@@ -1,12 +1,14 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
 export default function AuthPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { data: session, status } = useSession();
+    const view = searchParams.get('mode') === 'register' ? 'register' : 'login';
 
     useEffect(() => {
         if (session) {
@@ -24,36 +26,66 @@ export default function AuthPage() {
                 <div className="max-w-4xl mx-auto px-6 py-16">
                     <div className="text-center mb-12">
                         <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
-                            Join the <span className="gradient-text">community</span>
+                            {view === 'login' ? (
+                                <>Join the <span className="gradient-text">community</span></>
+                            ) : (
+                                <>Create your <span className="gradient-text">account</span></>
+                            )}
                         </h1>
                         <p className="text-xl md:text-2xl text-gray-400 mb-8 max-w-2xl mx-auto">
-                            Sign in to create incredible events and connect with your audience
+                            {view === 'login'
+                                ? "Sign in to create incredible events and connect with your audience"
+                                : "Join thousands of creators making an impact in their communities"}
                         </p>
                     </div>
 
-                    <div className="glass-effect rounded-3xl p-8 md:p-12 grid md:grid-cols-2 gap-12">
-                        {/* Login Section */}
-                        <div className="space-y-6">
-                            <div className="text-center">
-                                <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-2xl">🔑</span>
+                    <div className="max-w-md mx-auto">
+                        <div className="glass-effect rounded-3xl p-8 md:p-12">
+                            {view === 'login' ? (
+                                <div className="space-y-6">
+                                    <div className="text-center">
+                                        <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                            <span className="text-2xl">🔑</span>
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
+                                        <p className="text-gray-400 mb-6">Sign in to your account</p>
+                                    </div>
+                                    <LoginForm />
+                                    <div className="pt-6 border-t border-white/10 text-center">
+                                        <p className="text-gray-400">
+                                            Don't have an account?{' '}
+                                            <button
+                                                onClick={() => router.replace('/auth?mode=register')}
+                                                className="text-pink-400 hover:text-pink-300 font-semibold transition-colors"
+                                            >
+                                                Mostra registrazione
+                                            </button>
+                                        </p>
+                                    </div>
                                 </div>
-                                <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
-                                <p className="text-gray-400">Sign in to your account</p>
-                            </div>
-                            <LoginForm />
-                        </div>
-
-                        {/* Register Section */}
-                        <div className="space-y-6 border-l border-white/10 pl-0 md:pl-8">
-                            <div className="text-center">
-                                <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-2xl">✨</span>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="text-center">
+                                        <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                            <span className="text-2xl">✨</span>
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-white mb-2">Get Started</h2>
+                                        <p className="text-gray-400 mb-6">Create your new account</p>
+                                    </div>
+                                    <RegisterForm />
+                                    <div className="pt-6 border-t border-white/10 text-center">
+                                        <p className="text-gray-400">
+                                            Already have an account?{' '}
+                                            <button
+                                                onClick={() => router.replace('/auth')}
+                                                className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
+                                            >
+                                                Torna al login
+                                            </button>
+                                        </p>
+                                    </div>
                                 </div>
-                                <h2 className="text-2xl font-bold text-white mb-2">Get Started</h2>
-                                <p className="text-gray-400">Create your new account</p>
-                            </div>
-                            <RegisterForm />
+                            )}
                         </div>
                     </div>
                 </div>

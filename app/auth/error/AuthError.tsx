@@ -28,7 +28,7 @@ export default function AuthError() {
                 </div>
                 <div className="text-center space-y-4">
                     <Link
-                        href="/auth/signin"
+                        href="/auth"
                         className="font-medium text-indigo-600 hover:text-indigo-500"
                     >
                         Torna al login

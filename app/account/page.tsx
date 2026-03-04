@@ -24,10 +24,9 @@ export default function AccountPage() {
     const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
     const [favoriteEvents, setFavoriteEvents] = useState<UserEvent[]>([]);
     const [loading, setLoading] = useState(true);
-    const [visitschioResult, setVisitschioResult] = useState<any | null>(null);
-    const [visitpedemontanaResult, setVisitpedemontanaResult] = useState<any | null>(null);
     const [instagramStoryResult, setInstagramStoryResult] = useState<any | null>(null);
-    const [runningCron, setRunningCron] = useState<'visitschio' | 'visitpedemontana' | 'instagram-story' | null>(null);
+    const [visitpedemontanaResult, setVisitpedemontanaResult] = useState<any | null>(null);
+    const [runningCron, setRunningCron] = useState<'instagram-story' | 'visitpedemontana' | null>(null);
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -73,16 +72,17 @@ export default function AccountPage() {
     const isAdmin =
         (session?.user as any)?.role === 'admin' || session?.user?.email === 'andreacazzola90@gmail.com';
 
-    const runCron = async (type: 'visitschio' | 'visitpedemontana' | 'instagram-story') => {
+    const runCron = async (type: 'instagram-story' | 'visitpedemontana') => {
         setRunningCron(type);
         try {
-            const endpoint =
-                type === 'visitschio'
-                    ? '/api/admin/run-cron/visitschio'
-                    : type === 'visitpedemontana'
-                        ? '/api/admin/run-cron/visitpedemontana'
-                        : '/api/admin/run-cron/instagram-story';
-            const res = await fetch(endpoint, { method: 'POST' });
+            const endpoint = '/api/admin/run-cron/instagram-story';
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ target: type }),
+            });
             const data = await res.json();
 
             const payload = (data as any).data ?? data;
@@ -90,21 +90,17 @@ export default function AccountPage() {
             if (duplicates.length > 0) {
                 toast.info(`${duplicates.length} eventi erano già presenti e non sono stati ricreati.`);
             }
-            if (type === 'visitschio') {
-                setVisitschioResult(data);
-            } else if (type === 'visitpedemontana') {
-                setVisitpedemontanaResult(data);
-            } else {
+            if (type === 'instagram-story') {
                 setInstagramStoryResult(data);
+            } else {
+                setVisitpedemontanaResult(data);
             }
         } catch (err) {
             const errorPayload = { error: 'Failed to run cron', details: (err as Error).message };
-            if (type === 'visitschio') {
-                setVisitschioResult(errorPayload);
-            } else if (type === 'visitpedemontana') {
-                setVisitpedemontanaResult(errorPayload);
-            } else {
+            if (type === 'instagram-story') {
                 setInstagramStoryResult(errorPayload);
+            } else {
+                setVisitpedemontanaResult(errorPayload);
             }
         } finally {
             setRunningCron(null);
@@ -512,11 +508,11 @@ export default function AccountPage() {
                         <div className="space-y-6">
                             <div className="flex flex-wrap gap-4">
                                 <button
-                                    onClick={() => runCron('visitschio')}
-                                    className="btn btn-primary inline-flex items-center gap-2"
+                                    onClick={() => runCron('instagram-story')}
+                                    className="btn btn-accent inline-flex items-center gap-2"
                                     disabled={runningCron !== null}
                                 >
-                                    {runningCron === 'visitschio' ? 'Running VisitSchio Cron…' : 'Run VisitSchio Cron Now'}
+                                    {runningCron === 'instagram-story' ? 'Generating Instagram Story…' : 'Generate Instagram Story Now'}
                                 </button>
                                 <button
                                     onClick={() => runCron('visitpedemontana')}
@@ -525,26 +521,15 @@ export default function AccountPage() {
                                 >
                                     {runningCron === 'visitpedemontana' ? 'Running VisitPedemontana Cron…' : 'Run VisitPedemontana Cron Now'}
                                 </button>
-                                <button
-                                    onClick={() => runCron('instagram-story')}
-                                    className="btn btn-accent inline-flex items-center gap-2"
-                                    disabled={runningCron !== null}
-                                >
-                                    {runningCron === 'instagram-story' ? 'Generating Instagram Story…' : 'Generate Instagram Story Now'}
-                                </button>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                 <div>
-                                    <h3 className="font-semibold text-white mb-2">VisitSchio Result</h3>
-                                    {renderCronResult(visitschioResult)}
+                                    <h3 className="font-semibold text-white mb-2">Instagram Story Result</h3>
+                                    {renderCronResult(instagramStoryResult)}
                                 </div>
                                 <div>
                                     <h3 className="font-semibold text-white mb-2">VisitPedemontana Result</h3>
                                     {renderCronResult(visitpedemontanaResult)}
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-white mb-2">Instagram Story Result</h3>
-                                    {renderCronResult(instagramStoryResult)}
                                 </div>
                             </div>
                         </div>

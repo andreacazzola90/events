@@ -107,7 +107,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         alt={event.title}
                                         width={800}
                                         height={600}
-                                        className="w-full h-64 sm:h-80 lg:h-[400px] xl:h-[450px] object-cover transition-all duration-700"
+                                        className="w-full h-64 sm:h-80 lg:h-100 xl:h-112.5 object-cover transition-all duration-700"
                                         sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 100vw"
                                     />
                                     {/* Gradient Overlay */}

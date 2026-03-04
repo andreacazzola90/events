@@ -13,12 +13,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    let target: 'instagram-story' | 'visitpedemontana' = 'instagram-story';
+    try {
+      const body = await request.json();
+      if (body?.target === 'visitpedemontana') {
+        target = 'visitpedemontana';
+      }
+    } catch {
+      // Body opzionale: default instagram-story
+    }
+
     const headers: HeadersInit = {};
     if (process.env.CRON_SECRET) {
       headers['authorization'] = `Bearer ${process.env.CRON_SECRET}`;
     }
 
-    const targetUrl = new URL('/api/cron/generate-instagram-story', request.url);
+    const targetPath = target === 'visitpedemontana'
+      ? '/api/cron/scrape-visitpedemontana'
+      : '/api/cron/generate-instagram-story';
+    const targetUrl = new URL(targetPath, request.url);
 
     const res = await fetch(targetUrl, {
       method: 'GET',
@@ -33,7 +46,7 @@ export async function POST(request: NextRequest) {
       data = { raw: text };
     }
 
-    return NextResponse.json({ status: res.status, data });
+    return NextResponse.json({ status: res.status, target, data });
   } catch (error) {
     console.error('[API /admin/run-cron/instagram-story] Error triggering cron:', error);
     return NextResponse.json(

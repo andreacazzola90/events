@@ -26,7 +26,8 @@ export default function AccountPage() {
     const [loading, setLoading] = useState(true);
     const [visitschioResult, setVisitschioResult] = useState<any | null>(null);
     const [visitpedemontanaResult, setVisitpedemontanaResult] = useState<any | null>(null);
-    const [runningCron, setRunningCron] = useState<'visitschio' | 'visitpedemontana' | null>(null);
+    const [instagramStoryResult, setInstagramStoryResult] = useState<any | null>(null);
+    const [runningCron, setRunningCron] = useState<'visitschio' | 'visitpedemontana' | 'instagram-story' | null>(null);
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -72,13 +73,15 @@ export default function AccountPage() {
     const isAdmin =
         (session?.user as any)?.role === 'admin' || session?.user?.email === 'andreacazzola90@gmail.com';
 
-    const runCron = async (type: 'visitschio' | 'visitpedemontana') => {
+    const runCron = async (type: 'visitschio' | 'visitpedemontana' | 'instagram-story') => {
         setRunningCron(type);
         try {
             const endpoint =
                 type === 'visitschio'
                     ? '/api/admin/run-cron/visitschio'
-                    : '/api/admin/run-cron/visitpedemontana';
+                    : type === 'visitpedemontana'
+                        ? '/api/admin/run-cron/visitpedemontana'
+                        : '/api/admin/run-cron/instagram-story';
             const res = await fetch(endpoint, { method: 'POST' });
             const data = await res.json();
 
@@ -89,15 +92,19 @@ export default function AccountPage() {
             }
             if (type === 'visitschio') {
                 setVisitschioResult(data);
-            } else {
+            } else if (type === 'visitpedemontana') {
                 setVisitpedemontanaResult(data);
+            } else {
+                setInstagramStoryResult(data);
             }
         } catch (err) {
             const errorPayload = { error: 'Failed to run cron', details: (err as Error).message };
             if (type === 'visitschio') {
                 setVisitschioResult(errorPayload);
-            } else {
+            } else if (type === 'visitpedemontana') {
                 setVisitpedemontanaResult(errorPayload);
+            } else {
+                setInstagramStoryResult(errorPayload);
             }
         } finally {
             setRunningCron(null);
@@ -116,12 +123,43 @@ export default function AccountPage() {
         const newlyFound = (payload as any)?.new ?? 'n/a';
         const events = ((payload as any)?.events as any[]) || [];
         const errors = ((payload as any)?.errors as any[]) || [];
+        const latestImageUrl = (payload as any)?.latestImageUrl as string | undefined;
+        const archiveImageUrl = (payload as any)?.archiveImageUrl as string | undefined;
 
         return (
             <div className="space-y-3 text-xs text-gray-200">
                 <div className="text-[11px] text-gray-300">
                     Status: <span className="font-semibold">{String(status)}</span> • Found: {String(found)} • New: {String(newlyFound)} • Saved: {String(created)}
                 </div>
+
+                {(latestImageUrl || archiveImageUrl) && (
+                    <div className="text-[11px] space-y-1">
+                        {latestImageUrl && (
+                            <div>
+                                <a
+                                    href={latestImageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-emerald-300 hover:text-emerald-200 underline"
+                                >
+                                    Apri story settimanale (latest)
+                                </a>
+                            </div>
+                        )}
+                        {archiveImageUrl && (
+                            <div>
+                                <a
+                                    href={archiveImageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-cyan-300 hover:text-cyan-200 underline"
+                                >
+                                    Apri immagine archivio
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {events.length > 0 ? (
                     <div className="space-y-2 max-h-56 overflow-auto pr-1">
@@ -487,8 +525,15 @@ export default function AccountPage() {
                                 >
                                     {runningCron === 'visitpedemontana' ? 'Running VisitPedemontana Cron…' : 'Run VisitPedemontana Cron Now'}
                                 </button>
+                                <button
+                                    onClick={() => runCron('instagram-story')}
+                                    className="btn btn-accent inline-flex items-center gap-2"
+                                    disabled={runningCron !== null}
+                                >
+                                    {runningCron === 'instagram-story' ? 'Generating Instagram Story…' : 'Generate Instagram Story Now'}
+                                </button>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                 <div>
                                     <h3 className="font-semibold text-white mb-2">VisitSchio Result</h3>
                                     {renderCronResult(visitschioResult)}
@@ -496,6 +541,10 @@ export default function AccountPage() {
                                 <div>
                                     <h3 className="font-semibold text-white mb-2">VisitPedemontana Result</h3>
                                     {renderCronResult(visitpedemontanaResult)}
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-white mb-2">Instagram Story Result</h3>
+                                    {renderCronResult(instagramStoryResult)}
                                 </div>
                             </div>
                         </div>

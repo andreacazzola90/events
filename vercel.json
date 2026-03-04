@@ -14,6 +14,9 @@
     },
     "app/api/cron/scrape-visitpedemontana/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/generate-instagram-story/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [

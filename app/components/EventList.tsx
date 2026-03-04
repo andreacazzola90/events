@@ -94,12 +94,12 @@ function getPriceLabel(rawPrice: string | null | undefined): PriceLabel {
 function getPriceBadgeClasses(label: PriceLabel): string {
     switch (label) {
         case 'gratis':
-            return 'bg-emerald-500/95 text-white shadow-emerald-500/40';
+            return 'bg-black text-white';
         case 'pagamento':
-            return 'bg-pink-500/95 text-white shadow-pink-500/40';
+            return 'bg-black/80 text-white';
         case 'non definito':
         default:
-            return 'bg-slate-500/80 text-white shadow-slate-500/30';
+            return 'bg-black/50 text-white';
     }
 }
 
@@ -110,31 +110,31 @@ function getCategoryBadgeClasses(rawCategory: string): string {
     switch (cat) {
         case 'musica':
         case 'music':
-            return 'bg-blue-500/90 shadow-blue-500/40';
+            return 'bg-black';
         case 'nightlife':
-            return 'bg-fuchsia-500/90 shadow-fuchsia-500/40';
+            return 'bg-black';
         case 'cultura':
         case 'culture':
-            return 'bg-emerald-500/90 shadow-emerald-500/40';
+            return 'bg-black';
         case 'cibo':
         case 'food':
-            return 'bg-amber-500/90 shadow-amber-500/40';
+            return 'bg-black';
         case 'sport':
-            return 'bg-lime-500/90 shadow-lime-500/40';
+            return 'bg-black';
         case 'famiglia':
         case 'family':
-            return 'bg-sky-500/90 shadow-sky-500/40';
+            return 'bg-black';
         case 'teatro':
         case 'theater':
-            return 'bg-indigo-500/90 shadow-indigo-500/40';
+            return 'bg-black';
         case 'festa':
         case 'party':
-            return 'bg-rose-500/90 shadow-rose-500/40';
+            return 'bg-black';
         case 'passeggiata':
         case 'walk':
-            return 'bg-green-500/90 shadow-green-500/40';
+            return 'bg-black';
         default:
-            return 'bg-slate-500/90 shadow-slate-500/40';
+            return 'bg-black';
     }
 }
 
@@ -394,7 +394,7 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
     return (
         <div className="space-y-8">
             {mode === 'quick' ? (
-                <div className="glass-effect rounded-2xl border border-white/10 p-4 sm:p-6">
+                <div className="bg-white border border-black/10 p-4 sm:p-5">
                     <div className="flex gap-3 overflow-x-auto pb-1">
                         {[
                             { value: 'today' as const, label: 'oggi' },
@@ -405,9 +405,9 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                             <button
                                 key={option.value}
                                 onClick={() => setQuickDateFilter(option.value)}
-                                className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-semibold border transition-all ${quickDateFilter === option.value
-                                        ? 'bg-white text-black border-white'
-                                        : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                                className={`whitespace-nowrap px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${quickDateFilter === option.value
+                                    ? 'bg-black text-white border-black'
+                                    : 'bg-white text-black/70 border-black/20 hover:text-black'
                                     }`}
                             >
                                 {option.label}
@@ -416,22 +416,20 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                     </div>
                 </div>
             ) : (
-                <div className="glass-effect rounded-2xl border border-white/10 overflow-hidden">
-                    {/* Mobile Filter Toggle */}
+                <div className="bg-white border border-black/10 overflow-hidden">
                     <button
                         onClick={() => setFiltersOpen(!filtersOpen)}
-                        className="w-full lg:hidden flex items-center justify-between p-6 text-white font-bold"
+                        className="w-full lg:hidden flex items-center justify-between p-4 text-black font-bold border-b border-black/10"
                     >
-                        <div className="flex items-center gap-3">
-                            <span className="text-xl">🔍</span>
-                            <span>Filtra Eventi</span>
+                        <div className="flex items-center gap-3 uppercase tracking-[0.12em] text-xs">
+                            <span>Filtra eventi</span>
                         </div>
-                        <span className={`transition-transform duration-300 ${filtersOpen ? 'rotate-180' : ''}`}>
+                        <span className={`transition-transform duration-300 text-sm ${filtersOpen ? 'rotate-180' : ''}`}>
                             ▼
                         </span>
                     </button>
 
-                    <div className={`${filtersOpen ? 'block' : 'hidden'} lg:block p-6 border-t lg:border-t-0 border-white/10`}>
+                    <div className={`${filtersOpen ? 'block' : 'hidden'} lg:block p-4 lg:p-5`}>
                         <form
                             className="flex flex-col lg:flex-row gap-4 items-center"
                             onSubmit={e => { e.preventDefault(); }}
@@ -442,16 +440,16 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                                     placeholder="Search events..."
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                    className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
                                 />
                                 <select
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all appearance-none"
+                                    className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black appearance-none"
                                 >
-                                    <option value="" className="bg-gray-900 text-white">Tutte le Categorie</option>
+                                    <option value="" className="bg-white text-black">Tutte le Categorie</option>
                                     {STANDARD_CATEGORIES.map(cat => (
-                                        <option key={cat} value={cat} className="bg-gray-900 text-white">
+                                        <option key={cat} value={cat} className="bg-white text-black">
                                             {cat.charAt(0).toUpperCase() + cat.slice(1)}
                                         </option>
                                     ))}
@@ -460,14 +458,14 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                                     type="date"
                                     value={dateFrom}
                                     onChange={(e) => setDateFrom(e.target.value)}
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                    className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                                     disabled={onlyToday}
                                 />
                                 <input
                                     type="date"
                                     value={dateTo}
                                     onChange={(e) => setDateTo(e.target.value)}
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                    className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                                     disabled={onlyToday}
                                 />
                                 <input
@@ -475,24 +473,24 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                                     placeholder="Filtra per luogo..."
                                     value={locationFilter}
                                     onChange={(e) => setLocationFilter(e.target.value)}
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
+                                    className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
                                 />
                                 <input
                                     type="text"
                                     placeholder="Filtra per organizzatore..."
                                     value={organizerFilter}
                                     onChange={(e) => setOrganizerFilter(e.target.value)}
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all col-span-1"
+                                    className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
                                 />
                             </div>
 
                             <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
-                                <label className="flex items-center gap-2 text-white font-medium cursor-pointer">
+                                <label className="flex items-center gap-2 text-black/80 text-xs uppercase tracking-widest font-bold cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={onlyToday}
                                         onChange={e => setOnlyToday(e.target.checked)}
-                                        className="w-4 h-4 text-pink-500 bg-white/10 border-white/20 rounded focus:ring-pink-500 focus:ring-2"
+                                        className="w-4 h-4 text-black border-black/20 rounded focus:ring-black focus:ring-2"
                                     />
                                     Today only
                                 </label>
@@ -506,25 +504,23 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                 const displayedEvents = mode === 'quick' ? filteredEvents.slice(0, visibleCount) : filteredEvents;
                 const gridClasses = mode === 'quick'
                     ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6'
-                    : 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6';
+                    : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6';
 
                 return (
                     <>
                         <div className={gridClasses}>
                             {filteredEvents.length === 0 ? (
                                 <div className="col-span-full text-center py-16">
-                                    <div className="text-6xl mb-4">🎵</div>
-                                    <h3 className="text-2xl font-bold text-white mb-2">No events found</h3>
-                                    <p className="text-gray-400">Try adjusting your search filters or create a new event</p>
+                                    <h3 className="text-2xl font-bold text-black mb-2">Nessun evento trovato</h3>
+                                    <p className="text-black/55">Prova a cambiare i filtri di ricerca</p>
                                 </div>
                             ) : (
                                 displayedEvents.map((event) => (
                                     <TransitionLink
                                         key={event.id}
                                         href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                                        className="card bg-base-100/5 border border-base-200/40 cursor-pointer group block no-underline hover:border-primary/60 hover:shadow-xl transition-all duration-300"
+                                        className="group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
                                     >
-                                        {/* Event Image */}
                                         <div className="relative overflow-hidden">
                                             <FavoriteButton
                                                 eventId={event.id}
@@ -537,21 +533,20 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                                                     alt={event.title}
                                                     width={600}
                                                     height={400}
-                                                    className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
+                                                    className="w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105"
                                                     sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                                                 />
                                             ) : (
-                                                <div className="w-full h-48 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
-                                                    <div className="text-4xl opacity-50">🎵</div>
+                                                <div className="w-full h-48 bg-black/5 flex items-center justify-center">
+                                                    <div className="text-sm uppercase tracking-[0.12em] text-black/40 font-bold">No image</div>
                                                 </div>
                                             )}
 
-                                            {/* Price Badge - normalizzato in 3 stati */}
                                             {(() => {
                                                 const label = getPriceLabel(event.price);
                                                 return (
                                                     <div
-                                                        className={`absolute top-3 right-3 rounded-full px-3 py-1 text-xs sm:text-sm font-semibold border border-white/40 backdrop-blur-sm shadow-lg ${getPriceBadgeClasses(label)}`}
+                                                        className={`absolute top-3 right-3 px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold border border-white/30 ${getPriceBadgeClasses(label)}`}
                                                     >
                                                         {label}
                                                     </div>
@@ -559,29 +554,25 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                                             })()}
                                         </div>
 
-                                        {/* Event Details */}
-                                        <div className="p-5 space-y-3">
+                                        <div className="p-4 space-y-3">
                                             <div className="space-y-2">
-                                                <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 transition-colors">
+                                                <h3 className="text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
                                                     {cleanText(event.title)}
                                                 </h3>
-                                                <p className="text-gray-400 text-sm line-clamp-2">
+                                                <p className="text-black/60 text-sm line-clamp-2">
                                                     {cleanText(event.description)}
                                                 </p>
                                             </div>
 
-                                            <div className="space-y-1 text-sm">
-                                                <div className="flex items-center gap-2 text-gray-300">
-                                                    <span className="w-4">📅</span>
+                                            <div className="space-y-1 text-sm border-t border-black/10 pt-3">
+                                                <div className="flex items-center gap-2 text-black/80">
+                                                    <span className="w-4">•</span>
                                                     <span>{(() => {
-                                                        // Gestisce sia formato YYYY-MM-DD che DD/MM/YYYY
                                                         let dateObj: Date;
                                                         if (event.date.includes('/')) {
-                                                            // Formato DD/MM/YYYY
                                                             const [day, month, year] = event.date.split('/');
                                                             dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
                                                         } else {
-                                                            // Formato YYYY-MM-DD
                                                             dateObj = new Date(event.date);
                                                         }
                                                         return dateObj.toLocaleDateString('it-IT', {
@@ -591,30 +582,29 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                                                         });
                                                     })()}</span>
                                                     {event.time && event.time.trim().toLowerCase() !== 'non trovato' && (
-                                                        <span className="text-gray-500">• {event.time}</span>
+                                                        <span className="text-black/40">• {event.time}</span>
                                                     )}
                                                 </div>
 
                                                 {event.location && (
-                                                    <div className="flex items-center gap-2 text-gray-300">
-                                                        <span className="w-4 shrink-0">📍</span>
+                                                    <div className="flex items-center gap-2 text-black/80">
+                                                        <span className="w-4 shrink-0">•</span>
                                                         <span className="truncate">{event.location}</span>
                                                     </div>
                                                 )}
 
                                                 {event.organizer && (
-                                                    <div className="flex items-center gap-2 text-gray-300">
-                                                        <span className="w-4 shrink-0">👤</span>
+                                                    <div className="flex items-center gap-2 text-black/80">
+                                                        <span className="w-4 shrink-0">•</span>
                                                         <span className="truncate">{event.organizer}</span>
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* Category Badge - più visibile */}
                                             {event.category && (
-                                                <div className="pt-2">
+                                                <div className="pt-1">
                                                     <span
-                                                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-white border border-white/30 backdrop-blur-sm shadow-md ${getCategoryBadgeClasses(event.category)}`}
+                                                        className={`inline-flex items-center px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold text-white border border-black/20 ${getCategoryBadgeClasses(event.category)}`}
                                                     >
                                                         {event.category}
                                                     </span>
@@ -630,7 +620,7 @@ export default function EventList({ mode = 'full' }: { mode?: EventListMode }) {
                             <div className="flex justify-center pt-2">
                                 <button
                                     onClick={() => setVisibleCount((prev) => prev + 4)}
-                                    className="btn btn-primary px-8"
+                                    className="inline-flex items-center h-10 px-5 border border-black text-black text-xs uppercase tracking-[0.12em] font-bold hover:bg-black hover:text-white transition-colors"
                                 >
                                     Mostra altri
                                 </button>

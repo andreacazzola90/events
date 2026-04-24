@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const { start, end } = getStoryWindowFromDate(now);
 
-    const allEvents = await prisma.event.findMany({
+    const allEvents: StoryEvent[] = await prisma.event.findMany({
       select: {
         id: true,
         title: true,
@@ -267,25 +267,29 @@ export async function GET(request: NextRequest) {
 
     const eventsInRange = allEvents
       .map(
-        (event): StoryEventWithDate => ({
+        (event: StoryEvent): StoryEventWithDate => ({
           ...event,
           parsedDate: parseEventDate(event.date),
         }),
       )
-      .filter((event): event is StoryEventWithDate & { parsedDate: Date } => {
-        if (!event.parsedDate) return false;
-        return (
-          event.parsedDate.getTime() >= start.getTime() &&
-          event.parsedDate.getTime() <= end.getTime()
-        );
-      })
+      .filter(
+        (
+          event: StoryEventWithDate,
+        ): event is StoryEventWithDate & { parsedDate: Date } => {
+          if (!event.parsedDate) return false;
+          return (
+            event.parsedDate.getTime() >= start.getTime() &&
+            event.parsedDate.getTime() <= end.getTime()
+          );
+        },
+      )
       .sort((a, b) => {
         const dateDiff = a.parsedDate.getTime() - b.parsedDate.getTime();
         if (dateDiff !== 0) return dateDiff;
         return (a.time || "").localeCompare(b.time || "", "it-IT");
       })
       .map(
-        (event): StoryEvent => ({
+        (event: StoryEventWithDate & { parsedDate: Date }): StoryEvent => ({
           id: event.id,
           title: event.title,
           date: event.date,

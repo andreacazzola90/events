@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withAdminAuth } from "../../../../../lib/auth-helpers";
+import { withAdminAuth } from "@/lib/auth-helpers";
 
 export async function POST(request: NextRequest) {
   return withAdminAuth(async () => {

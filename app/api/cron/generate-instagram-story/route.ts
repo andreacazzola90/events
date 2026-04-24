@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import sharp from 'sharp';
-import { prisma } from '@/lib/prisma';
-import { supabase } from '@/lib/supabase';
+import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
+import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 
 export const maxDuration = 60;
 
@@ -13,6 +13,8 @@ type StoryEvent = {
   location: string;
 };
 
+type StoryEventWithDate = StoryEvent & { parsedDate: Date | null };
+
 type InstagramPublishResult = {
   containerId: string;
   mediaId: string;
@@ -20,25 +22,29 @@ type InstagramPublishResult = {
 
 function escapeXml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function parseEventDate(value: string): Date | null {
   if (!value) return null;
 
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-    const [day, month, year] = value.split('/').map((part) => parseInt(part, 10));
+    const [day, month, year] = value
+      .split("/")
+      .map((part) => parseInt(part, 10));
     const parsed = new Date(year, month - 1, day);
     parsed.setHours(0, 0, 0, 0);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map((part) => parseInt(part, 10));
+    const [year, month, day] = value
+      .split("-")
+      .map((part) => parseInt(part, 10));
     const parsed = new Date(year, month - 1, day);
     parsed.setHours(0, 0, 0, 0);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -52,8 +58,8 @@ function parseEventDate(value: string): Date | null {
 
 function toIsoDate(date: Date): string {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -78,10 +84,10 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 function formatDateLabel(date: Date): string {
-  return new Intl.DateTimeFormat('it-IT', {
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
+  return new Intl.DateTimeFormat("it-IT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
   }).format(date);
 }
 
@@ -108,8 +114,11 @@ function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
     lines.push({ text: dateLabel.toUpperCase(), heading: true });
 
     for (const ev of dateEvents) {
-      const timeLabel = ev.time?.trim() ? `${ev.time.trim()} • ` : '';
-      const eventLabel = truncateText(`${timeLabel}${ev.title} — ${ev.location}`.replace(/\s+/g, ' ').trim(), 70);
+      const timeLabel = ev.time?.trim() ? `${ev.time.trim()} • ` : "";
+      const eventLabel = truncateText(
+        `${timeLabel}${ev.title} — ${ev.location}`.replace(/\s+/g, " ").trim(),
+        70,
+      );
       lines.push({ text: `• ${eventLabel}` });
     }
   }
@@ -125,7 +134,7 @@ function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
   for (const line of lines) {
     const size = line.heading ? headingSize : textSize;
     const weight = line.heading ? 700 : 500;
-    const color = line.heading ? '#FDE68A' : '#FFFFFF';
+    const color = line.heading ? "#FDE68A" : "#FFFFFF";
 
     textNodes.push(
       `<text x="64" y="${currentY}" font-family="Arial, Helvetica, sans-serif" font-size="${size}" font-weight="${weight}" fill="${color}">${escapeXml(line.text)}</text>`,
@@ -134,12 +143,12 @@ function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
     currentY += lineHeight;
   }
 
-  const rangeText = `${new Intl.DateTimeFormat('it-IT', {
-    day: '2-digit',
-    month: '2-digit',
-  }).format(start)} → ${new Intl.DateTimeFormat('it-IT', {
-    day: '2-digit',
-    month: '2-digit',
+  const rangeText = `${new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+  }).format(start)} → ${new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
   }).format(end)}`;
 
   return `
@@ -159,7 +168,7 @@ function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
     <text x="64" y="168" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="600" fill="#93C5FD">${escapeXml(rangeText)}</text>
     <text x="64" y="214" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="500" fill="#E5E7EB">Dal giovedì al mercoledì successivo</text>
 
-    ${textNodes.join('')}
+    ${textNodes.join("")}
 
     <text x="64" y="1848" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#D1D5DB">aggiornato automaticamente ogni mercoledì sera</text>
   </svg>`;
@@ -173,29 +182,33 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-async function publishInstagramStory(imageUrl: string): Promise<InstagramPublishResult> {
-  const igUserId = getRequiredEnv('INSTAGRAM_IG_USER_ID');
-  const accessToken = getRequiredEnv('INSTAGRAM_ACCESS_TOKEN');
-  const graphVersion = process.env.INSTAGRAM_GRAPH_API_VERSION || 'v22.0';
+async function publishInstagramStory(
+  imageUrl: string,
+): Promise<InstagramPublishResult> {
+  const igUserId = getRequiredEnv("INSTAGRAM_IG_USER_ID");
+  const accessToken = getRequiredEnv("INSTAGRAM_ACCESS_TOKEN");
+  const graphVersion = process.env.INSTAGRAM_GRAPH_API_VERSION || "v22.0";
   const graphBaseUrl = `https://graph.facebook.com/${graphVersion}`;
 
   const createBody = new URLSearchParams({
     image_url: imageUrl,
-    media_type: 'STORIES',
+    media_type: "STORIES",
     access_token: accessToken,
   });
 
   const createResponse = await fetch(`${graphBaseUrl}/${igUserId}/media`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
     },
     body: createBody,
   });
 
   const createData: any = await createResponse.json();
   if (!createResponse.ok || !createData?.id) {
-    throw new Error(`Instagram media container creation failed: ${JSON.stringify(createData)}`);
+    throw new Error(
+      `Instagram media container creation failed: ${JSON.stringify(createData)}`,
+    );
   }
 
   const containerId = createData.id as string;
@@ -205,17 +218,22 @@ async function publishInstagramStory(imageUrl: string): Promise<InstagramPublish
     access_token: accessToken,
   });
 
-  const publishResponse = await fetch(`${graphBaseUrl}/${igUserId}/media_publish`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+  const publishResponse = await fetch(
+    `${graphBaseUrl}/${igUserId}/media_publish`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: publishBody,
     },
-    body: publishBody,
-  });
+  );
 
   const publishData: any = await publishResponse.json();
   if (!publishResponse.ok || !publishData?.id) {
-    throw new Error(`Instagram story publish failed: ${JSON.stringify(publishData)}`);
+    throw new Error(
+      `Instagram story publish failed: ${JSON.stringify(publishData)}`,
+    );
   }
 
   return {
@@ -225,9 +243,12 @@ async function publishInstagramStory(imageUrl: string): Promise<InstagramPublish
 }
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authHeader = request.headers.get("authorization");
+  if (
+    process.env.CRON_SECRET &&
+    authHeader !== `Bearer ${process.env.CRON_SECRET}`
+  ) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -245,40 +266,58 @@ export async function GET(request: NextRequest) {
     });
 
     const eventsInRange = allEvents
-      .map((event) => ({ ...event, parsedDate: parseEventDate(event.date) }))
-      .filter((event) => {
+      .map(
+        (event): StoryEventWithDate => ({
+          ...event,
+          parsedDate: parseEventDate(event.date),
+        }),
+      )
+      .filter((event): event is StoryEventWithDate & { parsedDate: Date } => {
         if (!event.parsedDate) return false;
-        return event.parsedDate.getTime() >= start.getTime() && event.parsedDate.getTime() <= end.getTime();
+        return (
+          event.parsedDate.getTime() >= start.getTime() &&
+          event.parsedDate.getTime() <= end.getTime()
+        );
       })
       .sort((a, b) => {
-        const dateDiff = (a.parsedDate?.getTime() || 0) - (b.parsedDate?.getTime() || 0);
+        const dateDiff = a.parsedDate.getTime() - b.parsedDate.getTime();
         if (dateDiff !== 0) return dateDiff;
-        return (a.time || '').localeCompare(b.time || '', 'it-IT');
+        return (a.time || "").localeCompare(b.time || "", "it-IT");
       })
-      .map((event) => ({
-        id: event.id,
-        title: event.title,
-        date: event.date,
-        time: event.time,
-        location: event.location,
-      }));
+      .map(
+        (event): StoryEvent => ({
+          id: event.id,
+          title: event.title,
+          date: event.date,
+          time: event.time,
+          location: event.location,
+        }),
+      );
 
     const safeEvents = eventsInRange.length
       ? eventsInRange
-      : [{ id: -1, title: 'Nessun evento in calendario', date: toIsoDate(start), time: '', location: 'Torna presto per i prossimi aggiornamenti' }];
+      : [
+          {
+            id: -1,
+            title: "Nessun evento in calendario",
+            date: toIsoDate(start),
+            time: "",
+            location: "Torna presto per i prossimi aggiornamenti",
+          },
+        ];
 
     const svg = buildStorySvg(safeEvents, start, end);
     const svgBuffer = Buffer.from(svg);
     const jpgBuffer = await sharp(svgBuffer).jpeg({ quality: 92 }).toBuffer();
 
-    const bucket = process.env.STORY_BUCKET || 'events';
-    const latestPath = 'stories/weekly-events-latest.jpg';
+    const bucket = process.env.STORY_BUCKET || "events";
+    const latestPath = "stories/weekly-events-latest.jpg";
     const archivePath = `stories/archive/weekly-events-${toIsoDate(start)}_to_${toIsoDate(end)}.jpg`;
 
     const latestUpload = await supabase.storage
       .from(bucket)
       .upload(latestPath, jpgBuffer, {
-        contentType: 'image/jpeg',
+        contentType: "image/jpeg",
         upsert: true,
       });
 
@@ -289,18 +328,25 @@ export async function GET(request: NextRequest) {
     const archiveUpload = await supabase.storage
       .from(bucket)
       .upload(archivePath, jpgBuffer, {
-        contentType: 'image/jpeg',
+        contentType: "image/jpeg",
         upsert: true,
       });
 
     if (archiveUpload.error) {
-      console.warn('[Instagram Story Cron] Archive upload warning:', archiveUpload.error.message);
+      console.warn(
+        "[Instagram Story Cron] Archive upload warning:",
+        archiveUpload.error.message,
+      );
     }
 
-    const latestPublic = supabase.storage.from(bucket).getPublicUrl(latestPath).data.publicUrl;
-    const archivePublic = supabase.storage.from(bucket).getPublicUrl(archivePath).data.publicUrl;
+    const latestPublic = supabase.storage.from(bucket).getPublicUrl(latestPath)
+      .data.publicUrl;
+    const archivePublic = supabase.storage
+      .from(bucket)
+      .getPublicUrl(archivePath).data.publicUrl;
 
-    const shouldPublishToInstagram = process.env.INSTAGRAM_AUTO_PUBLISH_STORY === 'true';
+    const shouldPublishToInstagram =
+      process.env.INSTAGRAM_AUTO_PUBLISH_STORY === "true";
     let instagramStory: {
       published: boolean;
       containerId?: string;
@@ -320,12 +366,13 @@ export async function GET(request: NextRequest) {
       instagramStory = {
         published: false,
         skipped: true,
-        reason: 'Instagram auto publish disabled (set INSTAGRAM_AUTO_PUBLISH_STORY=true to enable)',
+        reason:
+          "Instagram auto publish disabled (set INSTAGRAM_AUTO_PUBLISH_STORY=true to enable)",
       };
     }
 
     return NextResponse.json({
-      status: 'success',
+      status: "success",
       generatedAt: now.toISOString(),
       range: {
         from: toIsoDate(start),
@@ -337,11 +384,11 @@ export async function GET(request: NextRequest) {
       instagramStory,
     });
   } catch (error) {
-    console.error('[Instagram Story Cron] Error:', error);
+    console.error("[Instagram Story Cron] Error:", error);
     return NextResponse.json(
       {
-        error: 'Failed to generate weekly Instagram story image',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        error: "Failed to generate weekly Instagram story image",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     );

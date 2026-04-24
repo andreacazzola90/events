@@ -61,7 +61,7 @@ a {
   transition: all 0.2s ease;
 }
 
-a:hover {
+a:where(:not(.btn):not(.no-underline)):hover {
   color: #000000;
   text-decoration: underline;
 }
@@ -74,6 +74,26 @@ a:hover {
 .no-underline,
 .no-underline:hover {
   text-decoration: none !important;
+}
+
+/* Keep text readable on dark controls even without hover */
+:is(a, button, [role="button"])[class~="bg-black"] {
+  color: #ffffff !important;
+}
+
+/* Keep contrast readable when a control turns black on hover */
+:is(a, button, [role="button"])[class~="hover:bg-black"]:hover {
+  color: #ffffff !important;
+}
+
+/* Keep text readable on light controls even without hover */
+:is(a, button, [role="button"])[class~="bg-white"] {
+  color: #111111 !important;
+}
+
+/* Keep contrast readable when a control turns white on hover */
+:is(a, button, [role="button"])[class~="hover:bg-white"]:hover {
+  color: #111111 !important;
 }
 
 /* Buttons - base reset (DaisyUI gestisce lo stile) */

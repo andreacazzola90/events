@@ -5,6 +5,8 @@ import { TransitionLink } from '../../components/TransitionLink';
 import { prisma } from '../../lib/prisma';
 import FavoriteButton from '../../components/FavoriteButton';
 import { notFound } from 'next/navigation';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
@@ -87,11 +89,25 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
         notFound();
     }
 
+    const session: any = await getServerSession(authOptions as any);
+    const sessionUser = session?.user as any;
+    const sessionUserId = parseInt((sessionUser?.id || '').toString(), 10);
+    const sessionEmail = (sessionUser?.email || '').toLowerCase();
+    const isAdmin =
+        sessionUser?.role === 'admin' ||
+        sessionUser?.type === 'admin' ||
+        sessionEmail === 'andreacazzola90@gmail.com' ||
+        sessionEmail.startsWith('andreacazzola90@');
+
+    const canEdit =
+        isAdmin ||
+        (!Number.isNaN(sessionUserId) && event.createdById === sessionUserId);
+
     const sameDayEvents = await getSameDayEvents(event.date, event.id);
     const similarEvents = await getSimilarEvents(event);
 
     return (
-        <div className="min-h-screen py-8 px-2 bg-light w-full">
+        <div className="min-h-screen py-8 px-2 bg-light w-full event-detail-page">
             <div className="container mx-auto px-8">
                 <div className="w-full space-y-8">
 
@@ -125,7 +141,17 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         <div className="lg:w-3/4 mt-8 lg:mt-0">
                             <div className="event-content-card">
                                 <div className="space-y-8">
-                                    <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-text bg-clip-text text-transparent leading-tight">{event.title}</h1>
+                                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-text bg-clip-text text-transparent leading-tight">{event.title}</h1>
+                                        {canEdit && (
+                                            <TransitionLink
+                                                href={`/events/${slug}/edit`}
+                                                className="inline-flex items-center justify-center px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-secondary via-accent to-primary text-white hover:shadow-lg transition-all no-underline hover:no-underline whitespace-nowrap"
+                                            >
+                                                ✏️ Modifica
+                                            </TransitionLink>
+                                        )}
+                                    </div>
 
                                     {/* Event Info Grid */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-lg">

@@ -527,16 +527,47 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
     const currentDate = new Date().toISOString().split('T')[0];
 
     const prompt = `Estrai le informazioni dell'evento dal seguente testo di una pagina web.
-Rispondi SOLO con un oggetto JSON valido nel seguente formato:
+
+Prima classifica il contenuto in uno dei 3 casi:
+1) evento_singolo
+2) multi_evento_più_giorni
+3) evento_singolo_con_più_sessioni
+
+REGOLE DI CLASSIFICAZIONE:
+- Se trovi stesso titolo ombrello e stessa data con più talk/conferenze/sessioni => caso 3 (UN solo evento)
+- Se trovi date diverse all'interno di rassegna/ciclo/festival => caso 2 (UN evento per data)
+- Se non ci sono segnali di multiplo => caso 1
+
+FORMATO RISPOSTA:
+- Caso 1 o 3: restituisci un oggetto JSON singolo
+- Caso 2: restituisci un JSON con "events": []
+
+Esempio caso singolo:
 {
   "title": "Titolo evento",
-    "description": "Descrizione dettagliata (MINIMO 100 CARATTERI - se breve, elabora il contesto)",
+  "description": "Descrizione dettagliata (MINIMO 100 CARATTERI - se breve, elabora il contesto)",
   "date": "YYYY-MM-DD",
   "time": "HH:MM",
   "location": "Luogo completo (Includi SEMPRE nome locale + indirizzo, es: 'Cineforum Altovicentino - Via Pietro Maraschin 81, Schio')",
   "organizer": "Organizzatore",
   "category": "Categoria",
   "price": "Prezzo (es: Gratuito, 10€, Offerta Libera, etc.)"
+}
+
+Esempio caso multi-evento:
+{
+  "events": [
+    {
+      "title": "Titolo evento giorno 1",
+      "description": "Descrizione dettagliata",
+      "date": "YYYY-MM-DD",
+      "time": "HH:MM",
+      "location": "Luogo completo",
+      "organizer": "Organizzatore",
+      "category": "Categoria",
+      "price": "Prezzo"
+    }
+  ]
 }
 
 GESTIONE PREZZO:
@@ -556,6 +587,8 @@ GESTIONE CATEGORIA:
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
+- Se è un evento singolo con più sessioni nella stessa data, NON separarlo in eventi diversi: metti agenda/orari in description
+- Se è una rassegna con giorni diversi, crea eventi separati per data
 - ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
 - Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
 - Mesi: gen=01, feb=02, mar=03, apr=04, mag=05, giu=06, lug=07, ago=08, set=09, ott=10, nov=11, dic=12

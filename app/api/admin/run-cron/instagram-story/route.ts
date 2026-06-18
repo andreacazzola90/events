@@ -5,10 +5,14 @@ export async function POST(request: NextRequest) {
   return withAdminAuth(async () => {
     try {
       let target: "instagram-story" | "visitpedemontana" = "instagram-story";
+      let dryRun = false;
       try {
         const body = await request.json();
         if (body?.target === "visitpedemontana") {
           target = "visitpedemontana";
+        }
+        if (body?.dryRun === true) {
+          dryRun = true;
         }
       } catch {
         // Body opzionale: default instagram-story
@@ -24,6 +28,9 @@ export async function POST(request: NextRequest) {
           ? "/api/cron/scrape-visitpedemontana"
           : "/api/cron/generate-instagram-story";
       const targetUrl = new URL(targetPath, request.url);
+      if (dryRun && target === "visitpedemontana") {
+        targetUrl.searchParams.set("dryRun", "1");
+      }
 
       const res = await fetch(targetUrl, {
         method: "GET",
@@ -38,7 +45,7 @@ export async function POST(request: NextRequest) {
         data = { raw: text };
       }
 
-      return NextResponse.json({ status: res.status, target, data });
+      return NextResponse.json({ status: res.status, target, dryRun, data });
     } catch (error) {
       console.error(
         "[API /admin/run-cron/instagram-story] Error triggering cron:",

@@ -15,6 +15,7 @@ export const config = {
   matcher: [
     '/api/favorites/:path*',  // API to manage favorites (requires login)
     '/account/:path*',        // User profile (requires login)
+    '/cron/:path*',           // Cron admin page (requires login, admin check in page)
     '/me/:path*',             // Alias profile route (requires login)
   ],
 };

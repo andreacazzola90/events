@@ -14,6 +14,7 @@ interface ImageUploaderProps {
 
 export default function ImageUploader({ onProcessed, onError }: ImageUploaderProps) {
     const [isProcessing, setIsProcessing] = useState(false);
+    const [showReceived, setShowReceived] = useState(false);
     const [showSourcePicker, setShowSourcePicker] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -24,7 +25,11 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             return;
         }
 
+        // Mostra subito l'animazione di ricezione, poi passa allo stato di elaborazione
+        setShowReceived(true);
         setIsProcessing(true);
+        setTimeout(() => setShowReceived(false), 1800);
+
         try {
             const response = await fetch('/api/process-image', {
                 method: 'POST',
@@ -169,7 +174,9 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
 
                 <div className="space-y-4">
                     {isProcessing ? (
-                        <LoadingAnimation message="Processing your image" />
+                        showReceived
+                            ? <LoadingAnimation message="Immagine ricevuta!" phase="received" />
+                            : <LoadingAnimation message="Scansione immagine in corso" phase="scan-image" />
                     ) : (
                         <>
                             <div className="text-4xl">📸</div>

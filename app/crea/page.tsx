@@ -58,6 +58,7 @@ export default function CreaEvento() {
     const [processingSharedImage, setProcessingSharedImage] = useState(false);
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
+    const [linkReceived, setLinkReceived] = useState(false);
     const [saving, setSaving] = useState(false);
     const [debugInfo, setDebugInfo] = useState<any>(null);
 
@@ -346,7 +347,10 @@ export default function CreaEvento() {
         }
 
         setLoadingLink(true);
+        setLinkReceived(true);
         setError(null);
+        // Mostra l'animazione di ricezione per 1.8s, poi passa allo stato di elaborazione
+        setTimeout(() => setLinkReceived(false), 1800);
 
         try {
             // Create a fetch request with timeout
@@ -490,7 +494,7 @@ export default function CreaEvento() {
                             <div className="grid md:grid-cols-2 gap-8">
                                 {processingSharedImage && (
                                     <div className="md:col-span-2 glass-effect p-8 rounded-2xl border border-white/10 animate-fadeInUp">
-                                        <LoadingAnimation message="Scansione immagine condivisa in corso..." />
+                                        <LoadingAnimation message="Scansione immagine condivisa in corso" phase="shared-image" />
                                     </div>
                                 )}
 
@@ -527,7 +531,9 @@ export default function CreaEvento() {
 
                                     <form onSubmit={handleLinkSubmit} className="space-y-4">
                                         {loadingLink ? (
-                                            <LoadingAnimation message="Processing link" />
+                                            linkReceived
+                                                ? <LoadingAnimation message="Link ricevuto!" phase="received" />
+                                                : <LoadingAnimation message="Scansione pagina web in corso" phase="scan-link" />
                                         ) : (
                                             <>
                                                 <input
@@ -535,7 +541,7 @@ export default function CreaEvento() {
                                                     placeholder="https://example.com/event"
                                                     value={linkUrl}
                                                     onChange={(e) => setLinkUrl(e.target.value)}
-                                                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white/20 transition-all"
+                                                    className="w-full bg-white border border-black/20 px-4 py-3 text-black placeholder-black/40 focus:outline-none focus:border-black transition-colors"
                                                     disabled={loadingLink}
                                                 />
                                                 <button
@@ -575,7 +581,7 @@ export default function CreaEvento() {
                         {/* Event Editing Interface */}
                         {saving ? (
                             <div className="glass-effect p-8 rounded-2xl border border-white/10 animate-fadeInUp">
-                                <LoadingAnimation message="Saving event..." />
+                                <LoadingAnimation message="Salvataggio evento in corso" phase="saving" />
                             </div>
                         ) : events.length > 1 ? (
                             <MultipleEventsEditor

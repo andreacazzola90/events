@@ -35,11 +35,32 @@ export const authOptions: any = {
           throw new Error('Credenziali non valide');
         }
 
+        const normalizedEmail = (user.email || '').toLowerCase();
+        const shouldBeAdmin =
+          normalizedEmail === 'andreacazzola90@gmail.com' ||
+          normalizedEmail.startsWith('andreacazzola90@') ||
+          normalizedEmail.split('@')[0] === 'andreacazzola90';
+
+        const nextRole = shouldBeAdmin ? 'admin' : ((user as any).role || 'user');
+        const nextType = shouldBeAdmin ? 'admin' : ((user as any).type || 'user');
+
+        if (shouldBeAdmin && ((user as any).role !== 'admin' || (user as any).type !== 'admin')) {
+          try {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { role: 'admin', type: 'admin' },
+            });
+          } catch (syncError) {
+            console.warn('[NextAuth] Failed to sync admin role/type for andreacazzola90:', syncError);
+          }
+        }
+
         return {
           id: user.id.toString(),
           email: user.email,
           name: (user as any).name || null,
-          role: (user as any).role || 'user',
+          role: nextRole,
+          type: nextType,
         };
       }
     })
@@ -58,6 +79,7 @@ export const authOptions: any = {
         token.email = user.email;
         token.name = user.name;
         token.role = user.role;
+        token.type = user.type || user.role || 'user';
       }
       return token;
     },
@@ -67,6 +89,7 @@ export const authOptions: any = {
         session.user.email = token.email as string;
         session.user.name = token.name as string;
         (session.user as any).role = token.role as string | undefined;
+        (session.user as any).type = (token.type || token.role || 'user') as string;
       }
       return session;
     }

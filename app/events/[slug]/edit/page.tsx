@@ -185,6 +185,29 @@ export default function EditEventPage() {
       </div>
     );
   }
+
+  const sessionUser = session.user as any;
+  const sessionUserId = parseInt((sessionUser?.id || "").toString(), 10);
+  const sessionEmail = (sessionUser?.email || "").toLowerCase();
+  const isAdmin =
+    sessionUser?.role === "admin" ||
+    sessionUser?.type === "admin" ||
+    sessionEmail === "andreacazzola90@gmail.com" ||
+    sessionEmail.startsWith("andreacazzola90@");
+
+  const canEdit =
+    !!event &&
+    (isAdmin ||
+      (!Number.isNaN(sessionUserId) && event.createdById === sessionUserId));
+
+  if (event && !canEdit) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-xl text-red-500">
+        Non hai i permessi per modificare questo evento.
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center text-xl text-red-500">

@@ -39,9 +39,6 @@ export default function Header() {
             <span className="text-xl font-black tracking-tight text-black uppercase">
               EventScanner
             </span>
-            <span className="hidden sm:inline text-[11px] font-semibold tracking-[0.18em] uppercase text-black/50">
-              Bologna
-            </span>
           </TransitionLink>
 
           <nav className="hidden md:flex items-center gap-6">

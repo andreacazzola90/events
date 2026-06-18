@@ -344,6 +344,15 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
 
     let filtered = events;
 
+    // In full mode show only events from today onward.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    filtered = filtered.filter((event) => {
+      const parsedDate = parseEventDate(event.date);
+      if (!parsedDate) return false;
+      return parsedDate.getTime() >= today.getTime();
+    });
+
     if (search) {
       filtered = filtered.filter(
         (event) =>
@@ -361,8 +370,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     }
 
     if (onlyToday) {
-      const today = new Date().toISOString().slice(0, 10);
-      filtered = filtered.filter((event) => event.date === today);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      filtered = filtered.filter((event) => event.date === todayIso);
     } else {
       if (dateFrom) {
         filtered = filtered.filter((event) => event.date >= dateFrom);
@@ -385,6 +394,15 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
         (event.organizer || "").toLowerCase().includes(needle),
       );
     }
+
+    filtered = [...filtered].sort((a, b) => {
+      const firstDate = parseEventDate(a.date)?.getTime() ?? 0;
+      const secondDate = parseEventDate(b.date)?.getTime() ?? 0;
+      if (firstDate === secondDate) {
+        return a.id - b.id;
+      }
+      return firstDate - secondDate;
+    });
 
     setFilteredEvents(filtered);
   };

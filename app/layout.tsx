@@ -1,27 +1,27 @@
 import type { Metadata } from "next";
-import { Inter } from 'next/font/google';
+import { Inter } from "next/font/google";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
-import Header from './components/Header';
-import Footer from './components/Footer';
-import Providers from './components/Providers';
-import InstallPrompt from './components/InstallPrompt';
-import PWAHandler from './components/PWAHandler';
-import { PageTransitionProvider } from './lib/PageTransitionContext';
-import { LoadingIndicator } from './components/LoadingIndicator';
-import { PageTransitionWrapper } from './components/PageTransition';
-import { GoogleAnalytics } from './lib/analytics';
-import { GoogleTagManager } from './lib/gtm';
+import Header from "./components/Header";
+import Footer from "./components/Footer";
+import Providers from "./components/Providers";
+import PWAHandler from "./components/PWAHandler";
+import { PageTransitionProvider } from "./lib/PageTransitionContext";
+import { LoadingIndicator } from "./components/LoadingIndicator";
+import { PageTransitionWrapper } from "./components/PageTransition";
+import { GoogleAnalytics } from "./lib/analytics";
+import { GoogleTagManager } from "./lib/gtm";
 import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
+  subsets: ["latin"],
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
   title: "EventScanner - Scansiona e gestisci i tuoi eventi",
-  description: "Carica immagini di eventi e ottieni automaticamente tutte le informazioni con AI",
+  description:
+    "Carica immagini di eventi e ottieni automaticamente tutte le informazioni con AI",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -42,7 +42,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
+  const googleSiteVerification =
+    process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
   return (
     <html lang="it" data-theme="dicefm">
       <head>
@@ -56,7 +57,10 @@ export default function RootLayout({
 
         {/* Google Search Console Verification */}
         {googleSiteVerification && (
-          <meta name="google-site-verification" content={googleSiteVerification} />
+          <meta
+            name="google-site-verification"
+            content={googleSiteVerification}
+          />
         )}
 
         {/* Google Analytics */}
@@ -72,12 +76,9 @@ export default function RootLayout({
             <LoadingIndicator />
             <Header />
             <main className="min-h-screen pt-16">
-              <PageTransitionWrapper>
-                {children}
-              </PageTransitionWrapper>
+              <PageTransitionWrapper>{children}</PageTransitionWrapper>
             </main>
             <Footer />
-            <InstallPrompt />
             <Analytics />
           </PageTransitionProvider>
         </Providers>

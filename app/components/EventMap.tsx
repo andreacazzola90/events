@@ -498,7 +498,7 @@ export default function EventMap() {
   const mapInitialCenter = validatedMapCenter ?? DEFAULT_MAP_CENTER;
 
   return (
-    <div className="relative h-full w-full rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-white/10 backdrop-blur-md">
+    <div className="relative h-full w-full overflow-hidden shadow-2xl border border-white/20 bg-white/10 backdrop-blur-md">
       <div className="absolute inset-0">
         <MapContainer
           center={mapInitialCenter}

@@ -261,7 +261,7 @@ export async function GET(request: NextRequest) {
       await new Promise((resolve) => setTimeout(resolve, sourceConfig.waitMs));
 
       const { pageEventLinks, nextPageUrl, debugAnchors } = await page.evaluate(
-        ({ eventLinkSelector, nextPageSelector, listHost }) => {
+        ({ eventLinkSelector, nextPageSelector, listHost }: { eventLinkSelector: string; nextPageSelector: string | null; listHost: string }) => {
         const origin = window.location.origin;
         const currentPageUrl = window.location.href;
         const toAbsolute = (href: string) => {

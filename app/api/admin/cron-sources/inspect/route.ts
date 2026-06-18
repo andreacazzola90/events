@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await page.evaluate(
-        ({ eventSelector, nextSelector }) => {
+        ({ eventSelector, nextSelector }: { eventSelector: string; nextSelector: string | null }) => {
           const toAbs = (href: string) => {
             try {
               return new URL(href, window.location.href).toString();
@@ -120,13 +120,13 @@ export async function POST(request: NextRequest) {
           let nextPageHref: string | null = null;
           let nextMatched = false;
           if (nextSelector) {
-            const nextNode = document.querySelector(nextSelector) as HTMLAnchorElement | null;
+            const nextNode = document.querySelector(nextSelector) as HTMLElement | null;
             if (nextNode) {
               nextMatched = true;
               const href =
                 nextNode instanceof HTMLAnchorElement
                   ? nextNode.href
-                  : nextNode.getAttribute("href") || "";
+                  : (nextNode as HTMLElement).getAttribute("href") || "";
               nextPageHref = href ? toAbs(href) : null;
             }
           }

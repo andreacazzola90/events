@@ -10,6 +10,7 @@ interface TransitionLinkProps {
     onClick?: () => void;
     replace?: boolean;
     style?: React.CSSProperties;
+    title?: string;
 }
 
 export function TransitionLink({
@@ -18,7 +19,8 @@ export function TransitionLink({
     className = '',
     onClick,
     replace = false,
-    style
+    style,
+    title,
 }: TransitionLinkProps) {
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         // Esegui callback personalizzato se presente
@@ -33,6 +35,7 @@ export function TransitionLink({
             className={className}
             onClick={handleClick}
             style={style}
+            title={title}
         >
             {children}
         </Link>

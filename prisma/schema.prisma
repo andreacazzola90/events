@@ -51,6 +51,7 @@ model CronSource {
   scheduleCron      String   @default("0 4 * * *")
   timezone          String   @default("Europe/Rome")
   eventLinkSelector String   @default("a[href]")
+  listingContainerSelector String?
   nextPageSelector  String?
   includePattern    String?
   excludePattern    String?
@@ -86,4 +87,13 @@ model Favorite {
   user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, eventId])
+}
+
+model CronJobRun {
+  id            Int       @id @default(autoincrement())
+  jobKey        String    @unique // e.g. "visitpedemontana", "instagram-story"
+  status        String    @default("running") // "running" | "completed" | "failed"
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  resultJson    String?   // JSON-serialized result/summary
 }

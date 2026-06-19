@@ -32,6 +32,9 @@ export default function AccountPage() {
   const [runningCron, setRunningCron] = useState<
     "instagram-story" | "visitpedemontana" | null
   >(null);
+  const [stoppingCron, setStoppingCron] = useState<
+    "instagram-story" | "visitpedemontana" | null
+  >(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -66,8 +69,8 @@ export default function AccountPage() {
         userEmail.startsWith('andreacazzola90@');
 
       const eventsUrl = adminView
-        ? '/api/events?limit=200'
-        : '/api/events?userId=' + userId;
+        ? '/api/events?limit=200&includePast=true'
+        : '/api/events?userId=' + userId + '&includePast=true';
 
       const [eventsRes, favoritesRes] = await Promise.all([
         fetch(eventsUrl),
@@ -106,43 +109,81 @@ export default function AccountPage() {
     }
   }, [isAdmin, activeTab]);
 
+  // Recupera lo stato dei cron dal DB al mount (persiste dopo refresh)
+  useEffect(() => {
+    if (!isAdmin) return;
+    const checkStatus = async () => {
+      try {
+        const res = await fetch("/api/admin/cron-status");
+        if (!res.ok) return;
+        const { runs } = await res.json();
+        const running = (runs as any[]).find((r) => r.status === "running");
+        if (running) {
+          setRunningCron(running.jobKey as "instagram-story" | "visitpedemontana");
+        } else {
+          // Carica l'ultimo risultato disponibile per ciascun tipo
+          for (const run of runs as any[]) {
+            if (run.status === "completed" || run.status === "failed") {
+              const result = run.resultJson ? JSON.parse(run.resultJson) : null;
+              if (run.jobKey === "visitpedemontana" && result) {
+                setVisitpedemontanaResult(result);
+              } else if (run.jobKey === "instagram-story" && result) {
+                setInstagramStoryResult(result);
+              }
+            }
+          }
+        }
+      } catch { /* ignora */ }
+    };
+    checkStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+
+  // Polling: mentre un cron è in esecuzione controlla ogni 5s se è terminato
+  useEffect(() => {
+    if (!runningCron) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/admin/cron-status");
+        if (!res.ok) return;
+        const { runs } = await res.json();
+        const run = (runs as any[]).find((r) => r.jobKey === runningCron);
+        if (!run || run.status !== "running") {
+          // Job terminato
+          const result = run?.resultJson ? JSON.parse(run.resultJson) : null;
+          if (runningCron === "visitpedemontana" && result) {
+            setVisitpedemontanaResult(result);
+            const duplicates = (result?.duplicates as any[]) || [];
+            if (duplicates.length > 0) {
+              toast.info(`${duplicates.length} eventi erano già presenti e non sono stati ricreati.`);
+            }
+          } else if (runningCron === "instagram-story" && result) {
+            setInstagramStoryResult(result);
+          }
+          setRunningCron(null);
+        }
+      } catch { /* ignora */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [runningCron]);
+
   const runCron = async (type: "instagram-story" | "visitpedemontana") => {
     setRunningCron(type);
-    try {
-      const endpoint = "/api/admin/run-cron/instagram-story";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ target: type }),
-      });
-      const data = await res.json();
+    // Fire-and-forget: il polling rileverà il completamento anche dopo un refresh
+    fetch("/api/admin/run-cron/instagram-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: type }),
+    }).catch(() => { /* il polling gestirà lo stato finale */ });
+  };
 
-      const payload = (data as any).data ?? data;
-      const duplicates = ((payload as any)?.duplicates as any[]) || [];
-      if (duplicates.length > 0) {
-        toast.info(
-          `${duplicates.length} eventi erano già presenti e non sono stati ricreati.`,
-        );
-      }
-      if (type === "instagram-story") {
-        setInstagramStoryResult(data);
-      } else {
-        setVisitpedemontanaResult(data);
-      }
-    } catch (err) {
-      const errorPayload = {
-        error: "Failed to run cron",
-        details: (err as Error).message,
-      };
-      if (type === "instagram-story") {
-        setInstagramStoryResult(errorPayload);
-      } else {
-        setVisitpedemontanaResult(errorPayload);
-      }
-    } finally {
+  const stopCron = async (type: "instagram-story" | "visitpedemontana") => {
+    setStoppingCron(type);
+    try {
+      await fetch(`/api/admin/cron-status?jobKey=${type}`, { method: "DELETE" });
       setRunningCron(null);
+    } catch { /* ignora */ } finally {
+      setStoppingCron(null);
     }
   };
 
@@ -835,6 +876,15 @@ export default function AccountPage() {
                     ? "Generating Instagram Story…"
                     : "Generate Instagram Story Now"}
                 </button>
+                {runningCron === "instagram-story" && (
+                  <button
+                    onClick={() => stopCron("instagram-story")}
+                    className="btn btn-error btn-sm inline-flex items-center gap-2"
+                    disabled={stoppingCron === "instagram-story"}
+                  >
+                    {stoppingCron === "instagram-story" ? "Stopping…" : "Stop"}
+                  </button>
+                )}
                 <button
                   onClick={() => runCron("visitpedemontana")}
                   className="btn btn-secondary inline-flex items-center gap-2"
@@ -844,6 +894,15 @@ export default function AccountPage() {
                     ? "Running VisitPedemontana Cron…"
                     : "Run VisitPedemontana Cron Now"}
                 </button>
+                {runningCron === "visitpedemontana" && (
+                  <button
+                    onClick={() => stopCron("visitpedemontana")}
+                    className="btn btn-error btn-sm inline-flex items-center gap-2"
+                    disabled={stoppingCron === "visitpedemontana"}
+                  >
+                    {stoppingCron === "visitpedemontana" ? "Stopping…" : "Stop"}
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>

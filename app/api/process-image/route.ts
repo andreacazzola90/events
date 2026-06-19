@@ -206,10 +206,10 @@ Rispondi in italiano. Sii preciso e completo.`,
     });
 
     const currentDate = new Date().toISOString().split('T')[0];
-
-    const prompt = hasMultipleEvents ? 
-    // PROMPT PER EVENTI MULTIPLI
-    `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
+    const truncatedRawText = rawText.slice(0, 3000);
+    // PROMPT PER EVENTI MULTIPLI / SINGOLO EVENTO
+    const prompt = hasMultipleEvents
+    ? `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
 
 PASSO 1 - IDENTIFICAZIONE:
 Prima di tutto, CONTA quanti eventi distinti vedi. Cerca:
@@ -284,7 +284,7 @@ INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA
 ${heuristicHints}
 
 TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
-${rawText}
+${truncatedRawText}
 
 Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
 {
@@ -324,9 +324,7 @@ IMPORTANTE:
 - Se un campo (tranne rawText) non è trovato, usa la stringa "non trovato"
 - NON usare null o undefined
 - Estrai TUTTE le informazioni: se vedi prezzi diversi, date diverse, orari diversi, usali per gli eventi corrispondenti`
-    : 
-    // PROMPT PER SINGOLO EVENTO
-    `Sei un esperto analista di eventi. Analizza ATTENTAMENTE il seguente contenuto e estrai TUTTE le informazioni disponibili.
+    : `Sei un esperto analista di eventi. Analizza ATTENTAMENTE il seguente contenuto e estrai TUTTE le informazioni disponibili.
 
 REGOLE FONDAMENTALI:
 1. Leggi TUTTO il testo senza saltare nessuna parte
@@ -368,7 +366,7 @@ INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA
 ${heuristicHints}
 
 TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
-${rawText}
+${truncatedRawText}
 
 Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
 {
@@ -381,7 +379,7 @@ Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
   "category": "",
   "price": "",
   "sourceUrl": "",
-  "rawText": "${rawText.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
+  "rawText": "${truncatedRawText.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
 }
 
 IMPORTANTE: 
@@ -422,7 +420,7 @@ REGOLE:
       model: 'llama-3.1-8b-instant',
       response_format: { type: 'json_object' },
       temperature: 0.1,
-      max_tokens: 5000,
+      max_tokens: 1500,
     });
 
     const groqDuration = Date.now() - groqStartTime;

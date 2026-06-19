@@ -604,8 +604,8 @@ GESTIONE DATE:
 INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
 ${heuristicHints}
 
-CONTENUTO DA ANALIZZARE (TESTO COMPLETO TRONCATO A 12000 CARATTERI):
-${combinedText.slice(0, 12000)}
+CONTENUTO DA ANALIZZARE (TESTO TRONCATO A 5000 CARATTERI):
+${combinedText.slice(0, 5000)}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
@@ -623,7 +623,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         model: 'llama-3.1-8b-instant',
         response_format: { type: 'json_object' },
         temperature: 0.1,
-        max_tokens: 5000,
+        max_tokens: 1500,
     });
 
     const responseText = completion.choices[0]?.message?.content || '';
@@ -665,7 +665,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         
         if (missing.length > 0) {
             const enrichmentPrompt = `Analizza nuovamente il testo e cerca SOLO le info mancanti (${missing.join(', ')}) per l'evento: ${event.title}. 
-            Testo: ${combinedText.slice(0, 5000)}. 
+            Testo: ${combinedText.slice(0, 2000)}. 
             Data rif: ${currentDate}. 
             Rispondi SOLO JSON.`;
             

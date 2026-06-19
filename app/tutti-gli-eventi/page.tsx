@@ -16,7 +16,7 @@ export default function TuttiGliEventiPage() {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const res = await fetch("/api/events?limit=500", { cache: "no-store" });
+        const res = await fetch("/api/events?limit=500&includePast=true", { cache: "no-store" });
         if (!res.ok) {
           setEvents([]);
           return;

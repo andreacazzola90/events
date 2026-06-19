@@ -513,6 +513,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
                   aria-label="Data di inizio"
+                  min={new Date().toISOString().slice(0, 10)}
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                   disabled={onlyToday}
                 />

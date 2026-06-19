@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import "leaflet/dist/leaflet.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import Providers from "./components/Providers";
@@ -96,7 +95,6 @@ export const viewport = {
   themeColor: "#2563eb",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -109,13 +107,8 @@ export default function RootLayout({
   return (
     <html lang="it" data-theme="dicefm">
       <head>
-        <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
-        <meta name="theme-color" content="#2563eb" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="EventScanner" />
 
         {/* Google Search Console Verification */}
         {googleSiteVerification && (

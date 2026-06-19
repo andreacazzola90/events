@@ -39,6 +39,48 @@ function buildOptionalRegex(raw: string | null | undefined): RegExp | null {
   }
 }
 
+/**
+ * Tries to click a cookie-consent "accept" button if one is visible on the page.
+ * Silently ignores errors (banner not present, already dismissed, etc.).
+ */
+async function dismissCookieBanner(page: any): Promise<void> {
+  const ACCEPT_SELECTORS = [
+    '#iubenda-cs-accept-btn',
+    '.iubenda-cs-accept-btn',
+    "button[id*='accept']",
+    "button[class*='accept']",
+    "a[id*='accept']",
+    "a[class*='accept']",
+    '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+    "button[id*='cookie'][id*='accept']",
+    '.cc-accept',
+    '#accept-all',
+  ];
+  const ACCEPT_TEXT_RE = /^(accetta|accept all|accept|accetto|ok,?\s*accetto|ho capito|consenti tutto)$/i;
+  try {
+    for (const sel of ACCEPT_SELECTORS) {
+      const el = await page.$(sel);
+      if (el) {
+        await el.click();
+        await new Promise((r) => setTimeout(r, 600));
+        return;
+      }
+    }
+    // Fallback: match by visible button/link text
+    const btns = await page.$$("button, a[role='button']");
+    for (const btn of btns) {
+      try {
+        const text: string = await btn.evaluate((el: Element) => (el.textContent || '').trim());
+        if (ACCEPT_TEXT_RE.test(text)) {
+          await btn.click();
+          await new Promise((r) => setTimeout(r, 600));
+          return;
+        }
+      } catch { /* ignore */ }
+    }
+  } catch { /* banner not present or already dismissed */ }
+}
+
 function slugifyUrlPart(value: string): string {
   return value
     .normalize('NFD')
@@ -80,7 +122,7 @@ async function getVisitPedemontanaConfig(): Promise<CronSourceConfig> {
     listUrl:
       'https://www.visitschio.it/it/pages/eventi-del-territorio-della-pedemontana-veneta-e-colli#/eventi',
     eventLinkSelector: 'a[href*="#/eventi/"], a[href*="/eventi/"]',
-    nextPageSelector: null,
+    nextPageSelector: 'dw-gen-pagination',
     includePattern: '#/eventi/|/eventi/.+/.+',
     excludePattern: '#mm-|#menu|/it/eventi$|/it/eventi/[^/]+$|/users/|/maps|/search',
     waitMs: 4000,
@@ -257,8 +299,22 @@ export async function GET(request: NextRequest) {
         timeout: sourceConfig.requestTimeoutMs,
       });
 
-      // Dai un attimo di tempo all'app per caricare gli eventi (SPA con #/eventi)
-      await new Promise((resolve) => setTimeout(resolve, sourceConfig.waitMs));
+      // iubenda and similar cookie banners load lazily — wait 2s before trying to dismiss
+      await new Promise((r) => setTimeout(r, 2000));
+      await dismissCookieBanner(page);
+
+      // Attendi che Angular abbia renderizzato gli elementi evento nel DOM.
+      // waitForSelector si risolve non appena il selettore matcha almeno un elemento;
+      // se entro waitMs il rendering non è ancora completo, si fa comunque la scansione.
+      try {
+        await page.waitForSelector(sourceConfig.eventLinkSelector, {
+          timeout: sourceConfig.waitMs,
+        });
+        console.log(`[VisitPedemontana] Selector "${sourceConfig.eventLinkSelector}" found — Angular rendering complete.`);
+      } catch {
+        console.warn(`[VisitPedemontana] Selector not found within ${sourceConfig.waitMs}ms, proceeding anyway.`);
+        await new Promise((resolve) => setTimeout(resolve, sourceConfig.waitMs));
+      }
 
       const { pageEventLinks, nextPageUrl, debugAnchors } = await page.evaluate(
         ({ eventLinkSelector, nextPageSelector, listHost }: { eventLinkSelector: string; nextPageSelector: string | null; listHost: string }) => {
@@ -320,11 +376,62 @@ export async function GET(request: NextRequest) {
               return true;
           });
 
+          const FIRST_LAST_RE = /prima\s*pagina|ultima\s*pagina|first\s*page|last\s*page|go\s+to\s+first|go\s+to\s+last/i;
+
           let nextPageUrl: string | null = null;
+
+          // Helper: resolve next page from a pagination container element
+          const resolveNextFromContainer = (container: Element): string | null => {
+            // 1. rel="next"
+            const relN = container.querySelector<HTMLAnchorElement>('a[rel="next"]');
+            if (relN?.href) return toAbsolute(relN.href);
+
+            // 2. Numbered: find active page, then page+1
+            const active = container.querySelector<HTMLElement>(
+              '.active > a, a.active, [aria-current="page"]',
+            );
+            if (active) {
+              const curNum = parseInt((active.textContent || '').trim(), 10);
+              if (!isNaN(curNum)) {
+                for (const a of Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+                  if (parseInt((a.textContent || '').trim(), 10) === curNum + 1) {
+                    return toAbsolute(a.href);
+                  }
+                }
+              }
+            }
+
+            // 3. URL-based current page fallback
+            const pageMatch = window.location.href.match(/[?&]page=(\d+)|\/page\/(\d+)/i);
+            const curPage = pageMatch ? parseInt(pageMatch[1] || pageMatch[2], 10) : 1;
+            for (const a of Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+              if (parseInt((a.textContent || '').trim(), 10) === curPage + 1) {
+                return toAbsolute(a.href);
+              }
+            }
+
+            // 4. Arrow links — exclude first/last page double arrows
+            for (const a of Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+              const txt = (a.textContent || '').trim();
+              const aria = (a.getAttribute('aria-label') || '').trim();
+              if (FIRST_LAST_RE.test(aria) || FIRST_LAST_RE.test(txt)) continue;
+              const svgType = a.querySelector('svg')?.getAttribute('type') || '';
+              if (/double/i.test(svgType)) continue;
+              if (/successiv|prossim|avanti|›|»/i.test(txt) || /successiv|prossim|next/i.test(aria)) {
+                return toAbsolute(a.href);
+              }
+            }
+            return null;
+          };
+
           if (nextPageSelector) {
-            const nextBySelector = document.querySelector(nextPageSelector) as HTMLAnchorElement | null;
-            if (nextBySelector?.href) {
-              nextPageUrl = toAbsolute(nextBySelector.href);
+            const container = document.querySelector(nextPageSelector);
+            if (container) {
+              if (container instanceof HTMLAnchorElement && container.href && !container.href.endsWith('#')) {
+                nextPageUrl = toAbsolute(container.href);
+              } else {
+                nextPageUrl = resolveNextFromContainer(container);
+              }
             }
           }
 
@@ -332,14 +439,6 @@ export async function GET(request: NextRequest) {
             const relNext = document.querySelector('a[rel="next"]') as HTMLAnchorElement | null;
             if (relNext?.href) {
               nextPageUrl = toAbsolute(relNext.href);
-            } else {
-              const candidates = anchors.filter(a => {
-                const text = (a.textContent || '').trim();
-                return /successiv|prossim|avanti|›|»/i.test(text);
-              });
-              if (candidates.length > 0) {
-                nextPageUrl = toAbsolute(candidates[0].href);
-              }
             }
           }
 

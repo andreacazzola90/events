@@ -179,6 +179,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         height={600}
                                         className="w-full h-64 sm:h-80 lg:h-100 xl:h-112.5 object-cover transition-all duration-700"
                                         sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 100vw"
+                                        priority
                                     />
                                     {/* Gradient Overlay */}
                                     <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -280,7 +281,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                 width={400}
                                                 height={300}
                                                 className="w-full h-48 object-cover rounded-lg mb-3"
-                                                sizes="(min-width: 1024px) 33vw, 50vw"
+                                                sizes="(min-width: 1024px) 25vw, 50vw"
+                                                loading="lazy"
                                             />
                                         )}
                                         <h3 className="font-bold text-xl mb-2 text-white group-hover:text-primary transition-colors truncate">{sameDayEvent.title}</h3>
@@ -313,7 +315,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                 width={400}
                                                 height={300}
                                                 className="w-full h-48 object-cover rounded mb-2"
-                                                sizes="(min-width: 1024px) 33vw, 50vw"
+                                                sizes="(min-width: 1024px) 25vw, 50vw"
+                                                loading="lazy"
                                             />
                                         )}
                                         <h3 className="font-semibold text-lg text-white group-hover:text-primary transition-colors truncate">{similarEvent.title}</h3>

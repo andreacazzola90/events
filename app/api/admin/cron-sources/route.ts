@@ -10,6 +10,7 @@ type CronSourcePayload = {
   scheduleCron?: string;
   timezone?: string;
   eventLinkSelector?: string;
+  listingContainerSelector?: string;
   nextPageSelector?: string;
   includePattern?: string;
   excludePattern?: string;
@@ -83,6 +84,7 @@ function normalizePayload(payload: CronSourcePayload) {
     scheduleCron: parseOptionalString(payload.scheduleCron) || "0 4 * * *",
     timezone: parseOptionalString(payload.timezone) || "Europe/Rome",
     eventLinkSelector: parseOptionalString(payload.eventLinkSelector) || "a[href]",
+    listingContainerSelector: parseOptionalString(payload.listingContainerSelector),
     nextPageSelector: parseOptionalString(payload.nextPageSelector),
     includePattern: parseOptionalString(payload.includePattern),
     excludePattern: parseOptionalString(payload.excludePattern),

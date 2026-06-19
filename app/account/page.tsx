@@ -9,6 +9,13 @@ import { generateUniqueSlug } from "../../lib/slug-utils";
 import type { DbEvent } from "../types/event";
 
 type UserEvent = DbEvent;
+type AccountTab =
+  | "profile"
+  | "password"
+  | "events"
+  | "favorites"
+  | "stats"
+  | "admin";
 
 export default function AccountPage() {
   const { data: session, status } = useSession();
@@ -25,6 +32,18 @@ export default function AccountPage() {
   const [runningCron, setRunningCron] = useState<
     "instagram-story" | "visitpedemontana" | null
   >(null);
+  const [stoppingCron, setStoppingCron] = useState<
+    "instagram-story" | "visitpedemontana" | null
+  >(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<AccountTab>("profile");
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -40,10 +59,22 @@ export default function AccountPage() {
 
   const fetchUserEvents = async () => {
     try {
-      const userId = (session?.user as any)?.id;
+      const userData = session?.user as any;
+      const userId = userData?.id;
+      const userEmail = (userData?.email || '').toLowerCase();
+      const adminView =
+        userData?.role === 'admin' ||
+        userData?.type === 'admin' ||
+        userEmail === 'andreacazzola90@gmail.com' ||
+        userEmail.startsWith('andreacazzola90@');
+
+      const eventsUrl = adminView
+        ? '/api/events?limit=200&includePast=true'
+        : '/api/events?userId=' + userId + '&includePast=true';
+
       const [eventsRes, favoritesRes] = await Promise.all([
-        fetch("/api/events?userId=" + userId),
-        fetch("/api/favorites"),
+        fetch(eventsUrl),
+        fetch('/api/favorites'),
       ]);
 
       if (eventsRes.ok) {
@@ -69,45 +100,157 @@ export default function AccountPage() {
 
   const isAdmin =
     (session?.user as any)?.role === "admin" ||
+    (session?.user as any)?.type === "admin" ||
     session?.user?.email === "andreacazzola90@gmail.com";
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === "admin") {
+      setActiveTab("profile");
+    }
+  }, [isAdmin, activeTab]);
+
+  // Recupera lo stato dei cron dal DB al mount (persiste dopo refresh)
+  useEffect(() => {
+    if (!isAdmin) return;
+    const checkStatus = async () => {
+      try {
+        const res = await fetch("/api/admin/cron-status");
+        if (!res.ok) return;
+        const { runs } = await res.json();
+        const running = (runs as any[]).find((r) => r.status === "running");
+        if (running) {
+          setRunningCron(running.jobKey as "instagram-story" | "visitpedemontana");
+        } else {
+          // Carica l'ultimo risultato disponibile per ciascun tipo
+          for (const run of runs as any[]) {
+            if (run.status === "completed" || run.status === "failed") {
+              const result = run.resultJson ? JSON.parse(run.resultJson) : null;
+              if (run.jobKey === "visitpedemontana" && result) {
+                setVisitpedemontanaResult(result);
+              } else if (run.jobKey === "instagram-story" && result) {
+                setInstagramStoryResult(result);
+              }
+            }
+          }
+        }
+      } catch { /* ignora */ }
+    };
+    checkStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+
+  // Polling: mentre un cron è in esecuzione controlla ogni 5s se è terminato
+  useEffect(() => {
+    if (!runningCron) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/admin/cron-status");
+        if (!res.ok) return;
+        const { runs } = await res.json();
+        const run = (runs as any[]).find((r) => r.jobKey === runningCron);
+        if (!run || run.status !== "running") {
+          // Job terminato
+          const result = run?.resultJson ? JSON.parse(run.resultJson) : null;
+          if (runningCron === "visitpedemontana" && result) {
+            setVisitpedemontanaResult(result);
+            const duplicates = (result?.duplicates as any[]) || [];
+            if (duplicates.length > 0) {
+              toast.info(`${duplicates.length} eventi erano già presenti e non sono stati ricreati.`);
+            }
+          } else if (runningCron === "instagram-story" && result) {
+            setInstagramStoryResult(result);
+          }
+          setRunningCron(null);
+        }
+      } catch { /* ignora */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [runningCron]);
 
   const runCron = async (type: "instagram-story" | "visitpedemontana") => {
     setRunningCron(type);
+    // Fire-and-forget: il polling rileverà il completamento anche dopo un refresh
+    fetch("/api/admin/run-cron/instagram-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: type }),
+    }).catch(() => { /* il polling gestirà lo stato finale */ });
+  };
+
+  const stopCron = async (type: "instagram-story" | "visitpedemontana") => {
+    setStoppingCron(type);
     try {
-      const endpoint = "/api/admin/run-cron/instagram-story";
-      const res = await fetch(endpoint, {
+      await fetch(`/api/admin/cron-status?jobKey=${type}`, { method: "DELETE" });
+      setRunningCron(null);
+    } catch { /* ignora */ } finally {
+      setStoppingCron(null);
+    }
+  };
+
+  const handlePasswordRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage(null);
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setPasswordMessage({
+        type: "error",
+        text: "Compila tutti i campi password.",
+      });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordMessage({
+        type: "error",
+        text: "La nuova password deve contenere almeno 8 caratteri.",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordMessage({
+        type: "error",
+        text: "La conferma password non coincide.",
+      });
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await fetch("/api/account/password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ target: type }),
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
       });
-      const data = await res.json();
 
-      const payload = (data as any).data ?? data;
-      const duplicates = ((payload as any)?.duplicates as any[]) || [];
-      if (duplicates.length > 0) {
-        toast.info(
-          `${duplicates.length} eventi erano già presenti e non sono stati ricreati.`,
-        );
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPasswordMessage({
+          type: "error",
+          text: payload?.error || "Errore durante il recupero password.",
+        });
+        return;
       }
-      if (type === "instagram-story") {
-        setInstagramStoryResult(data);
-      } else {
-        setVisitpedemontanaResult(data);
-      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPasswordMessage({
+        type: "success",
+        text: "Password aggiornata con successo.",
+      });
     } catch (err) {
-      const errorPayload = {
-        error: "Failed to run cron",
-        details: (err as Error).message,
-      };
-      if (type === "instagram-story") {
-        setInstagramStoryResult(errorPayload);
-      } else {
-        setVisitpedemontanaResult(errorPayload);
-      }
+      setPasswordMessage({
+        type: "error",
+        text: (err as Error).message || "Errore durante il recupero password.",
+      });
     } finally {
-      setRunningCron(null);
+      setChangingPassword(false);
     }
   };
 
@@ -239,9 +382,79 @@ export default function AccountPage() {
   }
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen account-page">
+      <div className="max-w-6xl mx-auto px-6 pt-8">
+        <div className="glass-effect p-6">
+          <div className="flex flex-wrap gap-3" role="tablist" aria-label="Sezioni account">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "profile"}
+              aria-controls="tab-panel-profile"
+              onClick={() => setActiveTab("profile")}
+              className={`btn ${activeTab === "profile" ? "btn-primary" : "btn-outline"}`}
+            >
+              Profilo
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "events"}
+              aria-controls="tab-panel-events"
+              onClick={() => setActiveTab("events")}
+              className={`btn ${activeTab === "events" ? "btn-primary" : "btn-outline"}`}
+            >
+              I miei eventi
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "favorites"}
+              aria-controls="tab-panel-favorites"
+              onClick={() => setActiveTab("favorites")}
+              className={`btn ${activeTab === "favorites" ? "btn-primary" : "btn-outline"}`}
+            >
+              Preferiti
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "stats"}
+              aria-controls="tab-panel-stats"
+              onClick={() => setActiveTab("stats")}
+              className={`btn ${activeTab === "stats" ? "btn-primary" : "btn-outline"}`}
+            >
+              Statistiche
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "admin"}
+                aria-controls="tab-panel-admin"
+                onClick={() => setActiveTab("admin")}
+                className={`btn ${activeTab === "admin" ? "btn-primary" : "btn-outline"}`}
+              >
+                Admin tools
+              </button>
+            )}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "password"}
+              aria-controls="tab-panel-password"
+              onClick={() => setActiveTab("password")}
+              className={`btn ${activeTab === "password" ? "btn-primary" : "btn-outline"}`}
+            >
+              Password
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Hero Section */}
-      <section className="hero-section">
+      {activeTab === "profile" && (
+      <section className="hero-section" id="tab-panel-profile" role="tabpanel" aria-labelledby="tab-panel-profile">
         <div className="max-w-6xl mx-auto px-6 py-16">
           <div className="glass-effect rounded-3xl p-8 md:p-12 animate-fadeInUp">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
@@ -289,9 +502,9 @@ export default function AccountPage() {
                         <span className="text-xl">⭐</span>
                       </div>
                       <div>
-                        <span className="text-gray-400 text-sm">Role</span>
+                        <span className="text-gray-400 text-sm">Type</span>
                         <p className="text-emerald-300 font-semibold text-lg">
-                          Admin
+                          admin
                         </p>
                       </div>
                     </div>
@@ -301,13 +514,13 @@ export default function AccountPage() {
               <div className="flex flex-col gap-4">
                 <button
                   onClick={() => router.push("/crea")}
-                  className="btn btn-primary btn-lg inline-flex items-center gap-3 rounded-2xl font-bold text-lg"
+                  className="btn btn-primary btn-lg inline-flex items-center gap-3 font-bold text-lg"
                 >
                   ✨ Create Event
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="btn btn-outline btn-secondary btn-lg inline-flex items-center gap-3 rounded-2xl font-bold text-lg"
+                  className="btn btn-outline btn-secondary btn-lg inline-flex items-center gap-3 font-bold text-lg"
                 >
                   🚪 Logout
                 </button>
@@ -316,13 +529,90 @@ export default function AccountPage() {
           </div>
         </div>
       </section>
+      )}
 
       <div className="max-w-6xl mx-auto px-6 pb-16 space-y-8">
+        {activeTab === "password" && (
+        <div id="tab-panel-password" role="tabpanel" className="glass-effect rounded-2xl p-8">
+          <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span className="text-2xl">🔐</span>
+            Recupera Password
+          </h2>
+          <p className="text-gray-300 mb-6">
+            Per sicurezza inserisci la password attuale e imposta una nuova password.
+          </p>
+
+          <form
+            onSubmit={handlePasswordRecovery}
+            className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          >
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-sm text-gray-300">Password attuale</span>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
+                placeholder="Inserisci password attuale"
+                autoComplete="current-password"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm text-gray-300">Nuova password</span>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
+                placeholder="Almeno 8 caratteri"
+                autoComplete="new-password"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm text-gray-300">Conferma nuova password</span>
+              <input
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                className="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
+                placeholder="Ripeti nuova password"
+                autoComplete="new-password"
+              />
+            </label>
+
+            <div className="md:col-span-2 flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={changingPassword}
+                className="btn btn-primary"
+              >
+                {changingPassword ? "Aggiornamento..." : "Aggiorna password"}
+              </button>
+            </div>
+
+            {passwordMessage && (
+              <div
+                className={`md:col-span-2 rounded-xl px-4 py-3 text-sm ${
+                  passwordMessage.type === "success"
+                    ? "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40"
+                    : "bg-red-500/20 text-red-200 border border-red-500/40"
+                }`}
+              >
+                {passwordMessage.text}
+              </div>
+            )}
+          </form>
+        </div>
+        )}
+
         {/* Your Events Section */}
-        <div className="glass-effect rounded-2xl p-8">
+        {activeTab === "events" && (
+        <div id="tab-panel-events" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">🎵</span>
-            Your Events
+            {isAdmin ? 'All Events (Admin)' : 'Your Events'}
           </h2>
           {userEvents.length === 0 ? (
             <div className="text-center py-16">
@@ -335,7 +625,7 @@ export default function AccountPage() {
               </p>
               <button
                 onClick={() => router.push("/crea")}
-                className="inline-flex items-center gap-3 bg-linear-to-r from-pink-500 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-pink-500/25"
+                className="btn btn-primary inline-flex items-center gap-3"
               >
                 ✨ Create Your First Event
               </button>
@@ -425,9 +715,11 @@ export default function AccountPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Favorite Events Section */}
-        <div className="glass-effect rounded-2xl p-8">
+        {activeTab === "favorites" && (
+        <div id="tab-panel-favorites" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">❤️</span>
             Favorite Events
@@ -505,9 +797,11 @@ export default function AccountPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Statistics Section */}
-        <div className="glass-effect rounded-2xl p-8">
+        {activeTab === "stats" && (
+        <div id="tab-panel-stats" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">📊</span>
             Your Stats
@@ -559,16 +853,20 @@ export default function AccountPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Admin Cron Controls */}
-        {isAdmin && (
-          <div className="glass-effect rounded-2xl p-8">
+        {isAdmin && activeTab === "admin" && (
+          <div id="tab-panel-admin" role="tabpanel" className="glass-effect rounded-2xl p-8">
             <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
               <span className="text-2xl">🛠️</span>
               <span>Admin Tools</span>
             </h2>
             <div className="space-y-6">
               <div className="flex flex-wrap gap-4">
+                <a href="/cron" className="btn btn-ghost inline-flex items-center gap-2">
+                  Open Cron Dashboard
+                </a>
                 <button
                   onClick={() => runCron("instagram-story")}
                   className="btn btn-accent inline-flex items-center gap-2"
@@ -578,6 +876,15 @@ export default function AccountPage() {
                     ? "Generating Instagram Story…"
                     : "Generate Instagram Story Now"}
                 </button>
+                {runningCron === "instagram-story" && (
+                  <button
+                    onClick={() => stopCron("instagram-story")}
+                    className="btn btn-error btn-sm inline-flex items-center gap-2"
+                    disabled={stoppingCron === "instagram-story"}
+                  >
+                    {stoppingCron === "instagram-story" ? "Stopping…" : "Stop"}
+                  </button>
+                )}
                 <button
                   onClick={() => runCron("visitpedemontana")}
                   className="btn btn-secondary inline-flex items-center gap-2"
@@ -587,6 +894,15 @@ export default function AccountPage() {
                     ? "Running VisitPedemontana Cron…"
                     : "Run VisitPedemontana Cron Now"}
                 </button>
+                {runningCron === "visitpedemontana" && (
+                  <button
+                    onClick={() => stopCron("visitpedemontana")}
+                    className="btn btn-error btn-sm inline-flex items-center gap-2"
+                    disabled={stoppingCron === "visitpedemontana"}
+                  >
+                    {stoppingCron === "visitpedemontana" ? "Stopping…" : "Stop"}
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>

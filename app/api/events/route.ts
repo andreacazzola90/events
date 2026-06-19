@@ -283,7 +283,16 @@ export async function GET(request: NextRequest) {
       where.category = category;
     }
 
-    if (dateFrom || dateTo) {
+    const includePast = searchParams.get("includePast") === "true";
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // By default, never return past events unless includePast=true is explicitly passed.
+    // When includePast is false, the effective dateFrom is at least today.
+    if (!includePast) {
+      const effectiveDateFrom = dateFrom && dateFrom > todayStr ? dateFrom : todayStr;
+      where.date = { gte: effectiveDateFrom };
+      if (dateTo) where.date.lte = dateTo;
+    } else if (dateFrom || dateTo) {
       where.date = {};
       if (dateFrom) where.date.gte = dateFrom;
       if (dateTo) where.date.lte = dateTo;

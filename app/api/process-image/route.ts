@@ -35,47 +35,99 @@ export async function POST(request: NextRequest) {
     // Compress image only as fallback variant (keep original first for better OCR on small text)
     const compressedFile = await compressImage(file, 1024 * 1024);
 
-    let rawText = '';
-    let lastOcrError: unknown = null;
-    const ocrCandidates: File[] = [file];
-    const isCompressedDifferent = compressedFile.size !== file.size || compressedFile.type !== file.type;
-    if (isCompressedDifferent) {
-      ocrCandidates.push(compressedFile);
-    }
+    // Converti l'immagine in base64 una sola volta (usata dal vision model)
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const base64Image = fileBuffer.toString('base64');
+    const imageMimeType = file.type || 'image/jpeg';
 
-    // Step 1: Extract text from image using OCR (original first, compressed fallback)
-    for (const [index, candidateFile] of ocrCandidates.entries()) {
-      const variantLabel = index === 0 ? 'original' : 'compressed';
-      console.log(`🔄 OCR attempt on ${variantLabel} image (size: ${candidateFile.size} bytes)`);
+    // Step 1a: Pipeline OCR classica (OCR.space + Tesseract fallback)
+    const runOcrPipeline = async (): Promise<string> => {
+      const ocrCandidates: File[] = [file];
+      const isCompressedDifferent = compressedFile.size !== file.size || compressedFile.type !== file.type;
+      if (isCompressedDifferent) ocrCandidates.push(compressedFile);
 
-      try {
-        const simpleText = await extractTextFromImageSimple(candidateFile);
-        if (simpleText && simpleText.trim().length >= 10) {
-          rawText = simpleText;
-          console.log(`✅ Simplified OCR successful on ${variantLabel} image`);
-          break;
+      for (const [index, candidateFile] of ocrCandidates.entries()) {
+        const variantLabel = index === 0 ? 'original' : 'compressed';
+        console.log(`🔄 OCR attempt on ${variantLabel} image (size: ${candidateFile.size} bytes)`);
+        try {
+          const simpleText = await extractTextFromImageSimple(candidateFile);
+          if (simpleText && simpleText.trim().length >= 10) {
+            console.log(`✅ Simplified OCR successful on ${variantLabel} image`);
+            return simpleText;
+          }
+          console.log(`⚠️ Simplified OCR returned little/no text on ${variantLabel} image, trying fallback OCR...`);
+          const fallbackText = await extractTextFromImage(candidateFile);
+          if (fallbackText && fallbackText.trim().length >= 10) {
+            console.log(`✅ Fallback OCR successful on ${variantLabel} image`);
+            return fallbackText;
+          }
+        } catch (candidateError) {
+          console.warn(`⚠️ OCR failed on ${variantLabel} image:`, candidateError);
         }
-
-        console.log(`⚠️ Simplified OCR returned little/no text on ${variantLabel} image, trying fallback OCR...`);
-        const fallbackText = await extractTextFromImage(candidateFile);
-        if (fallbackText && fallbackText.trim().length >= 10) {
-          rawText = fallbackText;
-          console.log(`✅ Fallback OCR successful on ${variantLabel} image`);
-          break;
-        }
-      } catch (candidateError) {
-        lastOcrError = candidateError;
-        console.warn(`⚠️ OCR failed on ${variantLabel} image:`, candidateError);
       }
+      return '';
+    };
+
+    // Step 1b: Vision model — analisi diretta dell'immagine tramite Groq
+    const analyzeWithVision = async (): Promise<string> => {
+      try {
+        console.log('🔭 Starting vision model analysis...');
+        const visionCompletion = await groq.chat.completions.create({
+          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
+                },
+                {
+                  type: 'text',
+                  text: `Sei un assistente esperto nell'analisi di volantini e poster di eventi.
+Analizza questa immagine e fornisci:
+1. TRASCRIZIONE: Trascrivi TUTTO il testo visibile riga per riga, nell'ordine in cui appare
+2. STRUTTURA VISIVA: Descrivi il layout (sezioni, elementi separatori, gerarchia visiva)
+3. DETTAGLI ESTRATTI: Elenca esplicitamente titolo evento, data/e, orario/i, luogo, prezzo, organizzatore
+Rispondi in italiano. Sii preciso e completo.`,
+                },
+              ] as any,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+        });
+        const visionText = visionCompletion.choices[0]?.message?.content || '';
+        console.log(`✅ Vision model analysis complete (${visionText.length} chars)`);
+        return visionText;
+      } catch (e) {
+        console.warn('⚠️ Vision model analysis failed:', e);
+        return '';
+      }
+    };
+
+    // Esegui OCR e vision model in parallelo
+    console.log('🔄 Running OCR and vision model in parallel...');
+    const [ocrText, visionText] = await Promise.all([runOcrPipeline(), analyzeWithVision()]);
+    console.log(`📊 OCR: ${ocrText.length} chars | Vision: ${visionText.length} chars`);
+
+    // Combina i risultati
+    let rawText = '';
+    if (ocrText.trim().length >= 10 && visionText.trim().length >= 10) {
+      rawText = `TESTO OCR:\n${ocrText}\n\nANALISI VISIVA AI:\n${visionText}`;
+      console.log('✅ Combined OCR + Vision results');
+    } else if (ocrText.trim().length >= 10) {
+      rawText = ocrText;
+      console.log('ℹ️ Using OCR text only (vision unavailable)');
+    } else if (visionText.trim().length >= 10) {
+      rawText = visionText;
+      console.log('ℹ️ Using vision text only (OCR unavailable)');
     }
-    
+
     console.log('📝 Testo estratto dall\'immagine:', rawText.substring(0, 200) + '...');
 
     // Verifica che ci sia testo estratto
     if (!rawText || rawText.trim().length < 10) {
-      if (lastOcrError) {
-        console.warn('Ultimo errore OCR registrato:', lastOcrError);
-      }
       throw new Error('Nessun testo leggibile trovato nell\'immagine. Prova con uno screenshot più ravvicinato e ben contrastato (testo più grande), oppure ritaglia solo la zona del volantino.');
     }
 
@@ -101,38 +153,42 @@ export async function POST(request: NextRequest) {
     const dateMatches = rawText.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/g) || [];
     const uniqueDates = [...new Set(dateMatches)];
     const timeMatches = rawText.match(/\d{1,2}:\d{2}/g) || [];
-    
-    // Cerca indicatori di eventi multipli
+
     const lowerText = rawText.toLowerCase();
     const hasLineup = lowerText.includes('lineup') || lowerText.includes('line up') || lowerText.includes('line-up');
     const hasProgramma = lowerText.includes('programma') || lowerText.includes('program');
-    const hasMultipleDays = lowerText.includes('giorno 1') || lowerText.includes('day 1') || 
-                           lowerText.includes('sabato') && lowerText.includes('domenica');
-    const hasVsOrWith = (rawText.match(/\s+vs\s+/gi) || []).length > 0 || 
-                       (rawText.match(/\s+with\s+/gi) || []).length > 0 ||
-                       (rawText.match(/\s+&\s+/g) || []).length > 2;
-    
-    // Rileva cicli/rassegne: date diverse + stesso orario ripetuto
-    const hasCyclePattern = uniqueDates.length >= 3 && timeMatches.length >= 3;
-    
-    // Rileva titoli in maiuscolo ripetuti (tipico di rassegne)
+    const hasMultipleDays = (lowerText.includes('giorno 1') || lowerText.includes('day 1')) ||
+      (lowerText.includes('sabato') && lowerText.includes('domenica'));
+
+    // Caso da NON trattare come multi-evento: un unico evento con più conferenze/sessioni nello stesso giorno
+    const hasConferenceAgenda =
+      lowerText.includes('conferenza') ||
+      lowerText.includes('conferenze') ||
+      lowerText.includes('sessione') ||
+      lowerText.includes('sessioni') ||
+      lowerText.includes('programma') ||
+      lowerText.includes('agenda');
+
+    // Rileva cicli/rassegne su giorni diversi
+    const hasSeriesKeywords =
+      lowerText.includes('ciclo') ||
+      lowerText.includes('rassegna') ||
+      lowerText.includes('stagione') ||
+      lowerText.includes('incontri') ||
+      lowerText.includes('appuntamenti');
+
     const upperCaseTitles = rawText.match(/^[A-Z\s]{3,}$/gm) || [];
     const hasMultipleTitles = upperCaseTitles.length >= 3;
-    
-    // Cerca parole chiave di cicli
-    const hasCiclo = lowerText.includes('ciclo') || lowerText.includes('rassegna') || 
-                     lowerText.includes('stagione') || lowerText.includes('incontri');
-    
-    // Determina se ci sono eventi multipli
-    const hasMultipleEvents = (dateMatches.length > 1 && timeMatches.length > 1) || 
-                             textSections.length > 5 ||
-                             hasLineup || 
-                             hasProgramma ||
-                             hasMultipleDays ||
-                             (hasVsOrWith && (dateMatches.length > 1 || timeMatches.length > 2)) ||
-                             hasCyclePattern ||
-                             (hasCiclo && uniqueDates.length >= 2) ||
-                             hasMultipleTitles;
+
+    // Multi-evento: più date reali, o segnali forti di rassegna/festival, evitando i falsi positivi da agenda conferenze
+    const hasMultipleEvents =
+      uniqueDates.length >= 2 ||
+      hasMultipleDays ||
+      (hasSeriesKeywords && uniqueDates.length >= 1) ||
+      (hasLineup && uniqueDates.length >= 2) ||
+      (hasProgramma && uniqueDates.length >= 2) ||
+      (hasMultipleTitles && (uniqueDates.length >= 2 || (timeMatches.length >= 4 && !hasConferenceAgenda))) ||
+      (textSections.length > 7 && uniqueDates.length >= 2);
     
     console.log('🔍 Analisi eventi multipli:', {
       dateMatches: dateMatches.length,
@@ -143,18 +199,17 @@ export async function POST(request: NextRequest) {
       hasLineup,
       hasProgramma,
       hasMultipleDays,
-      hasVsOrWith,
-      hasCyclePattern,
-      hasCiclo,
+      hasConferenceAgenda,
+      hasSeriesKeywords,
       hasMultipleTitles,
       conclusion: hasMultipleEvents ? 'EVENTI MULTIPLI' : 'EVENTO SINGOLO'
     });
 
     const currentDate = new Date().toISOString().split('T')[0];
-
-    const prompt = hasMultipleEvents ? 
-    // PROMPT PER EVENTI MULTIPLI
-    `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
+    const truncatedRawText = rawText.slice(0, 3000);
+    // PROMPT PER EVENTI MULTIPLI / SINGOLO EVENTO
+    const prompt = hasMultipleEvents
+    ? `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
 
 PASSO 1 - IDENTIFICAZIONE:
 Prima di tutto, CONTA quanti eventi distinti vedi. Cerca:
@@ -181,8 +236,9 @@ ISTRUZIONI CRITICHE:
 1. NON raggruppare eventi diversi insieme
 2. OGNI evento DEVE avere il suo titolo unico
 3. Se vedi "Artista A vs Artista B" o "Artista A & Artista B" nello stesso slot, è UN evento
-4. Se vedi artisti in slot orari diversi, sono eventi SEPARATI
-5. Se non sei sicuro, preferisci creare più eventi separati piuttosto che meno
+4. Se c'è UN SOLO TITOLO principale con più conferenze/sessioni nello stesso giorno, è UN SOLO evento (metti il programma nella description)
+5. Se ci sono date diverse nella stessa rassegna/ciclo, crea un evento per ogni data
+6. Se non sei sicuro tra 1 evento-agenda e più eventi distinti, usa il criterio: stesso titolo ombrello + stessa data => singolo evento
 
 REGOLE PER OGNI EVENTO:
 - TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
@@ -228,7 +284,7 @@ INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA
 ${heuristicHints}
 
 TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
-${rawText}
+${truncatedRawText}
 
 Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
 {
@@ -268,9 +324,7 @@ IMPORTANTE:
 - Se un campo (tranne rawText) non è trovato, usa la stringa "non trovato"
 - NON usare null o undefined
 - Estrai TUTTE le informazioni: se vedi prezzi diversi, date diverse, orari diversi, usali per gli eventi corrispondenti`
-    : 
-    // PROMPT PER SINGOLO EVENTO
-    `Sei un esperto analista di eventi. Analizza ATTENTAMENTE il seguente contenuto e estrai TUTTE le informazioni disponibili.
+    : `Sei un esperto analista di eventi. Analizza ATTENTAMENTE il seguente contenuto e estrai TUTTE le informazioni disponibili.
 
 REGOLE FONDAMENTALI:
 1. Leggi TUTTO il testo senza saltare nessuna parte
@@ -297,6 +351,11 @@ ANALISI SEMANTICA:
 - Cerca indizi visivi (loghi, stili grafici, parole chiave)
 - Inferisci informazioni mancanti dal contesto quando possibile
 - Il testo potrebbe contenere errori OCR: correggi automaticamente (es: "O"→"0", "I"→"1" in date/orari)
+- DISTINGUI sempre:
+  1) evento singolo
+  2) multi-evento su più giorni (rassegna/festival)
+  3) evento singolo con più conferenze/sessioni nella stessa data
+- Se trovi il caso (3), restituisci UN SOLO evento con programma dettagliato nella description
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
@@ -307,7 +366,7 @@ INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA
 ${heuristicHints}
 
 TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
-${rawText}
+${truncatedRawText}
 
 Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
 {
@@ -320,7 +379,7 @@ Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
   "category": "",
   "price": "",
   "sourceUrl": "",
-  "rawText": "${rawText.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
+  "rawText": "${truncatedRawText.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
 }
 
 IMPORTANTE: 
@@ -345,6 +404,7 @@ CAPACITÀ:
 
 REGOLE:
 - Sii ESTREMAMENTE preciso nell'estrazione
+- Distingui correttamente tra evento singolo, multi-evento su più giorni e singolo evento con più sessioni
 - Per eventi multipli, crea descrizioni UNICHE per ogni evento
 - NON inventare informazioni non presenti nel testo
 - Usa il contesto per inferire solo quando c'è alta probabilità
@@ -360,7 +420,7 @@ REGOLE:
       model: 'llama-3.1-8b-instant',
       response_format: { type: 'json_object' },
       temperature: 0.1,
-      max_tokens: 5000,
+      max_tokens: 1500,
     });
 
     const groqDuration = Date.now() - groqStartTime;

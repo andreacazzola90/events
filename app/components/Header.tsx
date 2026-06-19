@@ -39,12 +39,9 @@ export default function Header() {
             <span className="text-xl font-black tracking-tight text-black uppercase">
               EventScanner
             </span>
-            <span className="hidden sm:inline text-[11px] font-semibold tracking-[0.18em] uppercase text-black/50">
-              Bologna
-            </span>
           </TransitionLink>
 
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-6" aria-label="Navigazione principale">
             {navLinks.map((link) => {
               const isActive =
                 pathname === link.href ||
@@ -53,6 +50,7 @@ export default function Header() {
                 <TransitionLink
                   key={link.href}
                   href={link.href}
+                  aria-current={isActive ? "page" : undefined}
                   className={`text-[13px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${
                     isActive
                       ? "bg-black text-white px-2 py-1"
@@ -113,7 +111,9 @@ export default function Header() {
           <button
             className="md:hidden inline-flex items-center justify-center w-10 h-10 border border-black/20 text-black"
             onClick={() => setMobileOpen((v) => !v)}
-            aria-label="Menu"
+            aria-label={mobileOpen ? "Chiudi menu" : "Apri menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-menu"
           >
             {mobileOpen ? "×" : "≡"}
           </button>
@@ -121,7 +121,7 @@ export default function Header() {
       </header>
 
       {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-100 bg-white pt-16">
+        <div id="mobile-menu" className="md:hidden fixed inset-0 z-100 bg-white pt-16" role="dialog" aria-modal="true" aria-label="Menu di navigazione">
           <div className="editorial-container py-6 border-b border-black/10 flex justify-between items-center">
             <span className="text-sm font-black uppercase tracking-[0.15em]">
               Menu
@@ -129,12 +129,13 @@ export default function Header() {
             <button
               className="w-10 h-10 border border-black/20 text-black"
               onClick={() => setMobileOpen(false)}
+              aria-label="Chiudi menu"
             >
               ×
             </button>
           </div>
 
-          <nav className="editorial-container py-8 flex flex-col gap-6">
+          <nav className="editorial-container py-8 flex flex-col gap-6" aria-label="Navigazione mobile">
             {navLinks.map((link) => {
               const isActive =
                 pathname === link.href ||
@@ -143,6 +144,7 @@ export default function Header() {
                 <TransitionLink
                   key={link.href}
                   href={link.href}
+                  aria-current={isActive ? "page" : undefined}
                   className={`text-2xl font-black uppercase tracking-tight no-underline hover:no-underline ${
                     isActive
                       ? "bg-black text-white px-3 py-2 w-fit"

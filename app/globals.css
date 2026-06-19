@@ -101,6 +101,42 @@ button {
   font-family: inherit;
 }
 
+/* Global unified button style */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-accent {
+  background: #111111 !important;
+  color: #ffffff !important;
+  border-color: #111111 !important;
+}
+
+.btn-outline,
+.btn-ghost {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-color: #111111 !important;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -134,6 +170,193 @@ button {
   border: 1px solid var(--border);
 }
 
+/* Auth/account pages follow the same monochrome visual language as the rest of the site */
+.auth-page,
+.account-page {
+  background: #ffffff;
+  color: #111111;
+}
+
+.auth-page .hero-section,
+.account-page .hero-section {
+  background: #ffffff;
+}
+
+.auth-page .glass-effect,
+.account-page .glass-effect {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  backdrop-filter: none;
+}
+
+.auth-page .gradient-text,
+.account-page .gradient-text {
+  color: #111111;
+}
+
+/* Force colorful utility backgrounds used in auth/account cards to monochrome */
+.auth-page .bg-linear-to-br,
+.auth-page .bg-linear-to-r,
+.account-page .bg-linear-to-br,
+.account-page .bg-linear-to-r {
+  background: #f7f7f7 !important;
+  color: #111111 !important;
+}
+
+.auth-page .text-white,
+.account-page .text-white {
+  color: #111111 !important;
+}
+
+.auth-page .text-gray-400,
+.account-page .text-gray-400 {
+  color: #6b7280 !important;
+}
+
+.auth-page .text-gray-300,
+.account-page .text-gray-300,
+.account-page .text-gray-200 {
+  color: #4b5563 !important;
+}
+
+.auth-page [class*="text-pink"],
+.auth-page [class*="text-purple"],
+.auth-page [class*="text-amber"],
+.auth-page [class*="text-emerald"],
+.account-page [class*="text-pink"],
+.account-page [class*="text-purple"],
+.account-page [class*="text-amber"],
+.account-page [class*="text-emerald"] {
+  color: #111111 !important;
+}
+
+.auth-page [class*="hover:text-pink"]:hover,
+.auth-page [class*="hover:text-purple"]:hover,
+.auth-page [class*="hover:text-amber"]:hover,
+.auth-page [class*="hover:text-emerald"]:hover,
+.account-page [class*="hover:text-pink"]:hover,
+.account-page [class*="hover:text-purple"]:hover,
+.account-page [class*="hover:text-amber"]:hover,
+.account-page [class*="hover:text-emerald"]:hover {
+  color: #111111 !important;
+}
+
+.account-page [class*="hover:border-pink"]:hover,
+.account-page [class*="border-emerald"] {
+  border-color: #111111 !important;
+}
+
+.auth-page .border-white\/10,
+.auth-page .border-white\/20,
+.account-page .border-white\/10,
+.account-page .border-white\/20 {
+  border-color: #e5e5e5 !important;
+}
+
+.auth-page input,
+.account-page input,
+.account-page textarea {
+  color: #111111;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+}
+
+.auth-page input::placeholder,
+.account-page input::placeholder,
+.account-page textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Squared monochrome buttons */
+.auth-page .btn,
+.account-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border-radius: 0;
+  border: 1px solid #111111;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: all 0.2s ease;
+}
+
+.auth-page .btn-primary,
+.account-page .btn-primary,
+.auth-page .btn-accent,
+.account-page .btn-accent,
+.auth-page .btn-secondary,
+.account-page .btn-secondary {
+  background: #111111;
+  color: #ffffff !important;
+  border-color: #111111;
+}
+
+.auth-page .btn-outline,
+.account-page .btn-outline,
+.auth-page .btn-ghost,
+.account-page .btn-ghost {
+  background: #ffffff;
+  color: #111111 !important;
+  border-color: #111111;
+}
+
+.auth-page .btn:hover,
+.account-page .btn:hover {
+  opacity: 0.9;
+}
+
+/* Cron page aligned to site light monochrome theme */
+.cron-page {
+  background: #ffffff;
+  color: #111111;
+}
+
+.cron-page .glass-effect {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  backdrop-filter: none;
+}
+
+.cron-page input,
+.cron-page textarea {
+  color: #111111;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+}
+
+.cron-page input::placeholder,
+.cron-page textarea::placeholder {
+  color: #9ca3af;
+}
+
+.cron-page .text-white,
+.cron-page .text-gray-200 {
+  color: #111111 !important;
+}
+
+.cron-page .text-gray-300 {
+  color: #4b5563 !important;
+}
+
+.cron-page .text-gray-400 {
+  color: #6b7280 !important;
+}
+
+.cron-page .border-white\/10,
+.cron-page .border-white\/15,
+.cron-page .border-white\/20 {
+  border-color: #e5e5e5 !important;
+}
+
+.cron-page [class*="text-cyan"] {
+  color: #111111 !important;
+}
+
 .editorial-container {
   max-width: 1180px;
   margin: 0 auto;
@@ -146,6 +369,13 @@ button {
   text-transform: uppercase;
   color: #646464;
   font-weight: 700;
+}
+
+/* Global no-radius theme */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
 }
 
 .section-title {
@@ -241,6 +471,56 @@ button {
   right: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(255, 0, 107, 0.5), transparent);
+}
+
+/* Event detail page: force white background and monochrome typography */
+.event-detail-page {
+  background: #ffffff;
+}
+
+.event-detail-page .event-content-card {
+  background: #ffffff;
+  backdrop-filter: none;
+  border: 1px solid #e5e5e5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.event-detail-page .event-content-card::before {
+  display: none;
+}
+
+.event-detail-page .event-image-container {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.event-detail-page .bg-gradient-text {
+  background: none;
+  color: #111111;
+  -webkit-text-fill-color: #111111;
+}
+
+.event-detail-page .text-white,
+.event-detail-page [class*="text-primary"],
+.event-detail-page [class*="text-accent"] {
+  color: #111111 !important;
+}
+
+.event-detail-page .text-gray-400 {
+  color: #6b7280 !important;
+}
+
+.event-detail-page .text-gray-300 {
+  color: #4b5563 !important;
+}
+
+.event-detail-page .border-white\/10,
+.event-detail-page .border-white\/20 {
+  border-color: #e5e5e5 !important;
+}
+
+.event-detail-page .bg-linear-to-r {
+  background: #111111 !important;
+  color: #ffffff !important;
 }
 
 /* Responsive adjustments */

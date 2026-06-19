@@ -37,10 +37,45 @@ model User {
   password      String
   name          String?
   role          String     @default("user")
+  type          String     @default("user")
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   createdEvents Event[]
   favorites     Favorite[]
+}
+
+model CronSource {
+  id                Int      @id @default(autoincrement())
+  name              String
+  listUrl           String
+  scheduleCron      String   @default("0 4 * * *")
+  timezone          String   @default("Europe/Rome")
+  eventLinkSelector String   @default("a[href]")
+  listingContainerSelector String?
+  nextPageSelector  String?
+  includePattern    String?
+  excludePattern    String?
+  waitMs            Int      @default(3000)
+  requestTimeoutMs  Int      @default(60000)
+  maxPages          Int      @default(10)
+  maxLinksPerRun    Int      @default(200)
+  renderJs          Boolean  @default(true)
+  isActive          Boolean  @default(true)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  email     String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model Favorite {
@@ -52,4 +87,13 @@ model Favorite {
   user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, eventId])
+}
+
+model CronJobRun {
+  id            Int       @id @default(autoincrement())
+  jobKey        String    @unique // e.g. "visitpedemontana", "instagram-story"
+  status        String    @default("running") // "running" | "completed" | "failed"
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  resultJson    String?   // JSON-serialized result/summary
 }

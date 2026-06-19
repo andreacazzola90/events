@@ -8,7 +8,7 @@ export default function Home() {
     <main className="min-h-screen bg-white text-black">
       <section className="hero-section border-b border-black/10">
         <div className="editorial-container py-10 md:py-14">
-          <p className="section-kicker mb-3">A Bologna</p>
+          <p className="section-kicker mb-3">Alto vicentino</p>
           <h1 className="section-title max-w-5xl">
             Dove andrai stasera: eventi, concerti, mostre e cose da fare in
             città.

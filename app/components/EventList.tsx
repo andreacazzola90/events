@@ -344,6 +344,15 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
 
     let filtered = events;
 
+    // In full mode show only events from today onward.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    filtered = filtered.filter((event) => {
+      const parsedDate = parseEventDate(event.date);
+      if (!parsedDate) return false;
+      return parsedDate.getTime() >= today.getTime();
+    });
+
     if (search) {
       filtered = filtered.filter(
         (event) =>
@@ -361,8 +370,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     }
 
     if (onlyToday) {
-      const today = new Date().toISOString().slice(0, 10);
-      filtered = filtered.filter((event) => event.date === today);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      filtered = filtered.filter((event) => event.date === todayIso);
     } else {
       if (dateFrom) {
         filtered = filtered.filter((event) => event.date >= dateFrom);
@@ -385,6 +394,15 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
         (event.organizer || "").toLowerCase().includes(needle),
       );
     }
+
+    filtered = [...filtered].sort((a, b) => {
+      const firstDate = parseEventDate(a.date)?.getTime() ?? 0;
+      const secondDate = parseEventDate(b.date)?.getTime() ?? 0;
+      if (firstDate === secondDate) {
+        return a.id - b.id;
+      }
+      return firstDate - secondDate;
+    });
 
     setFilteredEvents(filtered);
   };
@@ -411,7 +429,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     <div className="space-y-8">
       {mode === "quick" ? (
         <div className="bg-white border border-black/10 p-4 sm:p-5">
-          <div className="flex gap-3 overflow-x-auto pb-1">
+          <div className="flex gap-3 overflow-x-auto pb-1" role="group" aria-label="Filtra per periodo">
             {[
               { value: "today" as const, label: "oggi" },
               { value: "tomorrow" as const, label: "domani" },
@@ -421,6 +439,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
               <button
                 key={option.value}
                 onClick={() => setQuickDateFilter(option.value)}
+                aria-pressed={quickDateFilter === option.value}
                 className={`whitespace-nowrap px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${
                   quickDateFilter === option.value
                     ? "bg-black text-white border-black"
@@ -436,12 +455,15 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
         <div className="bg-white border border-black/10 overflow-hidden">
           <button
             onClick={() => setFiltersOpen(!filtersOpen)}
+            aria-expanded={filtersOpen}
+            aria-controls="event-filters-panel"
             className="w-full lg:hidden flex items-center justify-between p-4 text-black font-bold border-b border-black/10"
           >
             <div className="flex items-center gap-3 uppercase tracking-[0.12em] text-xs">
               <span>Filtra eventi</span>
             </div>
             <span
+              aria-hidden="true"
               className={`transition-transform duration-300 text-sm ${filtersOpen ? "rotate-180" : ""}`}
             >
               ▼
@@ -449,6 +471,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
           </button>
 
           <div
+            id="event-filters-panel"
             className={`${filtersOpen ? "block" : "hidden"} lg:block p-4 lg:p-5`}
           >
             <form
@@ -463,11 +486,13 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   placeholder="Search events..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Cerca eventi"
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
                 />
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
+                  aria-label="Filtra per categoria"
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black appearance-none"
                 >
                   <option value="" className="bg-white text-black">
@@ -487,6 +512,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
+                  aria-label="Data di inizio"
+                  min={new Date().toISOString().slice(0, 10)}
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                   disabled={onlyToday}
                 />
@@ -494,6 +521,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
+                  aria-label="Data di fine"
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                   disabled={onlyToday}
                 />
@@ -502,6 +530,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   placeholder="Filtra per luogo..."
                   value={locationFilter}
                   onChange={(e) => setLocationFilter(e.target.value)}
+                  aria-label="Filtra per luogo"
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
                 />
                 <input
@@ -509,6 +538,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   placeholder="Filtra per organizzatore..."
                   value={organizerFilter}
                   onChange={(e) => setOrganizerFilter(e.target.value)}
+                  aria-label="Filtra per organizzatore"
                   className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
                 />
               </div>

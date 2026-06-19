@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import type { Metadata } from 'next';
 import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons';
 import { extractIdFromSlug, generateUniqueSlug } from '../../../lib/slug-utils';
 import { TransitionLink } from '../../components/TransitionLink';
@@ -9,6 +10,59 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
+
+const BASE_URL = "https://events-scanner.vercel.app";
+
+export async function generateMetadata(
+    { params }: { params: Promise<{ slug: string }> }
+): Promise<Metadata> {
+    const { slug } = await params;
+    const event = await getEvent(slug);
+
+    if (!event) {
+        return {
+            title: "Evento non trovato",
+            description: "L'evento che stai cercando non esiste o è stato rimosso.",
+        };
+    }
+
+    const title = `${event.title} | EventScanner`;
+    const description = event.description
+        ? event.description.slice(0, 155)
+        : `${event.title} — ${event.date}${event.location ? ` a ${event.location}` : ""}. Scopri tutti i dettagli su EventScanner.`;
+    const eventUrl = `${BASE_URL}/events/${slug}`;
+
+    return {
+        title,
+        description,
+        keywords: [
+            event.title,
+            event.location,
+            "eventi schio",
+            "eventi alto vicentino",
+            "eventi vicenza",
+            event.category ?? "evento",
+        ].filter(Boolean) as string[],
+        openGraph: {
+            type: "article",
+            locale: "it_IT",
+            url: eventUrl,
+            siteName: "EventScanner",
+            title,
+            description,
+            ...(event.imageUrl ? { images: [{ url: event.imageUrl, alt: event.title }] } : {}),
+        },
+        twitter: {
+            card: "summary_large_image",
+            title,
+            description,
+            ...(event.imageUrl ? { images: [event.imageUrl] } : {}),
+        },
+        alternates: {
+            canonical: eventUrl,
+        },
+    };
+}
 
 export async function generateStaticParams() {
     try {

@@ -1,4 +1,26 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Installa estensione Chrome o PWA",
+  description:
+    "Installa EventScanner come estensione Chrome o come app PWA sul tuo telefono. Aggiungi facilmente eventi da Schio e dall'Alto Vicentino in pochi clic.",
+  keywords: [
+    "eventscanner estensione chrome",
+    "eventscanner pwa",
+    "aggiungere eventi schio",
+    "eventi alto vicentino app",
+  ],
+  alternates: {
+    canonical: "https://events-scanner.vercel.app/estensione",
+  },
+  openGraph: {
+    title: "Installa EventScanner | Estensione Chrome o PWA",
+    description:
+      "Aggiungi eventi da Schio e dall'Alto Vicentino in pochi clic con l'estensione Chrome o l'app PWA di EventScanner.",
+    url: "https://events-scanner.vercel.app/estensione",
+  },
+};
 
 export default function EstensionePage() {
   return (

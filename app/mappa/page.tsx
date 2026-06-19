@@ -27,7 +27,8 @@ export default function MappaPage() {
     }, []);
 
     return (
-        <main className="h-[calc(100vh-4rem)] w-full bg-black">
+        <main className="h-[calc(100vh-4rem)] w-full bg-black" aria-label="Mappa degli eventi">
+            <h1 className="sr-only">Mappa eventi Schio e Alto Vicentino</h1>
             <div className="h-full w-full">
                 <div className="h-full w-full">
                     <EventMap />

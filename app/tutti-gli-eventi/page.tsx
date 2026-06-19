@@ -126,6 +126,7 @@ export default function TuttiGliEventiPage() {
                       new Date(prev.getFullYear(), prev.getMonth() - 1, 1),
                   )
                 }
+                aria-label="Mese precedente"
                 className="px-3 py-2 border border-black/20 text-sm hover:bg-black hover:text-white transition-colors"
               >
                 Mese precedente
@@ -141,21 +142,22 @@ export default function TuttiGliEventiPage() {
                       new Date(prev.getFullYear(), prev.getMonth() + 1, 1),
                   )
                 }
+                aria-label="Mese successivo"
                 className="px-3 py-2 border border-black/20 text-sm hover:bg-black hover:text-white transition-colors"
               >
                 Mese successivo
               </button>
             </div>
 
-            <div className="grid grid-cols-7 text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2">
+            <div className="grid grid-cols-7 text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2" role="row">
               {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => (
-                <div key={d} className="p-2">
+                <div key={d} className="p-2" role="columnheader" aria-label={d}>
                   {d}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1" role="grid" aria-label={`Calendario eventi ${monthLabel}`}>
               {calendarDays.map((cell) => {
                 if (!cell.date) {
                   return (

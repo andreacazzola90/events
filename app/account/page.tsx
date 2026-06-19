@@ -344,9 +344,12 @@ export default function AccountPage() {
     <main className="min-h-screen account-page">
       <div className="max-w-6xl mx-auto px-6 pt-8">
         <div className="glass-effect p-6">
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3" role="tablist" aria-label="Sezioni account">
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === "profile"}
+              aria-controls="tab-panel-profile"
               onClick={() => setActiveTab("profile")}
               className={`btn ${activeTab === "profile" ? "btn-primary" : "btn-outline"}`}
             >
@@ -354,6 +357,9 @@ export default function AccountPage() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === "events"}
+              aria-controls="tab-panel-events"
               onClick={() => setActiveTab("events")}
               className={`btn ${activeTab === "events" ? "btn-primary" : "btn-outline"}`}
             >
@@ -361,6 +367,9 @@ export default function AccountPage() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === "favorites"}
+              aria-controls="tab-panel-favorites"
               onClick={() => setActiveTab("favorites")}
               className={`btn ${activeTab === "favorites" ? "btn-primary" : "btn-outline"}`}
             >
@@ -368,6 +377,9 @@ export default function AccountPage() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === "stats"}
+              aria-controls="tab-panel-stats"
               onClick={() => setActiveTab("stats")}
               className={`btn ${activeTab === "stats" ? "btn-primary" : "btn-outline"}`}
             >
@@ -376,6 +388,9 @@ export default function AccountPage() {
             {isAdmin && (
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === "admin"}
+                aria-controls="tab-panel-admin"
                 onClick={() => setActiveTab("admin")}
                 className={`btn ${activeTab === "admin" ? "btn-primary" : "btn-outline"}`}
               >
@@ -384,6 +399,9 @@ export default function AccountPage() {
             )}
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === "password"}
+              aria-controls="tab-panel-password"
               onClick={() => setActiveTab("password")}
               className={`btn ${activeTab === "password" ? "btn-primary" : "btn-outline"}`}
             >
@@ -395,7 +413,7 @@ export default function AccountPage() {
 
       {/* Hero Section */}
       {activeTab === "profile" && (
-      <section className="hero-section">
+      <section className="hero-section" id="tab-panel-profile" role="tabpanel" aria-labelledby="tab-panel-profile">
         <div className="max-w-6xl mx-auto px-6 py-16">
           <div className="glass-effect rounded-3xl p-8 md:p-12 animate-fadeInUp">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
@@ -474,7 +492,7 @@ export default function AccountPage() {
 
       <div className="max-w-6xl mx-auto px-6 pb-16 space-y-8">
         {activeTab === "password" && (
-        <div className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-password" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">🔐</span>
             Recupera Password
@@ -550,7 +568,7 @@ export default function AccountPage() {
 
         {/* Your Events Section */}
         {activeTab === "events" && (
-        <div className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-events" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">🎵</span>
             {isAdmin ? 'All Events (Admin)' : 'Your Events'}
@@ -660,7 +678,7 @@ export default function AccountPage() {
 
         {/* Favorite Events Section */}
         {activeTab === "favorites" && (
-        <div className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-favorites" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">❤️</span>
             Favorite Events
@@ -742,7 +760,7 @@ export default function AccountPage() {
 
         {/* Statistics Section */}
         {activeTab === "stats" && (
-        <div className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-stats" role="tabpanel" className="glass-effect rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">📊</span>
             Your Stats
@@ -798,7 +816,7 @@ export default function AccountPage() {
 
         {/* Admin Cron Controls */}
         {isAdmin && activeTab === "admin" && (
-          <div className="glass-effect rounded-2xl p-8">
+          <div id="tab-panel-admin" role="tabpanel" className="glass-effect rounded-2xl p-8">
             <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
               <span className="text-2xl">🛠️</span>
               <span>Admin Tools</span>

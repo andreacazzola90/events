@@ -2,7 +2,6 @@
 
 import { ReactNode, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { usePageTransition } from '../lib/PageTransitionContext';
 
 interface PageTransitionProps {
     children: ReactNode;
@@ -10,44 +9,25 @@ interface PageTransitionProps {
 }
 
 export function PageTransition({ children, className = '' }: PageTransitionProps) {
-    const { isTransitioning } = usePageTransition();
     const pathname = usePathname();
-    const [isVisible, setIsVisible] = useState(true);
-    const [shouldRender, setShouldRender] = useState(true);
+    const [visible, setVisible] = useState(false);
 
+    // Fade in on mount and on pathname change
     useEffect(() => {
-        if (isTransitioning) {
-            // Fade out quando inizia la transizione
-            setIsVisible(false);
-            setTimeout(() => {
-                setShouldRender(false);
-            }, 300); // Durata fade out
-        } else {
-            // Fade in quando finisce la transizione
-            setShouldRender(true);
-            setTimeout(() => {
-                setIsVisible(true);
-            }, 50); // Piccolo delay per assicurare il rendering
-        }
-    }, [isTransitioning]);
+        setVisible(false);
+        const t = requestAnimationFrame(() => setVisible(true));
+        return () => cancelAnimationFrame(t);
+    }, [pathname]);
 
-    // Scrolla in cima ad ogni cambio route
+    // Scroll to top on route change
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-        }
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }, [pathname]);
 
     return (
         <div
-            className={`
-        transition-all duration-300 ease-in-out
-        ${isVisible ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-4'}
-        ${className}
-      `}
-            style={{
-                display: shouldRender ? 'block' : 'none'
-            }}
+            className={`transition-opacity duration-300 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'} ${className}`}
+            style={{ willChange: 'opacity' }}
         >
             {children}
         </div>

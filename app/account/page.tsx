@@ -865,7 +865,10 @@ export default function AccountPage() {
             <div className="space-y-6">
               <div className="flex flex-wrap gap-4">
                 <a href="/cron" className="btn btn-ghost inline-flex items-center gap-2">
-                  Open Cron Dashboard
+                  Gestione Cron
+                </a>
+                <a href="/admin" className="btn btn-ghost inline-flex items-center gap-2">
+                  📋 Log &amp; Cronologia
                 </a>
                 <button
                   onClick={() => runCron("instagram-story")}

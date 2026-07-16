@@ -34,6 +34,7 @@ export function TransitionLink({
             href={href}
             className={className}
             onClick={handleClick}
+            replace={replace}
             style={style}
             title={title}
         >

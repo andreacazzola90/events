@@ -1,5 +1,3 @@
-"use client";
-
 import EventList from "./components/EventList";
 import Link from "next/link";
 

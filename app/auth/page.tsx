@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
-const authInputClassName = 'w-full rounded-none border border-gray-300 px-4 py-3 text-gray-900 placeholder:text-gray-500 caret-gray-900 focus:outline-none focus:border-black transition-colors';
+const authInputClassName = 'w-full border border-black/20 px-4 py-3 text-black placeholder:text-black/40 caret-black focus:outline-none focus:border-black transition-colors bg-white text-sm';
 
 function AuthPageContent() {
     const router = useRouter();
@@ -24,100 +24,86 @@ function AuthPageContent() {
     }, [session, router]);
 
     if (status === 'loading') {
-        return <div className="min-h-screen flex items-center justify-center text-2xl">Caricamento...</div>;
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-black/20 border-t-black animate-spin" />
+            </div>
+        );
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center auth-page">
-            <div className="hero-section w-full">
-                <div className="max-w-4xl mx-auto px-6 py-16">
-                    <div className="text-center mb-12">
-                        <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
-                            {view === 'login' ? (
-                                <>Join the <span className="gradient-text">community</span></>
-                            ) : view === 'forgot' ? (
-                                <>Reset your <span className="gradient-text">password</span></>
-                            ) : (
-                                <>Create your <span className="gradient-text">account</span></>
-                            )}
-                        </h1>
-                        <p className="text-xl md:text-2xl text-gray-400 mb-8 max-w-2xl mx-auto">
-                            {view === 'login'
-                                ? "Sign in to create incredible events and connect with your audience"
-                                : view === 'forgot'
-                                    ? "Request a secure link to set a new password for your account"
-                                : "Join thousands of creators making an impact in their communities"}
-                        </p>
-                    </div>
+        <main className="min-h-screen flex items-center justify-center auth-page bg-white">
+            <div className="w-full max-w-md mx-auto px-6 py-16">
 
-                    <div className="max-w-md mx-auto">
-                        <div className="glass-effect rounded-3xl p-8 md:p-12">
-                            {view === 'login' ? (
-                                <div className="space-y-6">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <span className="text-2xl">🔑</span>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
-                                        <p className="text-gray-400 mb-6">Sign in to your account</p>
-                                    </div>
-                                    <LoginForm />
-                                    <div className="pt-6 border-t border-white/10 text-center">
-                                        <p className="text-gray-400">
-                                            Don't have an account?{' '}
-                                            <button
-                                                onClick={() => router.replace('/auth?mode=register')}
-                                                className="text-pink-400 hover:text-pink-300 font-semibold transition-colors"
-                                            >
-                                                Mostra registrazione
-                                            </button>
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : view === 'forgot' ? (
-                                <div className="space-y-6">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 bg-linear-to-br from-amber-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <span className="text-2xl">📨</span>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-white mb-2">Recupera password</h2>
-                                        <p className="text-gray-400 mb-6">Ti inviamo un link sicuro per reimpostarla</p>
-                                    </div>
-                                    <ForgotPasswordForm />
-                                    <div className="pt-6 border-t border-white/10 text-center">
-                                        <button
-                                            onClick={() => router.replace('/auth')}
-                                            className="text-pink-400 hover:text-pink-300 font-semibold transition-colors"
-                                        >
-                                            Torna al login
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-6">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <span className="text-2xl">✨</span>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-white mb-2">Get Started</h2>
-                                        <p className="text-gray-400 mb-6">Create your new account</p>
-                                    </div>
-                                    <RegisterForm />
-                                    <div className="pt-6 border-t border-white/10 text-center">
-                                        <p className="text-gray-400">
-                                            Already have an account?{' '}
-                                            <button
-                                                onClick={() => router.replace('/auth')}
-                                                className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
-                                            >
-                                                Torna al login
-                                            </button>
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                <div className="mb-10">
+                    <p className="section-kicker mb-3">EventScanner</p>
+                    <h1 className="text-4xl font-black tracking-tight leading-tight mb-2">
+                        {view === 'login' ? 'Accedi al tuo account' : view === 'forgot' ? 'Recupera password' : 'Crea un account'}
+                    </h1>
+                    <p className="text-black/55 text-sm">
+                        {view === 'login'
+                            ? 'Inserisci le tue credenziali per continuare.'
+                            : view === 'forgot'
+                                ? 'Ti invieremo un link per reimpostare la password.'
+                                : 'Registrati per salvare i tuoi eventi preferiti.'}
+                    </p>
+                </div>
+
+                <div className="mono-divider mb-8" />
+
+                <div>
+                    {view === 'login' && (
+                        <>
+                            <LoginForm />
+                            <div className="mt-6 pt-6 border-t border-black/10 flex flex-col gap-2 text-sm text-black/60">
+                                <span>
+                                    Non hai un account?{' '}
+                                    <button
+                                        onClick={() => router.replace('/auth?mode=register')}
+                                        className="text-black font-bold hover:underline"
+                                    >
+                                        Registrati
+                                    </button>
+                                </span>
+                                <span>
+                                    Password dimenticata?{' '}
+                                    <button
+                                        onClick={() => router.replace('/auth?mode=forgot')}
+                                        className="text-black font-bold hover:underline"
+                                    >
+                                        Recupera password
+                                    </button>
+                                </span>
+                            </div>
+                        </>
+                    )}
+                    {view === 'forgot' && (
+                        <>
+                            <ForgotPasswordForm />
+                            <div className="mt-6 pt-6 border-t border-black/10 text-sm text-black/60">
+                                <button
+                                    onClick={() => router.replace('/auth')}
+                                    className="text-black font-bold hover:underline"
+                                >
+                                    ← Torna al login
+                                </button>
+                            </div>
+                        </>
+                    )}
+                    {view === 'register' && (
+                        <>
+                            <RegisterForm onSuccess={() => router.replace('/auth')} />
+                            <div className="mt-6 pt-6 border-t border-black/10 text-sm text-black/60">
+                                Hai già un account?{' '}
+                                <button
+                                    onClick={() => router.replace('/auth')}
+                                    className="text-black font-bold hover:underline"
+                                >
+                                    Accedi
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         </main>
@@ -126,7 +112,11 @@ function AuthPageContent() {
 
 export default function AuthPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-2xl">Caricamento...</div>}>
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-black/20 border-t-black animate-spin" />
+            </div>
+        }>
             <AuthPageContent />
         </Suspense>
     );
@@ -144,7 +134,6 @@ function LoginForm() {
         setError('');
         setLoading(true);
         try {
-            // Usa signIn da next-auth invece di fetch custom
             const { signIn } = await import('next-auth/react');
             const result = await signIn('credentials', {
                 redirect: false,
@@ -153,74 +142,63 @@ function LoginForm() {
             });
 
             if (result?.error) {
-                setError('Email o password non corretti');
+                setError('Email o password non corretti.');
             } else if (result?.ok) {
-                // Login riuscito, reindirizza e ricarica la sessione
                 router.push('/me');
                 router.refresh();
             }
         } catch {
-            setError('Errore durante il login');
+            setError('Errore durante il login. Riprova.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
-                <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
-                    <div className="flex items-center gap-3">
-                        <span className="text-red-400 text-xl">⚠️</span>
-                        <p className="text-red-300">{error}</p>
-                    </div>
+                <div className="border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
                 </div>
             )}
             <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Email</label>
+                <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Email</label>
                 <input
                     type="email"
-                    placeholder="your@email.com"
-                    className={`${authInputClassName} focus:ring-pink-500`}
+                    placeholder="nome@esempio.com"
+                    className={authInputClassName}
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     disabled={loading}
                 />
             </div>
             <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Password</label>
+                <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Password</label>
                 <input
                     type="password"
                     placeholder="••••••••"
-                    className={`${authInputClassName} focus:ring-pink-500`}
+                    className={authInputClassName}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
+                    autoComplete="current-password"
                     disabled={loading}
                 />
             </div>
-            <div className="flex justify-end -mt-2">
-                <button
-                    type="button"
-                    onClick={() => router.replace('/auth?mode=forgot')}
-                    className="text-sm text-pink-400 hover:text-pink-300 font-semibold transition-colors"
-                >
-                    Recupera password
-                </button>
-            </div>
             <button
                 type="submit"
-                className="btn btn-primary w-full font-bold disabled:opacity-50"
+                className="btn btn-primary w-full disabled:opacity-50"
                 disabled={loading}
             >
                 {loading ? (
                     <div className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Signing in...
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white animate-spin" />
+                        Accesso in corso...
                     </div>
                 ) : (
-                    '🔑 Sign In'
+                    'Accedi'
                 )}
             </button>
         </form>
@@ -250,39 +228,33 @@ function ForgotPasswordForm() {
             const payload = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                setError(payload?.error || 'Errore durante la richiesta di recupero password');
+                setError(payload?.error || 'Errore durante la richiesta di recupero password.');
                 return;
             }
 
             setSuccess(payload?.message || 'Se l\'account esiste, riceverai un link di reset.');
             setPreviewUrl(payload?.previewUrl || '');
         } catch {
-            setError('Errore di rete');
+            setError('Errore di rete. Riprova.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
-                <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
-                    <div className="flex items-center gap-3">
-                        <span className="text-red-400 text-xl">⚠️</span>
-                        <p className="text-red-300">{error}</p>
-                    </div>
+                <div className="border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
                 </div>
             )}
             {success && (
-                <div className="glass-effect border-emerald-500/50 bg-emerald-500/10 p-4 rounded-lg space-y-3">
-                    <div className="flex items-center gap-3">
-                        <span className="text-emerald-400 text-xl">✅</span>
-                        <p className="text-emerald-300">{success}</p>
-                    </div>
+                <div className="border border-black/20 bg-black/5 px-4 py-3 text-sm text-black space-y-2">
+                    <p>{success}</p>
                     {previewUrl && (
                         <a
                             href={previewUrl}
-                            className="text-amber-300 hover:text-amber-200 underline break-all text-sm inline-block"
+                            className="underline break-all text-xs"
                         >
                             Apri link di reset (preview locale)
                         </a>
@@ -290,14 +262,15 @@ function ForgotPasswordForm() {
                 </div>
             )}
             <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Email</label>
+                <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Email</label>
                 <input
                     type="email"
-                    placeholder="your@email.com"
-                    className={`${authInputClassName} focus:ring-amber-500`}
+                    placeholder="nome@esempio.com"
+                    className={authInputClassName}
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     disabled={loading}
                 />
             </div>
@@ -306,13 +279,13 @@ function ForgotPasswordForm() {
                 className="btn btn-primary w-full disabled:opacity-50"
                 disabled={loading}
             >
-                {loading ? 'Invio link...' : 'Invia link di recupero'}
+                {loading ? 'Invio in corso...' : 'Invia link di recupero'}
             </button>
         </form>
     );
 }
 
-function RegisterForm() {
+function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
@@ -326,7 +299,7 @@ function RegisterForm() {
         setSuccess('');
         setLoading(true);
         if (password !== confirm) {
-            setError('Le password non coincidono');
+            setError('Le password non coincidono.');
             setLoading(false);
             return;
         }
@@ -337,71 +310,67 @@ function RegisterForm() {
                 body: JSON.stringify({ email, password })
             });
             if (res.ok) {
-                setSuccess('Registrazione avvenuta! Ora puoi accedere.');
-                setEmail('');
-                setPassword('');
-                setConfirm('');
+                setSuccess('Registrazione completata! Ora puoi accedere.');
+                setTimeout(() => onSuccess(), 1500);
             } else {
-                setError('Errore durante la registrazione');
+                const payload = await res.json().catch(() => ({}));
+                setError(payload?.error || 'Errore durante la registrazione.');
             }
         } catch {
-            setError('Errore di rete');
+            setError('Errore di rete. Riprova.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
-                <div className="glass-effect border-red-500/50 bg-red-500/10 p-4 rounded-lg">
-                    <div className="flex items-center gap-3">
-                        <span className="text-red-400 text-xl">⚠️</span>
-                        <p className="text-red-300">{error}</p>
-                    </div>
+                <div className="border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
                 </div>
             )}
             {success && (
-                <div className="glass-effect border-green-500/50 bg-green-500/10 p-4 rounded-lg">
-                    <div className="flex items-center gap-3">
-                        <span className="text-green-400 text-xl">✅</span>
-                        <p className="text-green-300">{success}</p>
-                    </div>
+                <div className="border border-black/20 bg-black/5 px-4 py-3 text-sm text-black">
+                    {success}
                 </div>
             )}
             <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Email</label>
+                <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Email</label>
                 <input
                     type="email"
-                    placeholder="your@email.com"
-                    className={`${authInputClassName} focus:ring-purple-500`}
+                    placeholder="nome@esempio.com"
+                    className={authInputClassName}
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     disabled={loading}
                 />
             </div>
             <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Password</label>
+                <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Password</label>
                 <input
                     type="password"
                     placeholder="••••••••"
-                    className={`${authInputClassName} focus:ring-purple-500`}
+                    className={authInputClassName}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
                     disabled={loading}
                 />
             </div>
             <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Confirm Password</label>
+                <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Conferma password</label>
                 <input
                     type="password"
                     placeholder="••••••••"
-                    className={`${authInputClassName} focus:ring-purple-500`}
+                    className={authInputClassName}
                     value={confirm}
                     onChange={e => setConfirm(e.target.value)}
                     required
+                    autoComplete="new-password"
                     disabled={loading}
                 />
             </div>
@@ -412,13 +381,14 @@ function RegisterForm() {
             >
                 {loading ? (
                     <div className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Creating account...
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white animate-spin" />
+                        Creazione account...
                     </div>
                 ) : (
-                    '✨ Create Account'
+                    'Crea account'
                 )}
             </button>
         </form>
     );
 }
+

@@ -3,15 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { withAdminAuth } from "@/lib/auth-helpers";
 
 /**
- * GET /api/admin/cron-status
+ * GET /api/admin/cron-status?limit=50
  * Restituisce tutti i job in stato "running" o l'ultimo completato per ciascun jobKey.
  */
 export async function GET(request: NextRequest) {
   return withAdminAuth(async () => {
+    const limit = Math.min(200, Math.max(1, parseInt(request.nextUrl.searchParams.get("limit") ?? "50", 10)));
     try {
       const runs = await (prisma as any).cronJobRun.findMany({
         orderBy: { startedAt: "desc" },
-        take: 20,
+        take: limit,
       });
       return NextResponse.json({ runs });
     } catch (error) {

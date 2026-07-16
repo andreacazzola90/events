@@ -125,10 +125,11 @@ async function getVisitPedemontanaConfig(): Promise<CronSourceConfig> {
     nextPageSelector: 'dw-gen-pagination',
     includePattern: '#/eventi/|/eventi/.+/.+',
     excludePattern: '#mm-|#menu|/it/eventi$|/it/eventi/[^/]+$|/users/|/maps|/search',
-    waitMs: 4000,
-    requestTimeoutMs: 60000,
-    maxPages: 20,
-    maxLinksPerRun: 400,
+    // Angular + Deskline widget needs time to render and fire the API call
+    waitMs: 8000,
+    requestTimeoutMs: 90000,
+    maxPages: 30,
+    maxLinksPerRun: 600,
   };
 
   const cronSourceModel = (prisma as any).cronSource;
@@ -234,11 +235,20 @@ export async function GET(request: NextRequest) {
     const desklineRequestHeaders: Record<string, string> = {};
 
     const collectDesklineEvents = (payload: any) => {
+      // Deskline API can return events under different keys depending on the endpoint version
       const events = Array.isArray(payload?.events)
         ? payload.events
         : Array.isArray(payload?.data)
           ? payload.data
-          : [];
+          : Array.isArray(payload?.records)
+            ? payload.records
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload?.results)
+                ? payload.results
+                : Array.isArray(payload)
+                  ? payload
+                  : [];
       for (const eventPayload of events) {
         const detailUrl = buildVisitSchioEventUrl(listUrl, eventPayload);
         if (detailUrl) {
@@ -251,20 +261,20 @@ export async function GET(request: NextRequest) {
     page.on('request', (req: any) => {
       try {
         const url = String(req.url?.() || '');
-        if (!url.includes('webapi.deskline.net') || !url.includes('/events?')) {
-          return;
-        }
+        // Capture any Deskline API request for events
+        const isDeskline = url.includes('deskline.net') || url.includes('webapi.deskline');
+        const isEventsEndpoint = url.includes('/events') || url.includes('/Events');
+        if (!isDeskline || !isEventsEndpoint) return;
 
-        desklineEventsApiUrl = url;
+        // Prefer a URL with pagination params (pageNo / pageSize)
+        if (!desklineEventsApiUrl || url.includes('pageNo') || url.includes('pageSize')) {
+          desklineEventsApiUrl = url;
+        }
         const headers = req.headers?.() || {};
         const sourceHeader = headers['dw-source'] || headers['DW-Source'];
         const sessionHeader = headers['dw-sessionid'] || headers['DW-SessionId'];
-        if (sourceHeader) {
-          desklineRequestHeaders['DW-Source'] = sourceHeader;
-        }
-        if (sessionHeader) {
-          desklineRequestHeaders['DW-SessionId'] = sessionHeader;
-        }
+        if (sourceHeader) desklineRequestHeaders['DW-Source'] = sourceHeader;
+        if (sessionHeader) desklineRequestHeaders['DW-SessionId'] = sessionHeader;
       } catch {
         // ignore request parse errors
       }
@@ -273,9 +283,9 @@ export async function GET(request: NextRequest) {
     page.on('response', async (response: any) => {
       try {
         const url = String(response.url?.() || '');
-        if (!url.includes('webapi.deskline.net') || !url.includes('/events?')) {
-          return;
-        }
+        const isDeskline = url.includes('deskline.net') || url.includes('webapi.deskline');
+        const isEventsEndpoint = url.includes('/events') || url.includes('/Events');
+        if (!isDeskline || !isEventsEndpoint) return;
         const payload = await response.json();
         const count = collectDesklineEvents(payload);
         if (count > 0) {
@@ -294,8 +304,10 @@ export async function GET(request: NextRequest) {
       visitedPages.add(currentUrl);
 
       console.log(`[VisitPedemontana] Navigating to events list page ${pageIndex + 1}: ${currentUrl}`);
+      // Use 'load' (DOMContentLoaded + resources) instead of networkidle2 to avoid premature
+      // resolution before the Deskline widget fires its API call.
       await page.goto(currentUrl, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'load',
         timeout: sourceConfig.requestTimeoutMs,
       });
 
@@ -303,18 +315,31 @@ export async function GET(request: NextRequest) {
       await new Promise((r) => setTimeout(r, 2000));
       await dismissCookieBanner(page);
 
-      // Attendi che Angular abbia renderizzato gli elementi evento nel DOM.
-      // waitForSelector si risolve non appena il selettore matcha almeno un elemento;
-      // se entro waitMs il rendering non è ancora completo, si fa comunque la scansione.
-      try {
-        await page.waitForSelector(sourceConfig.eventLinkSelector, {
-          timeout: sourceConfig.waitMs,
-        });
-        console.log(`[VisitPedemontana] Selector "${sourceConfig.eventLinkSelector}" found — Angular rendering complete.`);
-      } catch {
-        console.warn(`[VisitPedemontana] Selector not found within ${sourceConfig.waitMs}ms, proceeding anyway.`);
-        await new Promise((resolve) => setTimeout(resolve, sourceConfig.waitMs));
+      // Wait for the Deskline event listing web-component to appear in the DOM.
+      // This signals that Angular bootstrapped and the widget is at least mounting.
+      const DW_READY_SELECTORS = [
+        'dw-event-listing',
+        'dw-event-card',
+        'dw-events-list',
+        'a[href*="#/eventi/"]',
+        'a[href*="/eventi/"]',
+      ];
+      let dwFound = false;
+      for (const sel of DW_READY_SELECTORS) {
+        try {
+          await page.waitForSelector(sel, { timeout: 5000 });
+          console.log(`[VisitPedemontana] Deskline component ready ("${sel}").`);
+          dwFound = true;
+          break;
+        } catch {
+          // try next selector
+        }
       }
+      if (!dwFound) {
+        console.warn(`[VisitPedemontana] No Deskline component found; waiting ${sourceConfig.waitMs}ms for JS rendering.`);
+      }
+      // Extra wait for Angular change detection and widget API calls to complete
+      await new Promise((resolve) => setTimeout(resolve, dwFound ? sourceConfig.waitMs / 2 : sourceConfig.waitMs));
 
       const { pageEventLinks, nextPageUrl, debugAnchors } = await page.evaluate(
         ({ eventLinkSelector, nextPageSelector, listHost }: { eventLinkSelector: string; nextPageSelector: string | null; listHost: string }) => {
@@ -328,22 +353,45 @@ export async function GET(request: NextRequest) {
           }
         };
 
-          const selectors = ['a[href]'];
-          if (eventLinkSelector && eventLinkSelector !== 'a[href]') {
-            selectors.unshift(eventLinkSelector);
+          // ─── Shadow-DOM-aware querySelectorAll ─────────────────────────────────
+          // Deskline web-components (dw-event-card, dw-gen-pagination, …) render
+          // their inner DOM inside a shadow root, which is invisible to the standard
+          // document.querySelectorAll.  We recursively pierce every shadow root so
+          // we can find both event <a> tags and pagination links.
+          function deepQueryAll(root: Document | ShadowRoot | Element, sel: string): Element[] {
+            const results: Element[] = Array.from(root.querySelectorAll(sel));
+            // Walk every element that might host a shadow root
+            const all = Array.from(root.querySelectorAll('*'));
+            for (const el of all) {
+              const sr = (el as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+              if (sr) {
+                results.push(...deepQueryAll(sr, sel));
+              }
+            }
+            return results;
           }
 
-          const selectedNodes = selectors.flatMap((selector) =>
-            Array.from(document.querySelectorAll(selector)),
-          );
-          const anchors = selectedNodes
-            .map((node) => {
-              if (node instanceof HTMLAnchorElement) {
-                return node;
-              }
-              return node.closest('a[href]');
-            })
-            .filter((node): node is HTMLAnchorElement => !!node);
+          // Collect event anchor candidates using both the custom selector and the
+          // generic a[href], then pierce shadow roots.
+          const selectorList: string[] = [];
+          if (eventLinkSelector && eventLinkSelector !== 'a[href]') {
+            // multi-selector string like 'a[href*="#/eventi/"], a[href*="/eventi/"]'
+            for (const s of eventLinkSelector.split(',').map(s => s.trim())) {
+              if (s) selectorList.push(s);
+            }
+          }
+          selectorList.push('a[href]');
+
+          const seenAnchors = new Set<HTMLAnchorElement>();
+          for (const sel of selectorList) {
+            for (const node of deepQueryAll(document, sel)) {
+              const anchor = (node instanceof HTMLAnchorElement)
+                ? node
+                : node.closest?.('a[href]') as HTMLAnchorElement | null;
+              if (anchor && !seenAnchors.has(anchor)) seenAnchors.add(anchor);
+            }
+          }
+          const anchors = Array.from(seenAnchors);
 
           const urls = anchors
           .map(a => {
@@ -369,8 +417,9 @@ export async function GET(request: NextRequest) {
 
               if (parsed.host !== listHost) return false;
 
-              const isHashEventDetail = /#\/eventi\/[^/]+\/[^/]+\/[^/?#]+/i.test(parsed.hash);
-              const isClassicEventDetail = /\/eventi\/[^/?#]+\/[^/?#]+$/i.test(parsed.pathname);
+              // Accept hash-style SPA routes AND classic path-based event URLs
+              const isHashEventDetail = /#\/eventi\/[^/?#]+/i.test(parsed.hash);
+              const isClassicEventDetail = /\/eventi\/[^/?#]+\/[^/?#]+/i.test(parsed.pathname);
               if (!isHashEventDetail && !isClassicEventDetail) return false;
 
               return true;
@@ -425,18 +474,28 @@ export async function GET(request: NextRequest) {
           };
 
           if (nextPageSelector) {
-            const container = document.querySelector(nextPageSelector);
+            // Try light DOM first, then pierce shadow roots (needed for <dw-gen-pagination>)
+            let container: Element | null = document.querySelector(nextPageSelector);
+            if (!container) {
+              const found = deepQueryAll(document, nextPageSelector);
+              container = found[0] ?? null;
+            }
             if (container) {
               if (container instanceof HTMLAnchorElement && container.href && !container.href.endsWith('#')) {
                 nextPageUrl = toAbsolute(container.href);
               } else {
-                nextPageUrl = resolveNextFromContainer(container);
+                // Also search INSIDE the shadow root of the pagination component
+                const paginationRoot = (container as Element & { shadowRoot: ShadowRoot | null }).shadowRoot ?? container;
+                nextPageUrl = resolveNextFromContainer(paginationRoot as Element);
+                if (!nextPageUrl) nextPageUrl = resolveNextFromContainer(container);
               }
             }
           }
 
           if (!nextPageUrl) {
-            const relNext = document.querySelector('a[rel="next"]') as HTMLAnchorElement | null;
+            // Fallback: any a[rel="next"] in light or shadow DOM
+            const relAnchors = deepQueryAll(document, 'a[rel="next"]') as HTMLAnchorElement[];
+            const relNext = relAnchors.find(a => a.href && !a.href.endsWith('#'));
             if (relNext?.href) {
               nextPageUrl = toAbsolute(relNext.href);
             }

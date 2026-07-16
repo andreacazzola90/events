@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { TransitionLink } from "./TransitionLink";
 import { trackSearch } from "../lib/gtm";
@@ -205,6 +205,22 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     useState<QuickDateFilter>("today");
   const [visibleCount, setVisibleCount] = useState(4);
 
+  const fetchEvents = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/events?limit=200`, {
+        next: { revalidate: 300 },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEvents(data);
+      }
+    } catch (error) {
+      console.error("Error fetching events:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEvents();
 
@@ -222,54 +238,16 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
 
     fetchFavorites();
 
-    // Re-fetch when page becomes visible (after navigation)
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log("[EventList] Page visible, re-fetching events");
-        fetchEvents();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // Also re-fetch when window regains focus
-    const handleFocus = () => {
-      console.log("[EventList] Window focused, re-fetching events");
-      fetchEvents();
-    };
-
-    window.addEventListener("focus", handleFocus);
-
-    // Listen for URL changes (for refresh parameter)
-    const handleUrlChange = () => {
-      const refresh = new URLSearchParams(window.location.search).get(
-        "refresh",
-      );
-      if (refresh) {
-        console.log(
-          "[EventList] Refresh parameter detected, re-fetching events",
-        );
-        fetchEvents();
-        // Clean up the URL parameter
-        window.history.replaceState({}, "", "/");
-      }
-    };
-
-    // Check on mount
-    handleUrlChange();
-
-    // Listen for popstate (back/forward navigation)
-    window.addEventListener("popstate", handleUrlChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("popstate", handleUrlChange);
-    };
-  }, []);
+    // Controlla il parametro refresh solo al mount
+    const refresh = new URLSearchParams(window.location.search).get("refresh");
+    if (refresh) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [fetchEvents]);
 
   useEffect(() => {
     filterEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     events,
     search,
@@ -288,37 +266,6 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
       setVisibleCount(4);
     }
   }, [quickDateFilter, mode]);
-
-  const fetchEvents = async () => {
-    try {
-      const params = new URLSearchParams();
-      // Prendi un set sufficientemente ampio di eventi, il filtraggio avviene lato client
-      params.append("limit", "200");
-      params.append("_t", Date.now().toString());
-
-      console.log("[EventList] Fetching events from API...");
-      const response = await fetch(`/api/events?${params.toString()}`, {
-        cache: "no-store",
-      });
-      if (response.ok) {
-        const data = await response.json();
-        console.log(
-          "[EventList] Fetched events:",
-          data.length,
-          "First event:",
-          data[0]?.title,
-          data[0]?.id,
-        );
-        setEvents(data);
-      } else {
-        console.error("[EventList] Failed to fetch events:", response.status);
-      }
-    } catch (error) {
-      console.error("Error fetching events:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const filterEvents = () => {
     if (mode === "quick") {
@@ -433,8 +380,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             {[
               { value: "today" as const, label: "oggi" },
               { value: "tomorrow" as const, label: "domani" },
-              { value: "weekend" as const, label: "this weekend" },
-              { value: "week" as const, label: "this week" },
+              { value: "weekend" as const, label: "weekend" },
+              { value: "week" as const, label: "questa settimana" },
             ].map((option) => (
               <button
                 key={option.value}
@@ -483,7 +430,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
                 <input
                   type="text"
-                  placeholder="Search events..."
+                  placeholder="Cerca eventi..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   aria-label="Cerca eventi"
@@ -551,7 +498,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                     onChange={(e) => setOnlyToday(e.target.checked)}
                     className="w-4 h-4 text-black border-black/20 rounded focus:ring-black focus:ring-2"
                   />
-                  Today only
+                  Solo oggi
                 </label>
               </div>
             </form>
@@ -566,8 +513,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             : filteredEvents;
         const gridClasses =
           mode === "quick"
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"
-            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6";
+            ? "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"
+            : "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6";
 
         return (
           <>
@@ -644,18 +591,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                           <span className="w-4">•</span>
                           <span>
                             {(() => {
-                              let dateObj: Date;
-                              if (event.date.includes("/")) {
-                                const [day, month, year] =
-                                  event.date.split("/");
-                                dateObj = new Date(
-                                  parseInt(year),
-                                  parseInt(month) - 1,
-                                  parseInt(day),
-                                );
-                              } else {
-                                dateObj = new Date(event.date);
-                              }
+                              const dateObj = parseEventDate(event.date);
+                              if (!dateObj) return event.date;
                               return dateObj.toLocaleDateString("it-IT", {
                                 weekday: "short",
                                 day: "numeric",

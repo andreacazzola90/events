@@ -12,7 +12,8 @@
     "cypress:run": "cypress run",
     "test:e2e": "cypress run",
     "test:e2e:link": "cypress run --spec 'cypress/e2e/create-event-via-link.cy.ts'",
-    "test:e2e:image": "cypress run --spec 'cypress/e2e/create-event-via-image.cy.ts'"
+    "test:e2e:image": "cypress run --spec 'cypress/e2e/create-event-via-image.cy.ts'",
+    "test:e2e:auth": "cypress run --spec 'cypress/e2e/auth-security.cy.ts'"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

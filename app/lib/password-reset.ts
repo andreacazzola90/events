@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import { createMailTransport, getMailFrom } from "./mailer";
 
 const PASSWORD_RESET_TTL_MINUTES = 60;
 
@@ -24,28 +24,17 @@ export async function sendPasswordResetEmail(params: {
   to: string;
   resetUrl: string;
 }) {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || "no-reply@eventscanner.ai";
+  const transporter = createMailTransport();
 
-  if (!host) {
+  if (!transporter) {
     return {
       delivered: false,
       previewUrl: process.env.NODE_ENV !== "production" ? params.resetUrl : null,
     };
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: user && pass ? { user, pass } : undefined,
-  });
-
   await transporter.sendMail({
-    from,
+    from: getMailFrom(),
     to: params.to,
     subject: "Recupero password EventScanner",
     text: `Hai richiesto il recupero password. Usa questo link entro 60 minuti: ${params.resetUrl}`,

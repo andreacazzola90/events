@@ -106,6 +106,8 @@ function buildVisitSchioEventUrl(listUrl: string, eventPayload: any): string | n
 }
 
 type CronSourceConfig = {
+  id: number | null;
+  name: string;
   listUrl: string;
   eventLinkSelector: string;
   nextPageSelector: string | null;
@@ -117,24 +119,51 @@ type CronSourceConfig = {
   maxLinksPerRun: number;
 };
 
-async function getVisitPedemontanaConfig(): Promise<CronSourceConfig> {
-  const defaults: CronSourceConfig = {
-    listUrl:
-      'https://www.visitschio.it/it/pages/eventi-del-territorio-della-pedemontana-veneta-e-colli#/eventi',
-    eventLinkSelector: 'a[href*="#/eventi/"], a[href*="/eventi/"]',
-    nextPageSelector: 'dw-gen-pagination',
-    includePattern: '#/eventi/|/eventi/.+/.+',
-    excludePattern: '#mm-|#menu|/it/eventi$|/it/eventi/[^/]+$|/users/|/maps|/search',
-    // Angular + Deskline widget needs time to render and fire the API call
-    waitMs: 8000,
-    requestTimeoutMs: 90000,
-    maxPages: 30,
-    maxLinksPerRun: 600,
-  };
+const DEFAULT_SOURCE_CONFIG: CronSourceConfig = {
+  id: null,
+  name: 'default',
+  listUrl:
+    'https://www.visitschio.it/it/pages/eventi-del-territorio-della-pedemontana-veneta-e-colli#/eventi',
+  eventLinkSelector: 'a[href*="#/eventi/"], a[href*="/eventi/"]',
+  nextPageSelector: 'dw-gen-pagination',
+  includePattern: '#/eventi/|/eventi/.+/.+',
+  excludePattern: '#mm-|#menu|/it/eventi$|/it/eventi/[^/]+$|/users/|/maps|/search',
+  // Angular + Deskline widget needs time to render and fire the API call
+  waitMs: 8000,
+  requestTimeoutMs: 90000,
+  maxPages: 30,
+  maxLinksPerRun: 600,
+};
 
+function toSourceConfig(row: any): CronSourceConfig {
+  return {
+    id: row?.id ?? null,
+    name: row?.name || DEFAULT_SOURCE_CONFIG.name,
+    listUrl: row?.listUrl || DEFAULT_SOURCE_CONFIG.listUrl,
+    eventLinkSelector: row?.eventLinkSelector || DEFAULT_SOURCE_CONFIG.eventLinkSelector,
+    nextPageSelector: row?.nextPageSelector || DEFAULT_SOURCE_CONFIG.nextPageSelector,
+    includePattern: row?.includePattern || DEFAULT_SOURCE_CONFIG.includePattern,
+    excludePattern: row?.excludePattern || DEFAULT_SOURCE_CONFIG.excludePattern,
+    waitMs: Number(row?.waitMs) > 0 ? Number(row.waitMs) : DEFAULT_SOURCE_CONFIG.waitMs,
+    requestTimeoutMs:
+      Number(row?.requestTimeoutMs) > 0
+        ? Number(row.requestTimeoutMs)
+        : DEFAULT_SOURCE_CONFIG.requestTimeoutMs,
+    maxPages: Number(row?.maxPages) > 0 ? Number(row.maxPages) : DEFAULT_SOURCE_CONFIG.maxPages,
+    maxLinksPerRun:
+      Number(row?.maxLinksPerRun) > 0
+        ? Number(row.maxLinksPerRun)
+        : DEFAULT_SOURCE_CONFIG.maxLinksPerRun,
+  };
+}
+
+/** Returns every active CronSource row, mapped to a scraper config.
+ * Falls back to a single hardcoded default when the table is empty/unavailable,
+ * so the job still runs even with no CronSource rows configured. */
+async function resolveActiveSources(): Promise<CronSourceConfig[]> {
   const cronSourceModel = (prisma as any).cronSource;
   if (!cronSourceModel) {
-    return defaults;
+    return [DEFAULT_SOURCE_CONFIG];
   }
 
   try {
@@ -144,55 +173,36 @@ async function getVisitPedemontanaConfig(): Promise<CronSourceConfig> {
     });
 
     if (!Array.isArray(activeSources) || activeSources.length === 0) {
-      return defaults;
+      return [DEFAULT_SOURCE_CONFIG];
     }
 
-    const preferred =
-      activeSources.find((source: any) =>
-        /visitschio|visitpedemontana/i.test(`${source?.name || ''} ${source?.listUrl || ''}`),
-      ) || activeSources[0];
-
-    return {
-      listUrl: preferred?.listUrl || defaults.listUrl,
-      eventLinkSelector: preferred?.eventLinkSelector || defaults.eventLinkSelector,
-      nextPageSelector: preferred?.nextPageSelector || defaults.nextPageSelector,
-      includePattern: preferred?.includePattern || defaults.includePattern,
-      excludePattern: preferred?.excludePattern || defaults.excludePattern,
-      waitMs: Number(preferred?.waitMs) > 0 ? Number(preferred.waitMs) : defaults.waitMs,
-      requestTimeoutMs:
-        Number(preferred?.requestTimeoutMs) > 0
-          ? Number(preferred.requestTimeoutMs)
-          : defaults.requestTimeoutMs,
-      maxPages: Number(preferred?.maxPages) > 0 ? Number(preferred.maxPages) : defaults.maxPages,
-      maxLinksPerRun:
-        Number(preferred?.maxLinksPerRun) > 0
-          ? Number(preferred.maxLinksPerRun)
-          : defaults.maxLinksPerRun,
-    };
+    return activeSources.map(toSourceConfig);
   } catch (error) {
-    console.warn('[VisitPedemontana] Failed loading CronSource config, using defaults:', error);
-    return defaults;
+    console.warn('[VisitPedemontana] Failed loading CronSource rows, using default source:', error);
+    return [DEFAULT_SOURCE_CONFIG];
   }
 }
 
-export async function GET(request: NextRequest) {
-  // Controllo del secret per il cron (stessa logica di scrape-visitschio)
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+function slugifyOrigin(name: string): string {
+  const slug = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'visitpedemontana';
+}
 
-  console.log('--- STARTING VISITPEDEMONTANA SCRAPER CRON JOB ---');
-  const dryRun = request.nextUrl.searchParams.get('dryRun') === '1';
+async function scrapeOneSource(
+  sourceConfig: CronSourceConfig,
+  today: Date,
+  dryRun: boolean,
+): Promise<Record<string, any>> {
   let browser: any = null;
   let eventLinks: string[] = [];
-
-  // Considera "oggi" senza orario per filtrare gli eventi passati
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const originTag = slugifyOrigin(sourceConfig.name);
 
   try {
-    const sourceConfig = await getVisitPedemontanaConfig();
     const listUrl = sourceConfig.listUrl;
     const includeRegex = buildOptionalRegex(sourceConfig.includePattern);
     const excludeRegex = buildOptionalRegex(sourceConfig.excludePattern);
@@ -205,6 +215,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[VisitPedemontana] Using source config:', {
+      name: sourceConfig.name,
       listUrl,
       eventLinkSelector: sourceConfig.eventLinkSelector,
       nextPageSelector: sourceConfig.nextPageSelector,
@@ -747,7 +758,7 @@ export async function GET(request: NextRequest) {
                 // Usa SEMPRE l'URL sorgente come chiave per deduplicare run futuri
                 sourceUrl: url,
                 externalId: getExternalIdFromUrl(url),
-                origin: 'visitpedemontana',
+                origin: originTag,
               } as any,
             });
 
@@ -779,14 +790,14 @@ export async function GET(request: NextRequest) {
       revalidatePath('/api/events', 'page');
     }
 
-    console.log('[VisitPedemontana] Scraping summary (per link):');
+    console.log(`[VisitPedemontana] Scraping summary for "${sourceConfig.name}" (per link):`);
     try {
       console.table(linkSummary);
     } catch {
       console.log(JSON.stringify(linkSummary, null, 2));
     }
 
-    return NextResponse.json({
+    return {
       status: dryRun ? 'dry-run' : 'success',
       dryRun,
       found: eventLinks.length,
@@ -797,16 +808,94 @@ export async function GET(request: NextRequest) {
       dryRunStats: dryRun ? dryRunStats : undefined,
       errors: errors.length > 0 ? errors : undefined,
       links: linkSummary,
-    });
+    };
   } catch (error) {
-    console.error('[VisitPedemontana] Cron job failed:', error);
+    console.error(`[VisitPedemontana] Cron job failed for source "${sourceConfig.name}":`, error);
     if (browser) await closeBrowser(browser);
-    return NextResponse.json(
-      {
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
+}
+
+export async function GET(request: NextRequest) {
+  // Controllo del secret per il cron (stessa logica di scrape-visitschio)
+  const authHeader = request.headers.get('authorization');
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  console.log('--- STARTING VISITPEDEMONTANA SCRAPER CRON JOB ---');
+  const dryRun = request.nextUrl.searchParams.get('dryRun') === '1';
+
+  // Considera "oggi" senza orario per filtrare gli eventi passati
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const sources = await resolveActiveSources();
+  console.log(`[VisitPedemontana] Resolved ${sources.length} active source(s): ${sources.map(s => s.name).join(', ')}`);
+
+  // Stay comfortably under Vercel's maxDuration (300s) so one slow source
+  // can't starve the others; anything left is skipped and picked up next run.
+  const TIME_BUDGET_MS = 260_000;
+  const runStartedAt = Date.now();
+  const results: Record<string, any>[] = [];
+
+  for (const source of sources) {
+    if (Date.now() - runStartedAt > TIME_BUDGET_MS) {
+      console.warn(`[VisitPedemontana] Time budget exceeded, skipping remaining source: ${source.name}`);
+      results.push({ sourceId: source.id, sourceName: source.name, status: 'skipped', message: 'Time budget exceeded for this run' });
+      continue;
+    }
+
+    const jobKey = `scrape-source:${source.id ?? 'default'}`;
+    try {
+      await (prisma as any).cronJobRun.upsert({
+        where: { jobKey },
+        update: { status: 'running', startedAt: new Date(), finishedAt: null, resultJson: null },
+        create: { jobKey, status: 'running' },
+      });
+    } catch {
+      // Observability only — never block the actual scrape on this.
+    }
+
+    try {
+      const result = await scrapeOneSource(source, today, dryRun);
+      results.push({ sourceId: source.id, sourceName: source.name, ...result });
+      try {
+        await (prisma as any).cronJobRun.update({
+          where: { jobKey },
+          data: {
+            status: result.status === 'error' ? 'failed' : 'completed',
+            finishedAt: new Date(),
+            resultJson: JSON.stringify(result),
+          },
+        });
+      } catch {
+        // ignore
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[VisitPedemontana] Source "${source.name}" failed:`, error);
+      results.push({ sourceId: source.id, sourceName: source.name, status: 'error', message });
+      try {
+        await (prisma as any).cronJobRun.update({
+          where: { jobKey },
+          data: { status: 'failed', finishedAt: new Date(), resultJson: JSON.stringify({ error: message }) },
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const overallStatus = results.some(r => r.status === 'error') ? 'partial-error' : 'success';
+
+  return NextResponse.json({
+    status: overallStatus,
+    dryRun,
+    sourcesProcessed: results.length,
+    sources: results,
+  });
 }

@@ -72,6 +72,10 @@ export async function POST(request: NextRequest) {
     const analyzeWithVision = async (): Promise<string> => {
       try {
         console.log('🔭 Starting vision model analysis...');
+        // No vision-capable model is currently available on this Groq API key
+        // (verified against GET /openai/v1/models); this call will 404 until
+        // a vision model is added back or another provider is used. Failure
+        // is caught below and the pipeline falls back to OCR-only text.
         const visionCompletion = await groq.chat.completions.create({
           model: 'meta-llama/llama-4-scout-17b-16e-instruct',
           messages: [
@@ -387,7 +391,7 @@ IMPORTANTE:
 - NON usare null o undefined
 - Il campo rawText deve essere sempre presente`;
 
-    console.log('Calling Groq API with model: llama-3.3-70b-versatile');
+    console.log('Calling Groq API with model: openai/gpt-oss-20b');
     const groqStartTime = Date.now();
 
     const completion = await groq.chat.completions.create({
@@ -417,7 +421,8 @@ REGOLE:
           content: prompt,
         },
       ],
-      model: 'llama-3.1-8b-instant',
+      // llama-3.1-8b-instant was retired by Groq; this is the current equivalent available on this key.
+      model: 'openai/gpt-oss-20b',
       response_format: { type: 'json_object' },
       temperature: 0.1,
       max_tokens: 1500,
@@ -532,7 +537,7 @@ REGOLE:
                   { role: 'system', content: 'Sei un assistente AI che verifica dati di eventi. Rispondi SEMPRE con un oggetto JSON valido.' },
                   { role: 'user', content: verificationPrompt }
                 ],
-                model: 'llama-3.3-70b-versatile',
+                model: 'openai/gpt-oss-20b',
                 response_format: { type: 'json_object' },
                 temperature: 0.1,
               });

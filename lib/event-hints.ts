@@ -52,16 +52,20 @@ export function buildEventExtractionHints(rawText: string): string {
   const times = collectMatches(text, timeRegexes, 12);
   const prices = collectMatches(text, priceRegexes, 12);
 
+  // Scraped page text often has no real line breaks (a single huge blob), so
+  // cap each candidate "line" before matching to avoid embedding megabytes of
+  // text into a single hint entry.
+  const MAX_LINE_LENGTH = 200;
   const locationLines = text
     .split(/\r?\n/)
-    .map(l => l.trim())
+    .map(l => l.trim().slice(0, MAX_LINE_LENGTH))
     .filter(Boolean)
     .filter(l => /\b(via|viale|piazza|largo|corso|vicolo|teatro|cinema|club|live club|stadio|palazz[oai]|auditorium|parco|discoteca|arena|stadio|sala|oratorio)\b/i.test(l))
     .slice(0, 6);
 
   const organizerLines = text
     .split(/\r?\n/)
-    .map(l => l.trim())
+    .map(l => l.trim().slice(0, MAX_LINE_LENGTH))
     .filter(Boolean)
     .filter(l =>
       /organizzat[oa] da|a cura di|presentat[oa] da|in collaborazione con|con il patrocinio di/i.test(l) ||
@@ -109,5 +113,7 @@ export function buildEventExtractionHints(rawText: string): string {
     lines.push('RIGHE ORGANIZZATORE: nessuna riga chiaramente riconosciuta come organizzatore.');
   }
 
-  return lines.join('\n');
+  // Hard safety cap: no matter what slips through above, never return a huge blob.
+  const MAX_HINTS_LENGTH = 3000;
+  return lines.join('\n').slice(0, MAX_HINTS_LENGTH);
 }

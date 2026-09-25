@@ -153,7 +153,29 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                         await new Promise(resolve => setTimeout(resolve, preNavDelay));
                         
                         await page.goto(url, waitOptions);
-                        
+
+                        // The Deskline widget (Angular SPA) used on visitschio.it hash-route
+                        // event pages (#/eventi/TRN/<id>/<slug>) renders the actual event
+                        // detail asynchronously *after* the initial page load — a fixed short
+                        // delay isn't reliably enough. The document title updates to the
+                        // event name once the detail view is ready, so poll for that instead
+                        // of guessing a fixed wait; otherwise we'd scrape the generic listing
+                        // page content instead of the real event.
+                        const isVisitSchioDetailHash = /visitschio\.it/i.test(url) && /#\/eventi\/[^/?#]+\/[^/?#]+/i.test(url);
+                        if (isVisitSchioDetailHash) {
+                            try {
+                                const initialTitle = await page.title();
+                                await page.waitForFunction(
+                                    (baseTitle: string) => document.title && document.title !== baseTitle,
+                                    { timeout: 12000 },
+                                    initialTitle,
+                                );
+                                logger.log(`✅ Deskline event detail rendered (title: "${await page.title()}")`);
+                            } catch {
+                                logger.warn('⚠️ Deskline event detail title never changed within 12s, extracting anyway');
+                            }
+                        }
+
                         logger.log('📖 Simulating human reading behavior...');
                         const postNavDelay = Math.floor(Math.random() * 2000) + 2000;
                         await new Promise(resolve => setTimeout(resolve, postNavDelay));
@@ -249,10 +271,23 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                                 '[id*="event-detail"]', '[id*="event-info"]', 'article', '[itemtype*="Event"]'
                             ];
                             
+                            // Some SPA widgets (e.g. the Deskline event-detail view) render nested
+                            // inside another generic <main>, so querySelector's first match can grab
+                            // the outer shell instead of the actual content. Pick the longest match
+                            // across ALL elements for each selector instead of the first one found.
                             for (const selector of mainSelectors) {
-                                const element = document.querySelector(selector);
-                                if (element && element.textContent && element.textContent.trim().length > 100) {
-                                    return element;
+                                const candidates = Array.from(document.querySelectorAll(selector));
+                                let best: Element | null = null;
+                                let bestLength = 0;
+                                for (const candidate of candidates) {
+                                    const length = (candidate.textContent || '').trim().length;
+                                    if (length > bestLength) {
+                                        best = candidate;
+                                        bestLength = length;
+                                    }
+                                }
+                                if (best && bestLength > 100) {
+                                    return best;
                                 }
                             }
                             return removeUnwantedElements();
@@ -342,10 +377,37 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                             }
                         }
                         
-                        const mainText = (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
+                        let mainText = (mainContent as HTMLElement)?.innerText || mainContent?.textContent || (document.body as HTMLElement)?.innerText || document.body?.textContent || '';
                         return visitSchioInfo + mainText;
                     });
                     logger.log(`📄 Extracted ${pageText.length} characters from main content`);
+
+                    // Some widgets (e.g. Deskline's event-detail view) render real content in
+                    // ways plain DOM text extraction misses (closed/nested shadow roots, CSS
+                    // visibility quirks). The accessibility tree reflects what's actually
+                    // rendered regardless of those quirks, so use it when it holds more text.
+                    try {
+                        const axSnapshot = await page.accessibility.snapshot({ interestingOnly: false });
+                        const flattenAxNode = (node: any): string => {
+                            if (!node) return '';
+                            let text = '';
+                            if (typeof node.name === 'string') text += node.name + '\n';
+                            if (typeof node.value === 'string') text += node.value + '\n';
+                            if (Array.isArray(node.children)) {
+                                for (const child of node.children) {
+                                    text += flattenAxNode(child);
+                                }
+                            }
+                            return text;
+                        };
+                        const axText = flattenAxNode(axSnapshot);
+                        if (axText.trim().length > pageText.trim().length) {
+                            logger.log(`📄 Using accessibility-tree text instead (${axText.length} vs ${pageText.length} chars)`);
+                            pageText = axText;
+                        }
+                    } catch (axError) {
+                        logger.warn('Could not get accessibility snapshot:', axError);
+                    }
                 } catch (textError) {
                     logger.warn('Could not extract page text:', textError);
                     try {
@@ -620,7 +682,8 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
                 content: prompt,
             },
         ],
-        model: 'llama-3.1-8b-instant',
+        // llama-3.1-8b-instant was retired by Groq; this is the current equivalent available on this key.
+        model: 'openai/gpt-oss-20b',
         response_format: { type: 'json_object' },
         temperature: 0.1,
         max_tokens: 1500,
@@ -672,7 +735,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
             try {
                 const enrichComp = await groq.chat.completions.create({
                     messages: [{ role: 'user', content: enrichmentPrompt }],
-                    model: 'llama-3.1-8b-instant',
+                    model: 'openai/gpt-oss-20b',
                     response_format: { type: 'json_object' },
                     temperature: 0.1,
                 });
@@ -730,7 +793,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
                         { role: 'system', content: 'Sei un assistente AI che verifica dati di eventi. Rispondi SEMPRE con un oggetto JSON valido.' },
                         { role: 'user', content: verificationPrompt }
                     ],
-                    model: 'llama-3.3-70b-versatile',
+                    model: 'openai/gpt-oss-20b',
                     response_format: { type: 'json_object' },
                     temperature: 0.1,
                 });

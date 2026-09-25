@@ -291,12 +291,14 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
     const [confirm, setConfirm] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [previewUrl, setPreviewUrl] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setSuccess('');
+        setPreviewUrl('');
         setLoading(true);
         if (password !== confirm) {
             setError('Le password non coincidono.');
@@ -309,11 +311,12 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
+            const payload = await res.json().catch(() => ({}));
             if (res.ok) {
-                setSuccess('Registrazione completata! Ora puoi accedere.');
-                setTimeout(() => onSuccess(), 1500);
+                setSuccess('Registrazione completata! Controlla la tua email per confermare l\'account, poi accedi.');
+                setPreviewUrl(payload?.verificationPreviewUrl || '');
+                setTimeout(() => onSuccess(), 2500);
             } else {
-                const payload = await res.json().catch(() => ({}));
                 setError(payload?.error || 'Errore durante la registrazione.');
             }
         } catch {
@@ -331,8 +334,13 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
                 </div>
             )}
             {success && (
-                <div className="border border-black/20 bg-black/5 px-4 py-3 text-sm text-black">
-                    {success}
+                <div className="border border-black/20 bg-black/5 px-4 py-3 text-sm text-black space-y-2">
+                    <p>{success}</p>
+                    {previewUrl && (
+                        <a href={previewUrl} className="underline break-all text-xs">
+                            Apri email di conferma (preview locale)
+                        </a>
+                    )}
                 </div>
             )}
             <div>
@@ -352,11 +360,12 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
                 <label className="block text-xs uppercase tracking-[0.1em] font-bold mb-2 text-black">Password</label>
                 <input
                     type="password"
-                    placeholder="••••••••"
+                    placeholder="Minimo 8 caratteri"
                     className={authInputClassName}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
+                    minLength={8}
                     autoComplete="new-password"
                     disabled={loading}
                 />
@@ -370,6 +379,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
                     value={confirm}
                     onChange={e => setConfirm(e.target.value)}
                     required
+                    minLength={8}
                     autoComplete="new-password"
                     disabled={loading}
                 />

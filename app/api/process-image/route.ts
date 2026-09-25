@@ -383,13 +383,13 @@ Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
   "category": "",
   "price": "",
   "sourceUrl": "",
-  "rawText": "${truncatedRawText.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
+  "rawText": ""
 }
 
 IMPORTANTE: 
 - Se un campo (tranne rawText) non è trovato nel testo, usa la stringa "non trovato"
 - NON usare null o undefined
-- Il campo rawText deve essere sempre presente`;
+- NON copiare il testo OCR nel campo rawText: lascialo vuoto`;
 
     console.log('Calling Groq API with model: openai/gpt-oss-20b');
     const groqStartTime = Date.now();
@@ -425,7 +425,13 @@ REGOLE:
       model: 'openai/gpt-oss-20b',
       response_format: { type: 'json_object' },
       temperature: 0.1,
-      max_tokens: 1500,
+      // gpt-oss is a reasoning model: its internal chain-of-thought is billed
+      // against max_tokens too, so 1500 was too low and let it exhaust the
+      // whole budget on reasoning before emitting any JSON (empty
+      // failed_generation, json_validate_failed). reasoning_effort keeps that
+      // overhead small so more of the budget goes to the actual answer.
+      max_tokens: 4000,
+      reasoning_effort: 'low',
     });
 
     const groqDuration = Date.now() - groqStartTime;
@@ -540,6 +546,8 @@ REGOLE:
                 model: 'openai/gpt-oss-20b',
                 response_format: { type: 'json_object' },
                 temperature: 0.1,
+                max_tokens: 2000,
+                reasoning_effort: 'low',
               });
 
               const verifiedJsonStr = verificationCompletion.choices[0]?.message?.content || '';

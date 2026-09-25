@@ -1,3 +1,8 @@
+// Forces this file to be treated as a module (not a global script) so the
+// `declare module` blocks below properly augment next-auth's real types
+// instead of replacing them wholesale.
+export {};
+
 declare module "next-auth" {
   interface User {
     id: string;

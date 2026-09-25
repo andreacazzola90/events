@@ -16,6 +16,11 @@ export default withAuth({
 
 // Protect only routes that require mandatory authentication
 export const config = {
+  // Run on the Node.js runtime (not Edge) so this shares the exact same
+  // process/env resolution as the API routes — on Vercel, NEXTAUTH_SECRET was
+  // not reliably visible to the Edge runtime, causing valid session tokens
+  // (correctly verified by /api/auth/session) to be rejected here.
+  runtime: 'nodejs',
   matcher: [
     '/api/favorites/:path*',  // API to manage favorites (requires login)
     '/account/:path*',        // User profile (requires login)

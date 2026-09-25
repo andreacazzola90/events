@@ -686,7 +686,11 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         model: 'openai/gpt-oss-20b',
         response_format: { type: 'json_object' },
         temperature: 0.1,
-        max_tokens: 1500,
+        // gpt-oss reasoning models bill their internal chain-of-thought against
+        // max_tokens too — 1500 let it exhaust the budget on reasoning before
+        // emitting any JSON (json_validate_failed with empty failed_generation).
+        max_tokens: 4000,
+        reasoning_effort: 'low',
     });
 
     const responseText = completion.choices[0]?.message?.content || '';
@@ -738,6 +742,8 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
                     model: 'openai/gpt-oss-20b',
                     response_format: { type: 'json_object' },
                     temperature: 0.1,
+                    max_tokens: 2000,
+                    reasoning_effort: 'low',
                 });
                 const enrichData = JSON.parse(enrichComp.choices[0]?.message?.content || '{}');
                 if (enrichData.date) event.date = enrichData.date;
@@ -796,6 +802,8 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
                     model: 'openai/gpt-oss-20b',
                     response_format: { type: 'json_object' },
                     temperature: 0.1,
+                    max_tokens: 2000,
+                    reasoning_effort: 'low',
                 });
 
                 const verifiedJsonStr = verificationCompletion.choices[0]?.message?.content || '';

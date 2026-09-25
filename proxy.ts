@@ -6,10 +6,16 @@ import { getToken } from 'next-auth/jwt';
 // secure-cookie/runtime detection that caused valid session tokens (correctly
 // verified by /api/auth/session) to be rejected here on Vercel.
 export default async function proxy(req: NextRequest) {
+  // Deriving "secure" from req.nextUrl.protocol is unreliable behind Vercel's
+  // internal proxying (it can report the internal protocol, not the public
+  // one), causing getToken() to look for the wrong cookie name and always
+  // miss the real `__Secure-next-auth.session-token` cookie. Vercel always
+  // serves over HTTPS, so key off that instead.
+  const secureCookie = !!process.env.VERCEL || req.nextUrl.protocol === 'https:';
   const token = await getToken({
     req,
     secret: process.env.NEXTAUTH_SECRET,
-    secureCookie: req.nextUrl.protocol === 'https:',
+    secureCookie,
   });
 
   if (token) {

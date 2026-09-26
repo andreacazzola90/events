@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { gsap } from "gsap";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { TransitionLink } from "./TransitionLink";
 import { trackSearch } from "../lib/gtm";
@@ -190,9 +191,11 @@ function isDateInRange(date: Date, start: Date, end: Date): boolean {
 }
 
 export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
+  const gridRef = useRef<HTMLDivElement>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -205,17 +208,35 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     useState<QuickDateFilter>("today");
   const [visibleCount, setVisibleCount] = useState(4);
 
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (loading || !grid || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const context = gsap.context(() => {
+      const cards = Array.from(grid.querySelectorAll(".event-card")).slice(0, 12);
+      if (cards.length === 0) return;
+      gsap.fromTo(
+        cards,
+        { y: 18 },
+        { y: 0, duration: 0.48, stagger: 0.035, ease: "power2.out", clearProps: "all" },
+      );
+    }, grid);
+    return () => context.revert();
+  }, [filteredEvents, visibleCount, loading]);
+
   const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
       const response = await fetch(`/api/events?limit=200`, {
         next: { revalidate: 300 },
       });
-      if (response.ok) {
-        const data = await response.json();
-        setEvents(data);
-      }
+      if (!response.ok) throw new Error(`Event request failed: ${response.status}`);
+      const data = await response.json();
+      setEvents(data);
     } catch (error) {
       console.error("Error fetching events:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -246,28 +267,12 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   }, [fetchEvents]);
 
   useEffect(() => {
-    filterEvents();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    events,
-    search,
-    category,
-    dateFrom,
-    dateTo,
-    onlyToday,
-    locationFilter,
-    organizerFilter,
-    quickDateFilter,
-    mode,
-  ]);
-
-  useEffect(() => {
     if (mode === "quick") {
       setVisibleCount(4);
     }
   }, [quickDateFilter, mode]);
 
-  const filterEvents = () => {
+  function filterEvents() {
     if (mode === "quick") {
       const { start, end } = getQuickRange(quickDateFilter);
       const quickFiltered = events
@@ -352,7 +357,22 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     });
 
     setFilteredEvents(filtered);
-  };
+  }
+
+  useEffect(() => {
+    filterEvents();
+  }, [
+    events,
+    search,
+    category,
+    dateFrom,
+    dateTo,
+    onlyToday,
+    locationFilter,
+    organizerFilter,
+    quickDateFilter,
+    mode,
+  ]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -372,11 +392,22 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     return <div className="text-center py-8">Caricamento eventi...</div>;
   }
 
+  if (loadError) {
+    return (
+      <div role="alert" className="border border-black/20 bg-white p-8">
+        <p className="text-black font-semibold">Non riusciamo a caricare gli eventi in questo momento.</p>
+        <button type="button" onClick={fetchEvents} className="industrial-link industrial-link-outline">
+          Riprova <span aria-hidden="true">↗</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {mode === "quick" ? (
-        <div className="bg-white border border-black/10 p-4 sm:p-5">
-          <div className="flex gap-3 overflow-x-auto pb-1" role="group" aria-label="Filtra per periodo">
+        <div className="quick-filters">
+          <div className="flex gap-2 overflow-x-auto" role="group" aria-label="Filtra per periodo">
             {[
               { value: "today" as const, label: "oggi" },
               { value: "tomorrow" as const, label: "domani" },
@@ -387,10 +418,10 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                 key={option.value}
                 onClick={() => setQuickDateFilter(option.value)}
                 aria-pressed={quickDateFilter === option.value}
-                className={`whitespace-nowrap px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${
+                className={`quick-filter whitespace-nowrap px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${
                   quickDateFilter === option.value
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-black/70 border-black/20 hover:text-black"
+                    ? "quick-filter-active"
+                    : ""
                 }`}
               >
                 {option.label}
@@ -513,12 +544,12 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             : filteredEvents;
         const gridClasses =
           mode === "quick"
-            ? "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"
-            : "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6";
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
+            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5";
 
         return (
           <>
-            <div className={gridClasses}>
+            <div ref={gridRef} className={gridClasses}>
               {filteredEvents.length === 0 ? (
                 <div className="col-span-full text-center py-16">
                   <h3 className="text-2xl font-bold text-black mb-2">
@@ -533,7 +564,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   <TransitionLink
                     key={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
+                    className="event-card group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
                   >
                     <div className="relative overflow-hidden">
                       <FavoriteButton

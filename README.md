@@ -18,6 +18,10 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Motion and visual language
+
+The homepage uses an editorial industrial palette and GSAP for its entrance and scroll reveals. Page transitions and event-card entrances also use GSAP; interactive controls use CSS hover and focus states. Motion respects the operating system's `prefers-reduced-motion` setting, and content remains visible before hydration. The event list requires the project's database and Supabase environment configuration to display live events.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

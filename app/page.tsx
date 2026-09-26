@@ -5,18 +5,18 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white text-black">
       <section className="hero-section border-b border-black/10">
-        <div className="editorial-container py-10 md:py-14">
+        <div className="editorial-container py-6 md:py-14">
           <p className="section-kicker mb-3">Alto vicentino</p>
-          <h1 className="section-title max-w-5xl">
+          <h1 className="section-title mobile-density-content max-w-5xl">
             Dove andrai stasera: eventi, concerti, mostre e cose da fare in
             città.
           </h1>
-          <p className="text-base md:text-lg text-black/65 max-w-3xl mb-7">
+          <p className="text-base md:text-lg text-black/65 max-w-3xl mb-5 md:mb-7">
             Una selezione aggiornata ogni giorno con date, posti e link utili.
             Cerca per periodo e salva i tuoi preferiti.
           </p>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 md:gap-3">
             <Link
               href="/tutti-gli-eventi"
               className="inline-flex items-center h-11 px-5 bg-black text-white text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline hover:bg-black/90 hover:text-white focus:text-white active:text-white"
@@ -39,9 +39,9 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="py-10 md:py-14">
+      <section className="py-7 md:py-14">
         <div className="editorial-container">
-          <div className="flex items-end justify-between mb-6 gap-4">
+          <div className="flex items-end justify-between mb-4 md:mb-6 gap-4">
             <div>
               <p className="section-kicker mb-2">Dove andrà EventScanner</p>
               <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-0">
@@ -53,16 +53,16 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mono-divider mb-6"></div>
+          <div className="mono-divider mb-4 md:mb-6"></div>
 
           <div className="animate-fadeInUp">
             <EventList mode="quick" />
           </div>
 
-          <div className="mt-8">
+          <div className="mt-6 md:mt-8">
             <Link
               href="/tutti-gli-eventi"
-              className="inline-flex items-center h-10 px-4 border border-black/25 text-[11px] uppercase tracking-[0.14em] font-bold text-black no-underline hover:no-underline"
+              className="mobile-density-touch-target inline-flex items-center h-11 px-4 border border-black/25 text-[11px] uppercase tracking-[0.14em] font-bold text-black no-underline hover:no-underline"
             >
               Vedi archivio completo
             </Link>
@@ -70,7 +70,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="py-12 border-t border-black/10">
+      <section className="py-8 md:py-12 border-t border-black/10">
         <div className="editorial-container">
           <blockquote className="text-xl md:text-2xl font-semibold tracking-tight max-w-4xl m-0">
             «La vita è così amara, il vino è così dolce; perché dunque non

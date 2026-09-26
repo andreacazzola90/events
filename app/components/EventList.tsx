@@ -373,10 +373,10 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {mode === "quick" ? (
-        <div className="bg-white border border-black/10 p-4 sm:p-5">
-          <div className="flex gap-3 overflow-x-auto pb-1" role="group" aria-label="Filtra per periodo">
+        <div className="bg-white border border-black/10 p-3 sm:p-5">
+          <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-1" role="group" aria-label="Filtra per periodo">
             {[
               { value: "today" as const, label: "oggi" },
               { value: "tomorrow" as const, label: "domani" },
@@ -387,7 +387,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                 key={option.value}
                 onClick={() => setQuickDateFilter(option.value)}
                 aria-pressed={quickDateFilter === option.value}
-                className={`whitespace-nowrap px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${
+                className={`mobile-density-touch-target whitespace-nowrap px-3 sm:px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${
                   quickDateFilter === option.value
                     ? "bg-black text-white border-black"
                     : "bg-white text-black/70 border-black/20 hover:text-black"
@@ -419,28 +419,28 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
 
           <div
             id="event-filters-panel"
-            className={`${filtersOpen ? "block" : "hidden"} lg:block p-4 lg:p-5`}
+            className={`${filtersOpen ? "block" : "hidden"} lg:block p-3 sm:p-4 lg:p-5`}
           >
             <form
-              className="flex flex-col lg:flex-row gap-4 items-center"
+              className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-center"
               onSubmit={(e) => {
                 e.preventDefault();
               }}
             >
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 w-full">
                 <input
                   type="text"
                   placeholder="Cerca eventi..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   aria-label="Cerca eventi"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
+                  className="mobile-density-touch-target bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
                 />
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   aria-label="Filtra per categoria"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black appearance-none"
+                  className="mobile-density-touch-target bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black appearance-none"
                 >
                   <option value="" className="bg-white text-black">
                     Tutte le Categorie
@@ -461,7 +461,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   onChange={(e) => setDateFrom(e.target.value)}
                   aria-label="Data di inizio"
                   min={new Date().toISOString().slice(0, 10)}
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
+                  className="mobile-density-touch-target bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                   disabled={onlyToday}
                 />
                 <input
@@ -469,7 +469,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
                   aria-label="Data di fine"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
+                  className="mobile-density-touch-target bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
                   disabled={onlyToday}
                 />
                 <input
@@ -478,7 +478,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   value={locationFilter}
                   onChange={(e) => setLocationFilter(e.target.value)}
                   aria-label="Filtra per luogo"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
+                  className="mobile-density-touch-target bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
                 />
                 <input
                   type="text"
@@ -486,7 +486,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   value={organizerFilter}
                   onChange={(e) => setOrganizerFilter(e.target.value)}
                   aria-label="Filtra per organizzatore"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
+                  className="mobile-density-touch-target bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
                 />
               </div>
 
@@ -513,8 +513,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             : filteredEvents;
         const gridClasses =
           mode === "quick"
-            ? "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"
-            : "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6";
+            ? "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6"
+            : "stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6";
 
         return (
           <>
@@ -533,7 +533,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   <TransitionLink
                     key={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
+                    className="event-density-card group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
                   >
                     <div className="relative overflow-hidden">
                       <FavoriteButton
@@ -553,11 +553,11 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                           alt={event.title}
                           width={600}
                           height={400}
-                          className="w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105"
+                          className="w-full h-40 sm:h-48 object-cover transition-transform duration-500 group-hover:scale-105"
                           sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                         />
                       ) : (
-                        <div className="w-full h-48 bg-black/5 flex items-center justify-center">
+                        <div className="w-full h-40 sm:h-48 bg-black/5 flex items-center justify-center">
                           <div className="text-sm uppercase tracking-[0.12em] text-black/40 font-bold">
                             No image
                           </div>
@@ -576,17 +576,17 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                       })()}
                     </div>
 
-                    <div className="p-4 space-y-3">
-                      <div className="space-y-2">
-                        <h3 className="text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
+                    <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+                      <div className="space-y-1.5 sm:space-y-2">
+                        <h3 className="mobile-density-content text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
                           {cleanText(event.title)}
                         </h3>
-                        <p className="text-black/60 text-sm line-clamp-2">
+                        <p className="mobile-density-content text-black/60 text-sm line-clamp-2">
                           {cleanText(event.description)}
                         </p>
                       </div>
 
-                      <div className="space-y-1 text-sm border-t border-black/10 pt-3">
+                      <div className="space-y-1 text-sm border-t border-black/10 pt-2 sm:pt-3">
                         <div className="flex items-center gap-2 text-black/80">
                           <span className="w-4">•</span>
                           <span>
@@ -612,14 +612,14 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                         {event.location && (
                           <div className="flex items-center gap-2 text-black/80">
                             <span className="w-4 shrink-0">•</span>
-                            <span className="truncate">{event.location}</span>
+                            <span className="mobile-density-content truncate">{event.location}</span>
                           </div>
                         )}
 
                         {event.organizer && (
                           <div className="flex items-center gap-2 text-black/80">
                             <span className="w-4 shrink-0">•</span>
-                            <span className="truncate">{event.organizer}</span>
+                            <span className="mobile-density-content truncate">{event.organizer}</span>
                           </div>
                         )}
                       </div>

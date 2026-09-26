@@ -109,7 +109,7 @@ export default function Header() {
           </div>
 
           <button
-            className="md:hidden inline-flex items-center justify-center w-10 h-10 border border-black/20 text-black"
+            className="mobile-density-touch-target md:hidden inline-flex items-center justify-center w-11 h-11 border border-black/20 text-black"
             onClick={() => setMobileOpen((v) => !v)}
             aria-label={mobileOpen ? "Chiudi menu" : "Apri menu"}
             aria-expanded={mobileOpen}
@@ -122,12 +122,12 @@ export default function Header() {
 
       {mobileOpen && (
         <div id="mobile-menu" className="md:hidden fixed inset-0 z-100 bg-white pt-16" role="dialog" aria-modal="true" aria-label="Menu di navigazione">
-          <div className="editorial-container py-6 border-b border-black/10 flex justify-between items-center">
+          <div className="editorial-container py-3 border-b border-black/10 flex justify-between items-center">
             <span className="text-sm font-black uppercase tracking-[0.15em]">
               Menu
             </span>
             <button
-              className="w-10 h-10 border border-black/20 text-black"
+              className="mobile-density-touch-target w-11 h-11 border border-black/20 text-black"
               onClick={() => setMobileOpen(false)}
               aria-label="Chiudi menu"
             >
@@ -135,7 +135,7 @@ export default function Header() {
             </button>
           </div>
 
-          <nav className="editorial-container py-8 flex flex-col gap-6" aria-label="Navigazione mobile">
+          <nav className="editorial-container py-4 flex flex-col gap-2" aria-label="Navigazione mobile">
             {navLinks.map((link) => {
               const isActive =
                 pathname === link.href ||
@@ -145,10 +145,10 @@ export default function Header() {
                   key={link.href}
                   href={link.href}
                   aria-current={isActive ? "page" : undefined}
-                  className={`text-2xl font-black uppercase tracking-tight no-underline hover:no-underline ${
+                  className={`mobile-density-touch-target inline-flex items-center text-xl font-black uppercase tracking-tight no-underline hover:no-underline ${
                     isActive
                       ? "bg-black text-white px-3 py-2 w-fit"
-                      : "text-black/50 hover:text-black"
+                      : "text-black/50 hover:text-black px-3"
                   }`}
                   onClick={() => setMobileOpen(false)}
                 >
@@ -159,7 +159,7 @@ export default function Header() {
 
             <TransitionLink
               href="/estensione"
-              className="mt-2 inline-flex items-center justify-center gap-2 h-11 border border-black/20 text-black text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
+              className="mobile-density-touch-target mt-1 inline-flex items-center justify-center gap-2 h-11 border border-black/20 text-black text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
               onClick={() => setMobileOpen(false)}
             >
               <svg
@@ -194,7 +194,7 @@ export default function Header() {
 
             <TransitionLink
               href="/crea"
-              className="mt-2 inline-flex items-center justify-center h-12 border border-black bg-black text-white text-sm uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
+              className="mobile-density-touch-target mt-1 inline-flex items-center justify-center h-12 border border-black bg-black text-white text-sm uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
               onClick={() => setMobileOpen(false)}
             >
               Crea evento

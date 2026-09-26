@@ -104,20 +104,20 @@ export default function TuttiGliEventiPage() {
   }, [monthDate]);
 
   return (
-    <main className="min-h-screen py-12">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+    <main className="min-h-screen py-6 sm:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="mb-6 sm:mb-12">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4">
             Calendario Eventi
           </h1>
-          <p className="text-xl text-gray-400">
+          <p className="text-lg sm:text-xl text-gray-400">
             Vista mensile con eventi organizzati per data.
           </p>
         </div>
 
         <div className="animate-fadeInUp">
-          <section className="border border-black/10 bg-white p-4 md:p-6">
-            <div className="flex items-center justify-between mb-4">
+          <section className="border border-black/10 bg-white p-3 sm:p-4 md:p-6">
+            <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
               <button
                 type="button"
                 onClick={() =>
@@ -127,11 +127,12 @@ export default function TuttiGliEventiPage() {
                   )
                 }
                 aria-label="Mese precedente"
-                className="px-3 py-2 border border-black/20 text-sm hover:bg-black hover:text-white transition-colors"
+                className="mobile-density-touch-target inline-flex w-11 shrink-0 items-center justify-center border border-black/20 text-sm hover:bg-black hover:text-white transition-colors sm:w-auto sm:px-3 sm:py-2"
               >
-                Mese precedente
+                <span className="sm:hidden" aria-hidden="true">‹</span>
+                <span className="hidden sm:inline">Mese precedente</span>
               </button>
-              <h2 className="text-xl md:text-2xl font-bold capitalize">
+              <h2 className="mobile-density-content mb-0 text-center text-base sm:text-xl md:text-2xl font-bold capitalize">
                 {monthLabel}
               </h2>
               <button
@@ -143,15 +144,16 @@ export default function TuttiGliEventiPage() {
                   )
                 }
                 aria-label="Mese successivo"
-                className="px-3 py-2 border border-black/20 text-sm hover:bg-black hover:text-white transition-colors"
+                className="mobile-density-touch-target inline-flex w-11 shrink-0 items-center justify-center border border-black/20 text-sm hover:bg-black hover:text-white transition-colors sm:w-auto sm:px-3 sm:py-2"
               >
-                Mese successivo
+                <span className="sm:hidden" aria-hidden="true">›</span>
+                <span className="hidden sm:inline">Mese successivo</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-7 text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2" role="row">
+            <div className="grid grid-cols-7 text-[10px] sm:text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2" role="row">
               {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => (
-                <div key={d} className="p-2" role="columnheader" aria-label={d}>
+                <div key={d} className="px-0.5 py-1 sm:p-2 text-center" role="columnheader" aria-label={d}>
                   {d}
                 </div>
               ))}
@@ -163,7 +165,7 @@ export default function TuttiGliEventiPage() {
                   return (
                     <div
                       key={cell.key}
-                      className="min-h-28 border border-transparent"
+                      className="min-h-[5.5rem] sm:min-h-28 border border-transparent"
                     />
                   );
                 }
@@ -175,14 +177,14 @@ export default function TuttiGliEventiPage() {
                 return (
                   <div
                     key={key}
-                    className={`min-h-28 p-1.5 border text-left flex flex-col ${
+                    className={`min-h-[5.5rem] p-1 sm:min-h-28 sm:p-1.5 border text-left flex flex-col ${
                       hasEvents
                         ? "border-black/20 bg-white"
                         : "border-black/8 bg-white/60"
                     }`}
                   >
                     <div
-                      className={`text-sm font-bold mb-1 ${
+                      className={`text-xs sm:text-sm font-bold mb-1 ${
                         hasEvents ? "text-black" : "text-black/40"
                       }`}
                     >
@@ -191,12 +193,12 @@ export default function TuttiGliEventiPage() {
                     {loading && hasEvents && (
                       <div className="text-[10px] text-black/40">...</div>
                     )}
-                    <div className="flex flex-col gap-0.5 overflow-hidden">
+                    <div className="flex flex-col gap-0.5">
                       {dayEvents.slice(0, 3).map((event) => (
                         <TransitionLink
                           key={event.id}
                           href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                          className="block text-[10px] leading-tight px-1 py-0.5 bg-black text-white truncate hover:bg-black/70 transition-colors no-underline"
+                          className="mobile-density-content mobile-density-touch-target flex min-w-0 items-center text-[9px] sm:text-[10px] leading-tight px-0.5 sm:px-1 py-0.5 bg-black text-white truncate hover:bg-black/70 transition-colors no-underline sm:min-h-0"
                           title={event.title}
                         >
                           {event.time ? `${event.time} ` : ""}
@@ -204,7 +206,7 @@ export default function TuttiGliEventiPage() {
                         </TransitionLink>
                       ))}
                       {dayEvents.length > 3 && (
-                        <div className="text-[10px] text-black/50 px-1">
+                        <div className="mobile-density-content text-[10px] text-black/50 px-1">
                           +{dayEvents.length - 3} altri
                         </div>
                       )}

@@ -719,3 +719,14 @@ button {
     padding-bottom: max(env(safe-area-inset-bottom), 1rem);
   }
 }
+
+@media (max-width: 639px) {
+  .mobile-density-content {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-density-touch-target {
+    min-height: 44px;
+  }
+}

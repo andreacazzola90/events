@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
+import { groupEventsByScanOriginAndDate } from "../../lib/event-scan-groups";
 import type { DbEvent } from "../types/event";
 
-type UserEvent = DbEvent;
+type UserEvent = Omit<DbEvent, "createdAt"> & {
+  createdAt: Date | string;
+};
 type AccountTab =
   | "profile"
   | "password"
@@ -51,12 +54,6 @@ export default function AccountPage() {
     }
   }, [status, router]);
 
-  useEffect(() => {
-    if (session) {
-      fetchUserEvents();
-    }
-  }, [session]);
-
   const fetchUserEvents = async () => {
     try {
       const userData = session?.user as any;
@@ -93,6 +90,12 @@ export default function AccountPage() {
     }
   };
 
+  useEffect(() => {
+    if (session) {
+      fetchUserEvents();
+    }
+  }, [session]);
+
   const handleLogout = async () => {
     await signOut({ redirect: false });
     router.push("/");
@@ -102,6 +105,15 @@ export default function AccountPage() {
     (session?.user as any)?.role === "admin" ||
     (session?.user as any)?.type === "admin" ||
     session?.user?.email === "andreacazzola90@gmail.com";
+  const isAdminEventsView =
+    isAdmin ||
+    (session?.user?.email ?? "")
+      .toLowerCase()
+      .startsWith("andreacazzola90@");
+  const scanOriginGroups = groupEventsByScanOriginAndDate(
+    userEvents,
+    isAdminEventsView,
+  );
 
   useEffect(() => {
     if (!isAdmin && activeTab === "admin") {
@@ -631,86 +643,96 @@ export default function AccountPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {userEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="card bg-base-100/5 border border-base-200/40 cursor-pointer group hover:border-primary/60 hover:shadow-xl transition-all duration-300"
-                  onClick={() =>
-                    router.push(
-                      `/events/${generateUniqueSlug(event.title, event.id)}`,
-                    )
-                  }
-                >
-                  {/* Event Image */}
-                  <div className="relative overflow-hidden">
-                    {event.imageUrl ? (
-                      <Image
-                        src={
-                          event.imageUrl.startsWith("/uploads/")
-                            ? event.imageUrl
-                            : event.imageUrl
-                        }
-                        alt={event.title}
-                        width={600}
-                        height={400}
-                        className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
-                        sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                      />
-                    ) : (
-                      <div className="w-full h-40 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
-                        <div className="text-4xl opacity-50">🎵</div>
-                      </div>
-                    )}
+            <div className="space-y-10">
+              {scanOriginGroups.map((originGroup) => (
+                <section key={originGroup.origin} className="space-y-6">
+                  <h3 className="text-2xl font-bold text-white">
+                    {originGroup.label}
+                  </h3>
+                  {originGroup.days.map((dayGroup) => (
+                    <div key={`${originGroup.origin}-${dayGroup.key ?? "invalid"}`} className="space-y-4">
+                      <h4 className="text-lg font-semibold text-gray-200">
+                        {dayGroup.label}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {dayGroup.events.map((event) => (
+                          <div
+                            key={event.id}
+                            className="card bg-base-100/5 border border-base-200/40 cursor-pointer group hover:border-primary/60 hover:shadow-xl transition-all duration-300"
+                            onClick={() =>
+                              router.push(
+                                `/events/${generateUniqueSlug(event.title, event.id)}`,
+                              )
+                            }
+                          >
+                            <div className="relative overflow-hidden">
+                              {event.imageUrl ? (
+                                <Image
+                                  src={event.imageUrl}
+                                  alt={event.title}
+                                  width={600}
+                                  height={400}
+                                  className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
+                                  sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                                />
+                              ) : (
+                                <div className="w-full h-40 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
+                                  <div className="text-4xl opacity-50">🎵</div>
+                                </div>
+                              )}
 
-                    {/* Owner Badge */}
-                    <div className="badge badge-success absolute top-3 right-3 text-xs font-semibold">
-                      YOURS
+                              <div className="badge badge-success absolute top-3 right-3 text-xs font-semibold">
+                                {event.origin === "user"
+                                  ? isAdminEventsView ? "UTENTE" : "TU"
+                                  : "CRON"}
+                              </div>
+                            </div>
+
+                            <div className="p-5 space-y-3">
+                              <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
+                                {event.title}
+                              </h3>
+                              <p className="text-gray-400 text-sm line-clamp-2">
+                                {event.description}
+                              </p>
+
+                              <div className="space-y-1 text-sm text-gray-300">
+                                <div className="flex items-center gap-2">
+                                  <span>📅</span>
+                                  <span>
+                                    {event.date} • {event.time}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 line-clamp-1">
+                                  <span>📍</span>
+                                  <span className="truncate">{event.location}</span>
+                                </div>
+                                {event.category && (
+                                  <div className="flex items-center gap-2">
+                                    <span>🏷️</span>
+                                    <span>{event.category}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(
+                                    `/events/${generateUniqueSlug(event.title, event.id)}/edit`,
+                                  );
+                                }}
+                                className="btn btn-outline btn-primary w-full mt-4"
+                              >
+                                ✏️ Edit Event
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Event Details */}
-                  <div className="p-5 space-y-3">
-                    <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
-                      {event.title}
-                    </h3>
-                    <p className="text-gray-400 text-sm line-clamp-2">
-                      {event.description}
-                    </p>
-
-                    <div className="space-y-1 text-sm text-gray-300">
-                      <div className="flex items-center gap-2">
-                        <span>📅</span>
-                        <span>
-                          {event.date} • {event.time}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 line-clamp-1">
-                        <span>📍</span>
-                        <span className="truncate">{event.location}</span>
-                      </div>
-                      {event.category && (
-                        <div className="flex items-center gap-2">
-                          <span>🏷️</span>
-                          <span>{event.category}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(
-                          `/events/${generateUniqueSlug(event.title, event.id)}/edit`,
-                        );
-                      }}
-                      className="btn btn-outline btn-primary w-full mt-4"
-                    >
-                      ✏️ Edit Event
-                    </button>
-                  </div>
-                </div>
+                  ))}
+                </section>
               ))}
             </div>
           )}

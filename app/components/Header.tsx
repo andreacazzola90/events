@@ -30,14 +30,14 @@ export default function Header() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 border-b border-black/10 backdrop-blur-sm">
+      <header className="site-header fixed top-0 left-0 right-0 z-50 border-b border-black/10">
         <div className="editorial-container h-16 flex items-center justify-between gap-6">
           <TransitionLink
             href="/"
-            className="flex items-baseline gap-2 no-underline hover:no-underline"
+            className="site-brand flex items-baseline gap-2 no-underline hover:no-underline"
           >
             <span className="text-xl font-black tracking-tight text-black uppercase">
-              EventScanner
+              Event<span className="site-brand-accent">/</span>Scanner
             </span>
           </TransitionLink>
 
@@ -51,9 +51,9 @@ export default function Header() {
                   key={link.href}
                   href={link.href}
                   aria-current={isActive ? "page" : undefined}
-                  className={`text-[13px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${
+                  className={`site-nav-link text-[11px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${
                     isActive
-                      ? "bg-black text-white px-2 py-1"
+                      ? "site-nav-active text-black"
                       : "text-black/55 hover:text-black"
                   }`}
                 >
@@ -102,9 +102,9 @@ export default function Header() {
             </TransitionLink>
             <TransitionLink
               href="/crea"
-              className="inline-flex items-center px-4 py-2 border border-black text-black text-xs uppercase tracking-[0.14em] font-bold hover:bg-black hover:text-white transition-colors no-underline hover:no-underline"
+              className="industrial-link industrial-link-primary no-underline hover:no-underline"
             >
-              Crea evento
+              Crea evento <span aria-hidden="true">↗</span>
             </TransitionLink>
           </div>
 

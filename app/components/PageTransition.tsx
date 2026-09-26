@@ -1,7 +1,8 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { gsap } from 'gsap';
 
 interface PageTransitionProps {
     children: ReactNode;
@@ -10,13 +11,19 @@ interface PageTransitionProps {
 
 export function PageTransition({ children, className = '' }: PageTransitionProps) {
     const pathname = usePathname();
-    const [visible, setVisible] = useState(false);
+    const container = useRef<HTMLDivElement>(null);
 
-    // Fade in on mount and on pathname change
     useEffect(() => {
-        setVisible(false);
-        const t = requestAnimationFrame(() => setVisible(true));
-        return () => cancelAnimationFrame(t);
+        const element = container.current;
+        if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+        const context = gsap.context(() => {
+            gsap.fromTo(element,
+                { y: 12 },
+                { y: 0, duration: 0.45, ease: 'power2.out', clearProps: 'all' }
+            );
+        }, element);
+        return () => context.revert();
     }, [pathname]);
 
     // Scroll to top on route change
@@ -26,8 +33,8 @@ export function PageTransition({ children, className = '' }: PageTransitionProps
 
     return (
         <div
-            className={`transition-opacity duration-300 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'} ${className}`}
-            style={{ willChange: 'opacity' }}
+            ref={container}
+            className={className}
         >
             {children}
         </div>

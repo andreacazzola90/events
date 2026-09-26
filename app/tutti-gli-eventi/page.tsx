@@ -104,13 +104,14 @@ export default function TuttiGliEventiPage() {
   }, [monthDate]);
 
   return (
-    <main className="min-h-screen py-12">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            Calendario Eventi
+    <main className="min-h-screen py-12 md:py-20">
+      <div className="editorial-container">
+        <div className="mb-12 page-heading">
+          <p className="section-kicker">02 / Le date</p>
+          <h1 className="text-5xl md:text-7xl font-black mb-4 uppercase tracking-tight">
+            Calendario<span className="site-brand-accent">.</span>
           </h1>
-          <p className="text-xl text-gray-400">
+          <p className="text-base text-black/60">
             Vista mensile con eventi organizzati per data.
           </p>
         </div>

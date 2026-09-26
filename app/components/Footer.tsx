@@ -20,7 +20,7 @@ export default function Footer() {
   ];
 
   return (
-    <footer className="bg-white border-t border-black/10 py-12">
+    <footer className="site-footer border-t border-black/10 py-12">
       <div className="editorial-container">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 pb-10 border-b border-black/10">
           <div>
@@ -29,11 +29,11 @@ export default function Footer() {
               className="inline-block no-underline hover:no-underline mb-3"
             >
               <span className="text-2xl font-black uppercase tracking-tight text-black">
-                EventScanner
+                Event<span className="site-brand-accent">/</span>Scanner
               </span>
             </TransitionLink>
             <p className="text-black/60 text-sm leading-relaxed max-w-sm">
-              Eventi, luoghi e uscite nel Alto vicentino. Aggiornamenti
+              Eventi, luoghi e uscite nell&apos;Alto Vicentino. Aggiornamenti
               quotidiani per capire dove andare e cosa fare.
             </p>
           </div>

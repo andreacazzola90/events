@@ -8,6 +8,7 @@ import FavoriteButton from '../../components/FavoriteButton';
 import { notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
+import SaveToCalendarButton from './SaveToCalendarButton';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
@@ -157,6 +158,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
         isAdmin ||
         (!Number.isNaN(sessionUserId) && event.createdById === sessionUserId);
 
+    const calendarEmail = Number.isNaN(sessionUserId)
+        ? null
+        : (await prisma.user.findUnique({
+            where: { id: sessionUserId },
+            select: { calendarEmail: true },
+        }))?.calendarEmail ?? null;
+
     const sameDayEvents = await getSameDayEvents(event.date, event.id);
     const similarEvents = await getSimilarEvents(event);
 
@@ -198,13 +206,18 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                 <div className="space-y-8">
                                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                                         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-text bg-clip-text text-transparent leading-tight">{event.title}</h1>
-                                        {canEdit && (
-                                            <TransitionLink
-                                                href={`/events/${slug}/edit`}
-                                                className="inline-flex items-center justify-center px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-secondary via-accent to-primary text-white hover:shadow-lg transition-all no-underline hover:no-underline whitespace-nowrap"
-                                            >
-                                                ✏️ Modifica
-                                            </TransitionLink>
+                                        {(canEdit || calendarEmail) && (
+                                            <div className="flex flex-wrap gap-3">
+                                                {calendarEmail && <SaveToCalendarButton eventId={event.id} />}
+                                                {canEdit && (
+                                                    <TransitionLink
+                                                        href={`/events/${slug}/edit`}
+                                                        className="inline-flex items-center justify-center px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-secondary via-accent to-primary text-white hover:shadow-lg transition-all no-underline hover:no-underline whitespace-nowrap"
+                                                    >
+                                                        ✏️ Modifica
+                                                    </TransitionLink>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
 

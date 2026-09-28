@@ -39,6 +39,7 @@ model User {
   role            String     @default("user")
   type            String     @default("user")
   emailVerifiedAt DateTime?
+  calendarEmail   String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   createdEvents   Event[]

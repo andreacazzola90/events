@@ -47,6 +47,50 @@ export default function AccountPage() {
     text: string;
   } | null>(null);
   const [activeTab, setActiveTab] = useState<AccountTab>("profile");
+  const [calendarEmail, setCalendarEmail] = useState("");
+  const [savingCalendarEmail, setSavingCalendarEmail] = useState(false);
+  const [calendarEmailLoaded, setCalendarEmailLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!session) return;
+    fetch("/api/account/calendar-email")
+      .then((res) => {
+        if (!res.ok) throw new Error("load failed");
+        return res.json();
+      })
+      .then((data) => {
+        setCalendarEmail(data?.calendarEmail || "");
+        setCalendarEmailLoaded(true);
+      })
+      .catch(() => toast.error("Impossibile caricare l'email calendario"));
+  }, [session]);
+
+  const handleSaveCalendarEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCalendarEmail(true);
+    try {
+      const res = await fetch("/api/account/calendar-email", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ calendarEmail }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload?.error || "Errore durante il salvataggio dell'email calendario");
+        return;
+      }
+      setCalendarEmail(payload.calendarEmail || "");
+      toast.success(
+        payload.calendarEmail
+          ? "Email calendario salvata"
+          : "Email calendario rimossa",
+      );
+    } catch {
+      toast.error("Problema di connessione, riprova.");
+    } finally {
+      setSavingCalendarEmail(false);
+    }
+  };
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -538,6 +582,41 @@ export default function AccountPage() {
                 </button>
               </div>
             </div>
+
+            <form
+              onSubmit={handleSaveCalendarEmail}
+              className="mt-10 border-t border-white/20 pt-8 space-y-3"
+            >
+              <label className="block space-y-2" htmlFor="calendar-email">
+                <span className="text-white font-semibold text-lg flex items-center gap-2">
+                  📅 Add to calendar
+                </span>
+                <span className="block text-gray-400 text-sm">
+                  Inserisci l&apos;email a cui inviare gli eventi da salvare nel tuo calendario.
+                  Se impostata, nella pagina di ogni evento comparirà il pulsante &quot;Salva nel calendario&quot;.
+                  Lascia vuoto per disattivare.
+                </span>
+              </label>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  id="calendar-email"
+                  type="email"
+                  value={calendarEmail}
+                  onChange={(e) => setCalendarEmail(e.target.value)}
+                  className="flex-1 rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
+                  placeholder="nome@esempio.it"
+                  autoComplete="email"
+                  maxLength={254}
+                />
+                <button
+                  type="submit"
+                  disabled={savingCalendarEmail || !calendarEmailLoaded}
+                  className="btn btn-primary"
+                >
+                  {savingCalendarEmail ? "Salvataggio..." : "Salva"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </section>

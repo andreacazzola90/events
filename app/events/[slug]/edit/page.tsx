@@ -55,18 +55,6 @@ export default function EditEventPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (params && params.slug) {
-      const eventId = extractIdFromSlug(params.slug as string);
-      if (eventId) {
-        fetchEvent(eventId);
-      } else {
-        setError("Invalid event URL");
-        setLoading(false);
-      }
-    }
-  }, [params?.slug]);
-
   const fetchEvent = async (eventId: number) => {
     try {
       const response = await fetch(`/api/events/${eventId}`);
@@ -84,6 +72,18 @@ export default function EditEventPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (params && params.slug) {
+      const eventId = extractIdFromSlug(params.slug as string);
+      if (eventId) {
+        fetchEvent(eventId);
+      } else {
+        setError("Invalid event URL");
+        setLoading(false);
+      }
+    }
+  }, [params?.slug]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,

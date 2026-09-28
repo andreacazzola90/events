@@ -35,3 +35,10 @@ export function extractIdFromSlug(slug: string): number | null {
 export function getDisplaySlug(title: string): string {
   return titleToSlug(title);
 }
+
+export function getPrimaryLocationToken(location?: string | null): string {
+  if (typeof location !== 'string') return '';
+  const normalized = location.trim();
+  if (!normalized) return '';
+  return normalized.split(',')[0].trim();
+}

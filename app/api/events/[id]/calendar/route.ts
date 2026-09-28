@@ -25,11 +25,29 @@ export async function POST(
         return NextResponse.json({ error: "ID evento non valido" }, { status: 400 });
       }
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { calendarEmail: true },
-      });
-      if (!user?.calendarEmail) {
+      let calendarEmail: string | null = null;
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { calendarEmail: true },
+        });
+        calendarEmail = user?.calendarEmail ?? null;
+      } catch (error: any) {
+        const message = String(error?.message || "");
+        if (
+          error?.code === "P2022" ||
+          error?.code === "P2021" ||
+          message.includes("calendarEmail") ||
+          message.includes("does not exist") ||
+          message.includes("column")
+        ) {
+          calendarEmail = null;
+        } else {
+          throw error;
+        }
+      }
+
+      if (!calendarEmail) {
         return NextResponse.json(
           { error: "Imposta un'email calendario nel tuo profilo" },
           { status: 400 },
@@ -57,7 +75,7 @@ export async function POST(
       const when = [event.date, event.time].filter(Boolean).join(" ");
       await transporter.sendMail({
         from: getMailFrom(),
-        to: user.calendarEmail,
+        to: calendarEmail,
         subject: `📅 ${event.title}`,
         text: `${event.title}\n${when}\n${event.location || ""}\n\nApri l'allegato per salvare l'evento nel tuo calendario.\n${eventUrl}`,
         html: `
@@ -75,7 +93,7 @@ export async function POST(
         },
       });
 
-      return NextResponse.json({ ok: true, sentTo: user.calendarEmail });
+      return NextResponse.json({ ok: true, sentTo: calendarEmail });
     } catch (error) {
       console.error("[API /events/[id]/calendar POST] Error:", error);
       return NextResponse.json(

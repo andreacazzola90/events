@@ -5,14 +5,28 @@ import { normalizeCalendarEmail } from "../../../../lib/calendar-ics";
 
 export async function GET() {
   return withAuth(async (userId) => {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { calendarEmail: true },
-    });
-    if (!user) {
-      return NextResponse.json({ error: "Utente non trovato" }, { status: 404 });
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { calendarEmail: true },
+      });
+      if (!user) {
+        return NextResponse.json({ error: "Utente non trovato" }, { status: 404 });
+      }
+      return NextResponse.json({ calendarEmail: user.calendarEmail });
+    } catch (error: any) {
+      const message = String(error?.message || "");
+      if (
+        error?.code === "P2022" ||
+        error?.code === "P2021" ||
+        message.includes("calendarEmail") ||
+        message.includes("does not exist") ||
+        message.includes("column")
+      ) {
+        return NextResponse.json({ calendarEmail: null });
+      }
+      throw error;
     }
-    return NextResponse.json({ calendarEmail: user.calendarEmail });
   });
 }
 

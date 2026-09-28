@@ -192,7 +192,6 @@ export default function AccountPage() {
       } catch { /* ignora */ }
     };
     checkStatus();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
   // Polling: mentre un cron è in esecuzione controlla ogni 5s se è terminato

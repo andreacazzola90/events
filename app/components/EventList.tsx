@@ -190,8 +190,16 @@ function isDateInRange(date: Date, start: Date, end: Date): boolean {
   return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
 }
 
+function formatApiDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   const gridRef = useRef<HTMLDivElement>(null);
+  const hasLoadedEventsRef = useRef(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,26 +233,34 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   }, [filteredEvents, visibleCount, loading]);
 
   const fetchEvents = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedEventsRef.current) setLoading(true);
     setLoadError(false);
     try {
-      const response = await fetch(`/api/events?limit=200`, {
-        next: { revalidate: 300 },
-      });
+      const params = new URLSearchParams({ limit: "200" });
+      if (mode === "quick") {
+        const { start, end } = getQuickRange(quickDateFilter);
+        params.set("dateFrom", formatApiDate(start));
+        params.set("dateTo", formatApiDate(end));
+      }
+
+      const response = await fetch(`/api/events?${params.toString()}`);
       if (!response.ok) throw new Error(`Event request failed: ${response.status}`);
       const data = await response.json();
-      setEvents(data);
+      setEvents(Array.isArray(data) ? data : []);
+      hasLoadedEventsRef.current = true;
     } catch (error) {
       console.error("Error fetching events:", error);
       setLoadError(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode, quickDateFilter]);
 
   useEffect(() => {
     fetchEvents();
+  }, [fetchEvents]);
 
+  useEffect(() => {
     // Carica i preferiti iniziali per l'utente loggato (se presente)
     const fetchFavorites = async () => {
       try {
@@ -264,7 +280,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     if (refresh) {
       window.history.replaceState({}, "", "/");
     }
-  }, [fetchEvents]);
+  }, []);
 
   useEffect(() => {
     if (mode === "quick") {

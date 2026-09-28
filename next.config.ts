@@ -6,6 +6,8 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 const imagesConfig = {
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24,
     remotePatterns: [
       // Supabase bucket host (se configurato)
       ...(supabaseHostname

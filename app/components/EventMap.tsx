@@ -157,14 +157,7 @@ export default function EventMap() {
   const fetchEventsWithCoordinates = async () => {
     try {
       setLoading(true);
-      // Fetch events with cache busting
-      const timestamp = Date.now();
-      const response = await fetch(`/api/events?_t=${timestamp}`, {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      });
+      const response = await fetch("/api/events");
       if (!response.ok) throw new Error("Failed to fetch events");
 
       const eventsData = await response.json();

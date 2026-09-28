@@ -134,7 +134,8 @@ Example 409 response:
   - userId
 - Behavior:
   - query cached with Next unstable_cache + tag events-list
-  - coordinate backfill for events without lat/lon
+  - public listings use short shared CDN caching; user-scoped listings are private and never shared-cacheable
+  - coordinates are resolved when an event is created, not during list reads
   - global response dedupe if userId is not set
 
 Example request:

@@ -1,5 +1,21 @@
 export const releaseNotes = [
   {
+    version: "0.3.2",
+    date: "28 settembre 2026",
+    title: "Caricamento più rapido delle pagine",
+    groups: [
+      {
+        label: "Performance",
+        items: [
+          "Rimosso il geocoding remoto dal caricamento delle liste: gli eventi vengono geocodificati quando sono creati.",
+          "La home richiede al server solo gli eventi dell'intervallo selezionato, invece di scaricare l'intera lista per filtrarli nel browser.",
+          "La mappa riutilizza la cache CDN degli eventi e non forza più richieste uniche a ogni apertura.",
+          "Abilitati AVIF e WebP e una cache di 24 ore per le immagini ottimizzate.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.3.1",
     date: "28 settembre 2026",
     title: "Condivisione immagini da altre app",

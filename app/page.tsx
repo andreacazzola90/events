@@ -1,86 +1,82 @@
 import EventList from "./components/EventList";
 import Link from "next/link";
+import HomeMotion from "./components/HomeMotion";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white text-black">
-      <section className="hero-section border-b border-black/10">
-        <div className="editorial-container py-10 md:py-14">
-          <p className="section-kicker mb-3">Alto vicentino</p>
-          <h1 className="section-title max-w-5xl">
-            Dove andrai stasera: eventi, concerti, mostre e cose da fare in
-            città.
-          </h1>
-          <p className="text-base md:text-lg text-black/65 max-w-3xl mb-7">
-            Una selezione aggiornata ogni giorno con date, posti e link utili.
-            Cerca per periodo e salva i tuoi preferiti.
-          </p>
-
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/tutti-gli-eventi"
-              className="inline-flex items-center h-11 px-5 bg-black text-white text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline hover:bg-black/90 hover:text-white focus:text-white active:text-white"
-            >
-              Tutti gli eventi
-            </Link>
-            <Link
-              href="/mappa"
-              className="inline-flex items-center h-11 px-5 border border-black text-black text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
-            >
-              Mappa
-            </Link>
-            <Link
-              href="/crea"
-              className="inline-flex items-center h-11 px-5 border border-black/20 text-black text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
-            >
-              Crea evento
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-10 md:py-14">
-        <div className="editorial-container">
-          <div className="flex items-end justify-between mb-6 gap-4">
-            <div>
-              <p className="section-kicker mb-2">Dove andrà EventScanner</p>
-              <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-0">
-                Eventi per periodo
-              </h2>
+    <main className="min-h-screen">
+      <HomeMotion>
+        <section className="home-hero">
+          <div className="editorial-container">
+            <div className="home-hero-top" data-hero-reveal>
+              <span className="section-kicker">EventScanner / Alto Vicentino</span>
+              <span className="section-kicker">La città, fuori programma — 001</span>
             </div>
-            <p className="hidden md:block text-sm text-black/50 m-0">
-              oggi · domani · weekend · settimana
-            </p>
+            <div className="home-hero-grid">
+              <div>
+                <p className="home-overline" data-hero-reveal>Il tuo prossimo posto è qui.</p>
+                <h1 className="home-headline" data-hero-reveal>
+                  ESCI.<br />
+                  <span>SCOPRI.</span><br />
+                  VIVI.
+                </h1>
+              </div>
+              <div className="home-hero-aside" data-hero-reveal>
+                <span className="home-crosshair" aria-hidden="true">+</span>
+                <p>
+                  Concerti, mostre, incontri e posti da scoprire. Tutto quello
+                  che succede intorno a te, senza rumore di fondo.
+                </p>
+                <div className="home-hero-actions">
+                  <Link href="/eventi" className="industrial-link industrial-link-primary">
+                    Esplora gli eventi <span aria-hidden="true">↗</span>
+                  </Link>
+                  <Link href="/mappa" className="industrial-link industrial-link-outline">
+                    Apri la mappa <span aria-hidden="true">↗</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <div className="home-hero-bottom" data-hero-reveal>
+              <span>Schio / Thiene / Valdagno / Vicenza</span>
+              <a href="#in-evidenza" className="home-scroll-link">
+                Scorri per esplorare <span aria-hidden="true">↓</span>
+              </a>
+            </div>
           </div>
+        </section>
 
-          <div className="mono-divider mb-6"></div>
-
-          <div className="animate-fadeInUp">
+        <section id="in-evidenza" className="home-events">
+          <div className="editorial-container">
+            <div className="home-section-heading" data-scroll-reveal>
+              <div>
+                <p className="section-kicker">01 / Il programma</p>
+                <h2>Trova il tuo <em>momento.</em></h2>
+              </div>
+              <p>Una selezione aggiornata ogni giorno.<br />Scegli quando, al resto pensiamo noi.</p>
+            </div>
             <EventList mode="quick" />
+            <div className="home-section-end" data-scroll-reveal>
+              <span>Non finisce qui.</span>
+              <Link href="/tutti-gli-eventi" className="industrial-link industrial-link-outline">
+                Calendario completo <span aria-hidden="true">↗</span>
+              </Link>
+            </div>
           </div>
+        </section>
 
-          <div className="mt-8">
-            <Link
-              href="/tutti-gli-eventi"
-              className="inline-flex items-center h-10 px-4 border border-black/25 text-[11px] uppercase tracking-[0.14em] font-bold text-black no-underline hover:no-underline"
-            >
-              Vedi archivio completo
+        <section className="home-outro" data-scroll-reveal>
+          <div className="editorial-container home-outro-inner">
+            <div>
+              <p className="section-kicker">02 / Fai parte della scena</p>
+              <h2>Succede qualcosa?<br /><em>Fallo sapere.</em></h2>
+            </div>
+            <Link href="/crea" className="industrial-link industrial-link-light">
+              Crea un evento <span aria-hidden="true">↗</span>
             </Link>
           </div>
-        </div>
-      </section>
-
-      <section className="py-12 border-t border-black/10">
-        <div className="editorial-container">
-          <blockquote className="text-xl md:text-2xl font-semibold tracking-tight max-w-4xl m-0">
-            «La vita è così amara, il vino è così dolce; perché dunque non
-            bere?»
-          </blockquote>
-          <p className="text-sm uppercase tracking-[0.12em] text-black/55 mt-3 mb-0">
-            Umberto Saba
-          </p>
-        </div>
-      </section>
+        </section>
+      </HomeMotion>
     </main>
   );
 }

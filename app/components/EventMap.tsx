@@ -154,48 +154,6 @@ export default function EventMap() {
   const [maxDistance, setMaxDistance] = useState<number | null>(null); // null = show all
   const [isGeolocating, setIsGeolocating] = useState(false);
 
-  useEffect(() => {
-    fetchEventsWithCoordinates();
-  }, []);
-
-  // Filter events when location or distance changes
-  useEffect(() => {
-    filterEventsByDistance();
-  }, [allEvents, userLocation, maxDistance]);
-
-  // Disable Leaflet keyboard handling for input fields
-  useEffect(() => {
-    const handleFocus = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
-        // Disable Leaflet keyboard handling
-        const mapContainer = document.querySelector(".leaflet-container");
-        if (mapContainer) {
-          (mapContainer as any)._leaflet_map?.keyboard?.disable();
-        }
-      }
-    };
-
-    const handleBlur = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
-        // Re-enable Leaflet keyboard handling
-        const mapContainer = document.querySelector(".leaflet-container");
-        if (mapContainer) {
-          (mapContainer as any)._leaflet_map?.keyboard?.enable();
-        }
-      }
-    };
-
-    document.addEventListener("focusin", handleFocus);
-    document.addEventListener("focusout", handleBlur);
-
-    return () => {
-      document.removeEventListener("focusin", handleFocus);
-      document.removeEventListener("focusout", handleBlur);
-    };
-  }, []);
-
   const fetchEventsWithCoordinates = async () => {
     try {
       setLoading(true);
@@ -266,13 +224,12 @@ export default function EventMap() {
     }
   };
 
-  // Calculate distance between two points using Haversine formula
-  const calculateDistance = (
+  function calculateDistance(
     lat1: number,
     lng1: number,
     lat2: number,
     lng2: number,
-  ): number => {
+  ): number {
     const R = 6371; // Earth's radius in km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -284,10 +241,9 @@ export default function EventMap() {
         Math.sin(dLng / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
-  };
+  }
 
-  // Filter events by distance from user location
-  const filterEventsByDistance = () => {
+  function filterEventsByDistance() {
     if (!userLocation || maxDistance === null) {
       // No filter active, show all events
       setEvents(allEvents);
@@ -310,7 +266,49 @@ export default function EventMap() {
       `[EventMap] Filtered ${filtered.length}/${allEvents.length} events within ${maxDistance}km`,
     );
     setEvents(filtered);
-  };
+  }
+
+  useEffect(() => {
+    fetchEventsWithCoordinates();
+  }, []);
+
+  // Filter events when location or distance changes
+  useEffect(() => {
+    filterEventsByDistance();
+  }, [allEvents, userLocation, maxDistance]);
+
+  // Disable Leaflet keyboard handling for input fields
+  useEffect(() => {
+    const handleFocus = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        // Disable Leaflet keyboard handling
+        const mapContainer = document.querySelector(".leaflet-container");
+        if (mapContainer) {
+          (mapContainer as any)._leaflet_map?.keyboard?.disable();
+        }
+      }
+    };
+
+    const handleBlur = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        // Re-enable Leaflet keyboard handling
+        const mapContainer = document.querySelector(".leaflet-container");
+        if (mapContainer) {
+          (mapContainer as any)._leaflet_map?.keyboard?.enable();
+        }
+      }
+    };
+
+    document.addEventListener("focusin", handleFocus);
+    document.addEventListener("focusout", handleBlur);
+
+    return () => {
+      document.removeEventListener("focusin", handleFocus);
+      document.removeEventListener("focusout", handleBlur);
+    };
+  }, []);
 
   // Handle city search
   const handleCitySearch = async () => {

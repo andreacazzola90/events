@@ -266,7 +266,6 @@ function LiveProgressPanel({ live, onClose }: { live: LiveState; onClose: () => 
                 className="flex items-center gap-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 animate-fade-in"
               >
                 {ev.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={ev.imageUrl}
                     alt=""
@@ -1141,7 +1140,6 @@ export default function CronAdminClient() {
                       <span className="text-amber-700 font-semibold">Arancione = paginazione</span>
                     </span>
                   </div>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={inspectResult.screenshotBase64}
                     alt="Screenshot pagina con overlay selettori"

@@ -25,11 +25,11 @@
 - ✅ Drag & drop per desktop
 - ✅ Animazioni smooth (slide-up, fade-in)
 
-### 4. 🔄 Web Share Target (`/api/share-target/route.ts`)
-- ✅ Riceve immagini da altre app
-- ✅ Cache temporanea dell'immagine
-- ✅ Redirect automatico a /crea?shared=true
-- ✅ Gestione errori
+### 4. 🔄 Web Share Target (Service Worker)
+- ✅ Intercetta il POST multipart del manifest per le immagini condivise
+- ✅ Conserva il file temporaneamente nella cache locale del browser
+- ✅ Reindirizza a `/crea?shared=true&shareId=...` e consegna il file una sola volta
+- ✅ Elimina i file recuperati e scarta automaticamente quelli più vecchi di 24 ore
 
 ### 5. 🎨 UI/UX Enhancements
 - ✅ Modal picker con design moderno
@@ -61,7 +61,7 @@
 ### Nuovi File:
 1. `/public/sw.js` - Service Worker
 2. `/app/components/PWAHandler.tsx` - PWA handler
-3. `/app/api/share-target/route.ts` - Share Target API
+3. `/public/sw.js` - Ricezione e recupero locale dei file condivisi
 4. `/scripts/generate-pwa-icons.js` - Icon generator
 5. `/public/icon-192x192.png` - Icon 192px (generato)
 6. `/public/icon-512x512.png` - Icon 512px (generato)

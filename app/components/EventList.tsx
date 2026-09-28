@@ -190,8 +190,16 @@ function isDateInRange(date: Date, start: Date, end: Date): boolean {
   return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
 }
 
+function formatApiDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   const gridRef = useRef<HTMLDivElement>(null);
+  const hasLoadedEventsRef = useRef(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,26 +233,34 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   }, [filteredEvents, visibleCount, loading]);
 
   const fetchEvents = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedEventsRef.current) setLoading(true);
     setLoadError(false);
     try {
-      const response = await fetch(`/api/events?limit=200`, {
-        next: { revalidate: 300 },
-      });
+      const params = new URLSearchParams({ limit: "200" });
+      if (mode === "quick") {
+        const { start, end } = getQuickRange(quickDateFilter);
+        params.set("dateFrom", formatApiDate(start));
+        params.set("dateTo", formatApiDate(end));
+      }
+
+      const response = await fetch(`/api/events?${params.toString()}`);
       if (!response.ok) throw new Error(`Event request failed: ${response.status}`);
       const data = await response.json();
-      setEvents(data);
+      setEvents(Array.isArray(data) ? data : []);
+      hasLoadedEventsRef.current = true;
     } catch (error) {
       console.error("Error fetching events:", error);
       setLoadError(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode, quickDateFilter]);
 
   useEffect(() => {
     fetchEvents();
+  }, [fetchEvents]);
 
+  useEffect(() => {
     // Carica i preferiti iniziali per l'utente loggato (se presente)
     const fetchFavorites = async () => {
       try {
@@ -264,7 +280,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     if (refresh) {
       window.history.replaceState({}, "", "/");
     }
-  }, [fetchEvents]);
+  }, []);
 
   useEffect(() => {
     if (mode === "quick") {
@@ -544,8 +560,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             : filteredEvents;
         const gridClasses =
           mode === "quick"
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
-            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5";
+            ? "event-list-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
+            : "event-list-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5";
 
         return (
           <>
@@ -564,9 +580,9 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   <TransitionLink
                     key={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="event-card group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
+                    className="event-card group block no-underline hover:no-underline bg-white border border-black/12 transition-colors"
                   >
-                    <div className="relative overflow-hidden">
+                    <div className="event-card-media relative overflow-hidden">
                       <FavoriteButton
                         eventId={event.id}
                         initialIsFavorite={favoriteIds.has(event.id)}
@@ -584,11 +600,11 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                           alt={event.title}
                           width={600}
                           height={400}
-                          className="w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105"
+                          className="event-card-image w-full h-48 object-cover transition-transform duration-700 group-hover:scale-105"
                           sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                         />
                       ) : (
-                        <div className="w-full h-48 bg-black/5 flex items-center justify-center">
+                        <div className="event-card-placeholder w-full h-48 flex items-center justify-center">
                           <div className="text-sm uppercase tracking-[0.12em] text-black/40 font-bold">
                             No image
                           </div>
@@ -607,7 +623,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                       })()}
                     </div>
 
-                    <div className="p-4 space-y-3">
+                    <div className="event-card-body p-4 space-y-3">
                       <div className="space-y-2">
                         <h3 className="text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
                           {cleanText(event.title)}

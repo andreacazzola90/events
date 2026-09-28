@@ -451,24 +451,25 @@ export default function CreaEvento() {
                 />
             </Suspense>
 
-            <main className="min-h-screen">
-                {/* Hero Section */}
-                <section className="hero-section">
-                    <div className="max-w-6xl mx-auto px-6 py-8 md:py-16 text-center">
-                        <div className="animate-fadeInUp">
-                            <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
+            <main className="min-h-screen page-shell">
+                <section className="editorial-container mb-10 md:mb-14">
+                    <div className="animate-fadeInUp flex flex-col items-start gap-5">
+                        <div>
+                            <p className="section-kicker mb-4">EventScanner / Nuovo evento</p>
+                            <h1 className="section-title max-w-4xl">
                                 {events.length > 0 ? (
-                                    <>Edit your <span className="gradient-text">event</span></>
+                                    <>Rivedi i dettagli <span className="text-[#d65a38]">dell’evento</span></>
                                 ) : (
-                                    <>Create something <span className="gradient-text">incredible</span></>
+                                    <>Crea un nuovo <span className="text-[#d65a38]">evento</span></>
                                 )}
                             </h1>
-                            <p className="text-xl md:text-2xl text-gray-400 mb-8 max-w-2xl mx-auto leading-relaxed">
+                        </div>
+                        <p className="section-lead max-w-2xl mb-0">
                                 {events.length > 0
-                                    ? 'Fine-tune the extracted information and make your event perfect'
-                                    : 'Upload an event image or link and let our AI extract all the details for you'
+                                    ? 'Controlla le informazioni estratte e completa i dettagli prima di pubblicare.'
+                                    : 'Carica la locandina o inserisci un link: estrarremo automaticamente le informazioni principali.'
                                 }
-                            </p>
+                        </p>
 
                             {events.length > 0 && (
                                 <button
@@ -478,34 +479,31 @@ export default function CreaEvento() {
                                         setDebugInfo(null);
                                         setError(null);
                                     }}
-                                    className="inline-flex items-center gap-2 bg-white/10 text-white px-6 py-3 rounded-lg font-semibold border border-white/20 transition-all duration-300 hover:bg-white/20 hover:scale-105"
+                                    className="industrial-link industrial-link-outline"
                                 >
-                                    ← Create New Event
+                                    <span aria-hidden="true">←</span> Crea un altro evento
                                 </button>
                             )}
-                        </div>
                     </div>
                 </section>
 
-                <div className="max-w-6xl mx-auto px-6 pb-16">
+                <div className="editorial-container">
                     <div className="space-y-8">
                         {/* Creation Methods - Only show if no events extracted */}
                         {events.length === 0 && (
                             <div className="grid md:grid-cols-2 gap-8">
                                 {processingSharedImage && (
-                                    <div className="md:col-span-2 glass-effect p-8 rounded-2xl border border-white/10 animate-fadeInUp">
+                                    <div className="md:col-span-2 surface-panel p-6 md:p-8 animate-fadeInUp">
                                         <LoadingAnimation message="Scansione immagine condivisa in corso" phase="shared-image" />
                                     </div>
                                 )}
 
                                 {/* Image Upload Method - First on Mobile */}
-                                <div className="glass-effect p-8 rounded-2xl border border-white/10 order-1 md:order-2">
-                                    <div className="text-center mb-6">
-                                        <div className="w-16 h-16 bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <span className="text-2xl">📸</span>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-white mb-2">Upload Image</h2>
-                                        <p className="text-gray-400">Upload an event poster and AI will scan all the details</p>
+                                <div className="surface-panel p-6 md:p-8 order-1 md:order-2">
+                                    <div className="mb-6 border-b border-black/10 pb-5">
+                                        <p className="section-kicker mb-2">Metodo 01</p>
+                                        <h2 className="text-2xl font-black text-[#1d1d1b] mb-2">Carica una locandina</h2>
+                                        <p className="text-sm text-[#5f5b56] mb-0">L’analisi dell’immagine compilerà i dettagli dell’evento.</p>
                                     </div>
 
                                     <ImageUploader
@@ -520,13 +518,11 @@ export default function CreaEvento() {
                                 </div>
 
                                 {/* Link Input Method - Second on Mobile */}
-                                <div className="glass-effect p-8 rounded-2xl border border-white/10 order-2 md:order-1">
-                                    <div className="text-center mb-6">
-                                        <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <span className="text-2xl">🔗</span>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-white mb-2">Extract from Link</h2>
-                                        <p className="text-gray-400">Paste an event URL and let AI extract all the details</p>
+                                <div className="surface-panel p-6 md:p-8 order-2 md:order-1">
+                                    <div className="mb-6 border-b border-black/10 pb-5">
+                                        <p className="section-kicker mb-2">Metodo 02</p>
+                                        <h2 className="text-2xl font-black text-[#1d1d1b] mb-2">Importa da un link</h2>
+                                        <p className="text-sm text-[#5f5b56] mb-0">Inserisci la pagina dell’evento per estrarne le informazioni.</p>
                                     </div>
 
                                     <form onSubmit={handleLinkSubmit} className="space-y-4">
@@ -538,7 +534,7 @@ export default function CreaEvento() {
                                             <>
                                                 <input
                                                     type="url"
-                                                    placeholder="https://example.com/event"
+                                                    placeholder="https://esempio.it/evento"
                                                     value={linkUrl}
                                                     onChange={(e) => setLinkUrl(e.target.value)}
                                                     className="w-full bg-white border border-black/20 px-4 py-3 text-black placeholder-black/40 focus:outline-none focus:border-black transition-colors"
@@ -549,7 +545,7 @@ export default function CreaEvento() {
                                                     disabled={loadingLink}
                                                     className="btn btn-primary w-full disabled:opacity-50"
                                                 >
-                                                    ✨ Extract Event
+                                                    ✨ Estrai evento
                                                 </button>
                                             </>
                                         )}
@@ -560,12 +556,12 @@ export default function CreaEvento() {
 
                         {/* Error Display */}
                         {error && (
-                            <div className="glass-effect border-red-500/50 bg-red-500/10 p-6 rounded-xl animate-fadeInUp">
+                            <div className="border border-[#d65a38]/40 bg-[#fff7f4] p-6 animate-fadeInUp">
                                 <div className="flex items-start gap-4">
-                                    <span className="text-red-400 text-3xl shrink-0">⚠️</span>
+                                    <span className="text-[#b84b2d] text-3xl shrink-0">⚠️</span>
                                     <div className="flex-1">
-                                        <h3 className="text-red-300 font-semibold text-lg mb-2">Si è verificato un errore</h3>
-                                        <p className="text-red-200 leading-relaxed">{error}</p>
+                                        <h3 className="text-[#8f3823] font-semibold text-lg mb-2">Si è verificato un errore</h3>
+                                        <p className="text-[#5f5b56] leading-relaxed mb-0">{error}</p>
                                     </div>
                                 </div>
                             </div>
@@ -580,7 +576,7 @@ export default function CreaEvento() {
 
                         {/* Event Editing Interface */}
                         {saving ? (
-                            <div className="glass-effect p-8 rounded-2xl border border-white/10 animate-fadeInUp">
+                            <div className="surface-panel p-6 md:p-8 animate-fadeInUp">
                                 <LoadingAnimation message="Salvataggio evento in corso" phase="saving" />
                             </div>
                         ) : events.length > 1 ? (

@@ -6,6 +6,8 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 const imagesConfig = {
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24,
     remotePatterns: [
       // Supabase bucket host (se configurato)
       ...(supabaseHostname
@@ -42,7 +44,7 @@ const nextConfig = {
     return [
       {
         source: "/manifest.json",
-        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
+        headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
       },
       {
         source: "/sw.js",

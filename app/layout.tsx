@@ -11,6 +11,7 @@ import { PageTransitionWrapper } from "./components/PageTransition";
 import { GoogleAnalytics } from "./lib/analytics";
 import { GoogleTagManager } from "./lib/gtm";
 import { Analytics } from "@vercel/analytics/next";
+import packageMetadata from "../package.json";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -133,7 +134,7 @@ export default function RootLayout({
             <main className="min-h-screen pt-16">
               <PageTransitionWrapper>{children}</PageTransitionWrapper>
             </main>
-            <Footer />
+            <Footer version={packageMetadata.version} />
             <Analytics />
           </PageTransitionProvider>
         </Providers>

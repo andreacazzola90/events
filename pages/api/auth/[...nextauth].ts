@@ -16,10 +16,20 @@ export const authOptions: any = {
           throw new Error('Email e password richiesti');
         }
 
+        const email = credentials.email.trim().toLowerCase();
+
         const user = await prisma.user.findUnique({
           where: {
-            email: credentials.email
-          }
+            email,
+          },
+          select: {
+            id: true,
+            email: true,
+            password: true,
+            name: true,
+            role: true,
+            type: true,
+          },
         });
 
         if (!user || !user.password) {

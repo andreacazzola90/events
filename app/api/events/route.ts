@@ -329,58 +329,6 @@ export async function GET(request: NextRequest) {
 
     const events = await getCachedEvents(where, limit);
 
-    // Backfill coordinates for events that still don't have them
-    try {
-      const eventsNeedingCoords = events.filter(
-        (event: DbEvent) =>
-          event.location && (event.latitude == null || event.longitude == null),
-      );
-
-      if (eventsNeedingCoords.length > 0) {
-        console.log(
-          "[API /events GET] Backfilling coordinates for events:",
-          eventsNeedingCoords.map((e: DbEvent) => ({
-            id: e.id,
-            title: e.title,
-            location: e.location,
-          })),
-        );
-
-        await Promise.allSettled(
-          eventsNeedingCoords.map(async (event: DbEvent) => {
-            try {
-              const coords = await geocodeLocation(event.location);
-              if (coords.latitude != null && coords.longitude != null) {
-                // Update in memory so this response already includes coordinates
-                event.latitude = coords.latitude;
-                event.longitude = coords.longitude;
-
-                // Persist to database for future requests
-                await prisma.event.update({
-                  where: { id: event.id },
-                  data: {
-                    latitude: coords.latitude,
-                    longitude: coords.longitude,
-                  } as any,
-                });
-              }
-            } catch (geoError) {
-              console.warn(
-                "[API /events GET] Failed to backfill coordinates for event",
-                event.id,
-                geoError,
-              );
-            }
-          }),
-        );
-      }
-    } catch (backfillError) {
-      console.warn(
-        "[API /events GET] Coordinate backfill failed, continuing without it:",
-        backfillError,
-      );
-    }
-
     // If this is a global listing (no specific userId), de-duplicate
     // events by (title, date, location), keeping only the first
     let responseEvents: DbEvent[] = events;
@@ -399,7 +347,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(responseEvents, {
       headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30", // Cache for 60s, allow stale for 30s
+        "Cache-Control": userIdParam
+          ? "private, no-store"
+          : "public, s-maxage=60, stale-while-revalidate=300",
       },
     });
   } catch (error) {

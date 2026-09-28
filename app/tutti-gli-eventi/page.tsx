@@ -104,7 +104,7 @@ export default function TuttiGliEventiPage() {
   }, [monthDate]);
 
   return (
-    <main className="min-h-screen py-12 md:py-20">
+    <main className="min-h-screen page-shell event-calendar-page">
       <div className="editorial-container">
         <div className="mb-12 page-heading">
           <p className="section-kicker">02 / Le date</p>
@@ -117,8 +117,8 @@ export default function TuttiGliEventiPage() {
         </div>
 
         <div className="animate-fadeInUp">
-          <section className="border border-black/10 bg-white p-4 md:p-6">
-            <div className="flex items-center justify-between mb-4">
+          <section className="event-calendar border border-black/10 bg-white p-4 md:p-6">
+            <div className="calendar-toolbar flex items-center justify-between mb-4">
               <button
                 type="button"
                 onClick={() =>
@@ -128,7 +128,7 @@ export default function TuttiGliEventiPage() {
                   )
                 }
                 aria-label="Mese precedente"
-                className="px-3 py-2 border border-black/20 text-sm hover:bg-black hover:text-white transition-colors"
+                className="calendar-month-button px-3 py-2 border border-black/20 text-sm transition-colors"
               >
                 Mese precedente
               </button>
@@ -144,13 +144,13 @@ export default function TuttiGliEventiPage() {
                   )
                 }
                 aria-label="Mese successivo"
-                className="px-3 py-2 border border-black/20 text-sm hover:bg-black hover:text-white transition-colors"
+                className="calendar-month-button px-3 py-2 border border-black/20 text-sm transition-colors"
               >
                 Mese successivo
               </button>
             </div>
 
-            <div className="grid grid-cols-7 text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2" role="row">
+            <div className="calendar-weekdays grid grid-cols-7 text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2" role="row">
               {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => (
                 <div key={d} className="p-2" role="columnheader" aria-label={d}>
                   {d}
@@ -158,13 +158,13 @@ export default function TuttiGliEventiPage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1" role="grid" aria-label={`Calendario eventi ${monthLabel}`}>
+            <div className="calendar-days grid grid-cols-7 gap-1" role="grid" aria-label={`Calendario eventi ${monthLabel}`}>
               {calendarDays.map((cell) => {
                 if (!cell.date) {
                   return (
                     <div
                       key={cell.key}
-                      className="min-h-28 border border-transparent"
+                      className="calendar-empty-day min-h-28 border border-transparent"
                     />
                   );
                 }
@@ -172,15 +172,16 @@ export default function TuttiGliEventiPage() {
                 const key = cell.key;
                 const dayEvents = eventsByDate.get(key) || [];
                 const hasEvents = dayEvents.length > 0;
+                const isToday = toDateKey(new Date()) === key;
 
                 return (
                   <div
                     key={key}
-                    className={`min-h-28 p-1.5 border text-left flex flex-col ${
+                    className={`calendar-day min-h-28 p-1.5 border text-left flex flex-col ${
                       hasEvents
-                        ? "border-black/20 bg-white"
+                        ? "has-events border-black/20 bg-white"
                         : "border-black/8 bg-white/60"
-                    }`}
+                    } ${isToday ? "is-today" : ""}`}
                   >
                     <div
                       className={`text-sm font-bold mb-1 ${
@@ -197,7 +198,7 @@ export default function TuttiGliEventiPage() {
                         <TransitionLink
                           key={event.id}
                           href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                          className="block text-[10px] leading-tight px-1 py-0.5 bg-black text-white truncate hover:bg-black/70 transition-colors no-underline"
+                          className="calendar-event-link block text-[10px] leading-tight px-1 py-0.5 truncate transition-colors no-underline"
                           title={event.title}
                         >
                           {event.time ? `${event.time} ` : ""}

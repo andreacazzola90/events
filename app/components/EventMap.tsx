@@ -157,14 +157,7 @@ export default function EventMap() {
   const fetchEventsWithCoordinates = async () => {
     try {
       setLoading(true);
-      // Fetch events with cache busting
-      const timestamp = Date.now();
-      const response = await fetch(`/api/events?_t=${timestamp}`, {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      });
+      const response = await fetch("/api/events");
       if (!response.ok) throw new Error("Failed to fetch events");
 
       const eventsData = await response.json();
@@ -460,10 +453,10 @@ export default function EventMap() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-gray-100 rounded-3xl">
+      <div className="flex items-center justify-center h-full w-full bg-[#f5f2ec]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Caricamento mappa...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d65a38] mx-auto mb-4"></div>
+          <p className="text-[#5f5b56]">Caricamento mappa...</p>
         </div>
       </div>
     );
@@ -471,9 +464,9 @@ export default function EventMap() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-red-50 rounded-3xl">
+      <div className="flex items-center justify-center h-full w-full bg-[#fff7f4]">
         <div className="text-center">
-          <p className="text-red-600">{error}</p>
+          <p className="text-[#b84b2d]">{error}</p>
         </div>
       </div>
     );
@@ -481,9 +474,9 @@ export default function EventMap() {
 
   if (events.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-gray-100 rounded-3xl">
+      <div className="flex items-center justify-center h-full w-full bg-[#f5f2ec]">
         <div className="text-center">
-          <p className="text-gray-600">
+          <p className="text-[#5f5b56]">
             Nessun evento da visualizzare sulla mappa
           </p>
         </div>
@@ -496,7 +489,7 @@ export default function EventMap() {
   const mapInitialCenter = validatedMapCenter ?? DEFAULT_MAP_CENTER;
 
   return (
-    <div className="relative h-full w-full overflow-hidden shadow-2xl border border-white/20 bg-white/10 backdrop-blur-md">
+    <div className="relative h-full w-full overflow-hidden border border-black/10 bg-[#f9f7f2]">
       <div className="absolute inset-0">
         <MapContainer
           center={mapInitialCenter}
@@ -562,7 +555,7 @@ export default function EventMap() {
                     </div>
                     <a
                       href={`/events/${event.id}`}
-                      className="mt-3 block text-center bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+                      className="mt-3 block text-center bg-[#1d1d1b] text-white px-4 py-2 rounded-none hover:bg-[#d65a38] transition-colors"
                     >
                       Vedi Dettagli
                     </a>
@@ -574,14 +567,14 @@ export default function EventMap() {
         </MapContainer>
       </div>
 
-      <div className="absolute left-3 right-3 top-3 bottom-3 sm:left-6 sm:right-auto sm:top-6 sm:bottom-6 sm:w-95 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl z-500 overflow-hidden">
-        <div className="p-6 border-b border-gray-100 bg-white sticky top-0 z-20 space-y-4">
+      <div className="absolute left-3 right-3 top-3 bottom-3 sm:left-6 sm:right-auto sm:top-6 sm:bottom-6 sm:w-[420px] bg-[#fffdf9]/95 backdrop-blur-xl border border-black/10 shadow-[0_20px_50px_rgba(29,29,27,0.08)] z-500 overflow-hidden">
+        <div className="p-5 border-b border-black/10 bg-white sticky top-0 z-20 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2 tracking-tight">
-                <span className="text-blue-600 drop-shadow-sm">📍</span> Eventi
+              <h2 className="text-2xl font-black text-[#1d1d1b] flex items-center gap-2 tracking-tight">
+                <span className="text-[#d65a38]">📍</span> Eventi
               </h2>
-              <p className="text-sm font-bold text-gray-400 mt-1 uppercase tracking-widest">
+              <p className="text-[11px] font-bold text-[#5f5b56] mt-1 uppercase tracking-[0.16em]">
                 {events.length}{" "}
                 {userLocation ? `entro ${maxDistance || "∞"}km` : "risultati"}
               </p>
@@ -589,7 +582,7 @@ export default function EventMap() {
             {userLocation && (
               <button
                 onClick={handleClearFilter}
-                className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors"
+                className="px-3 py-2 bg-[#f1eee7] text-[#1d1d1b] text-sm font-semibold hover:bg-[#e8e4db] transition-colors"
                 title="Rimuovi filtro"
               >
                 ✕
@@ -597,13 +590,12 @@ export default function EventMap() {
             )}
           </div>
 
-          {/* Geographic Filter */}
           <div className="space-y-3">
             <div className="flex gap-2">
               <button
                 onClick={handleUseMyLocation}
                 disabled={isGeolocating}
-                className="w-10 h-10 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center shrink-0"
+                className="w-10 h-10 bg-[#1d1d1b] text-white hover:bg-[#d65a38] disabled:bg-[#d9d4cd] disabled:cursor-not-allowed transition-colors flex items-center justify-center shrink-0"
                 title="Usa la mia posizione"
               >
                 {isGeolocating ? "⏳" : "🎯"}
@@ -615,31 +607,26 @@ export default function EventMap() {
                 onChange={(e) => setFilterCity(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleCitySearch()}
                 onFocus={(e) => {
-                  // Prevent Leaflet from capturing keyboard events
-                  e.target.setAttribute(
-                    "data-leaflet-disable-keyboard",
-                    "true",
-                  );
+                  e.target.setAttribute("data-leaflet-disable-keyboard", "true");
                 }}
                 onBlur={(e) => {
                   e.target.removeAttribute("data-leaflet-disable-keyboard");
                 }}
-                className="flex-1 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                className="flex-1 px-3 py-2 text-sm text-[#1d1d1b] placeholder:text-[#7a756f] border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-[#d65a38] focus:border-transparent"
                 disabled={isGeolocating}
               />
               <button
                 onClick={handleCitySearch}
                 disabled={isGeolocating || !filterCity.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 bg-[#d65a38] text-white text-sm font-semibold hover:bg-[#b84b2d] disabled:bg-[#d9d4cd] disabled:cursor-not-allowed transition-colors"
               >
                 🔍
               </button>
             </div>
 
-            {/* Distance Selector */}
             {userLocation && (
               <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                <label className="text-[10px] font-bold text-[#5f5b56] uppercase tracking-[0.16em]">
                   Distanza massima
                 </label>
                 <div className="grid grid-cols-5 gap-1">
@@ -647,10 +634,10 @@ export default function EventMap() {
                     <button
                       key={distance || "all"}
                       onClick={() => setMaxDistance(distance)}
-                      className={`px-2 py-1.5 rounded text-xs font-bold transition-colors ${
+                      className={`px-2 py-1.5 text-[10px] font-bold transition-colors ${
                         maxDistance === distance
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          ? "bg-[#1d1d1b] text-white"
+                          : "bg-[#f1eee7] text-[#1d1d1b] hover:bg-[#e8e4db]"
                       }`}
                     >
                       {distance ? `${distance}km` : "Tutti"}
@@ -661,15 +648,15 @@ export default function EventMap() {
             )}
           </div>
         </div>
-        <div className="divide-y divide-gray-100 overflow-y-auto custom-scrollbar h-[calc(100%-210px)]">
+        <div className="divide-y divide-black/10 overflow-y-auto custom-scrollbar h-[calc(100%-210px)]">
           {events.map((event) => (
             <div
               key={event.id}
               onClick={() => handleEventClick(event)}
-              className={`p-6 cursor-pointer transition-all duration-300 hover:bg-blue-50/50 group relative ${selectedEventId === event.id ? "bg-blue-50/80" : ""}`}
+              className={`p-5 cursor-pointer transition-all duration-300 hover:bg-[#faf5f1] group relative ${selectedEventId === event.id ? "bg-[#faf5f1]" : ""}`}
             >
               {selectedEventId === event.id && (
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-600 rounded-r-full shadow-[0_0_15px_rgba(37,99,235,0.4)]"></div>
+                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#d65a38]"></div>
               )}
               <div className="flex gap-4">
                 {event.imageUrl ? (
@@ -679,30 +666,26 @@ export default function EventMap() {
                       alt={event.title}
                       width={80}
                       height={80}
-                      className="w-20 h-20 rounded-2xl object-cover shadow-lg group-hover:scale-105 transition-transform duration-500"
+                      className="w-20 h-20 object-cover shadow-lg group-hover:scale-105 transition-transform duration-500"
                       sizes="80px"
                     />
                   </div>
                 ) : (
-                  <div className="w-20 h-20 rounded-2xl bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center text-3xl shadow-inner border border-gray-200 shrink-0">
+                  <div className="w-20 h-20 bg-[#f1eee7] flex items-center justify-center text-3xl border border-black/10 shrink-0">
                     📅
                   </div>
                 )}
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <h3 className="font-bold text-gray-900 leading-tight group-hover:text-blue-600 transition-colors line-clamp-2 text-base">
+                  <h3 className="font-bold text-[#1d1d1b] leading-tight group-hover:text-[#d65a38] transition-colors line-clamp-2 text-base">
                     {event.title}
                   </h3>
-                  <div className="mt-2 space-y-1.5">
-                    <p className="text-xs font-bold text-blue-600/80 flex items-center gap-2">
-                      <span className="bg-blue-100 p-1 rounded-md text-[10px]">
-                        📅
-                      </span>{" "}
+                  <div className="mt-2 space-y-1.5 text-[#5f5b56]">
+                    <p className="text-[11px] font-bold text-[#d65a38] flex items-center gap-2">
+                      <span className="bg-[#f5e7e2] p-1 text-[10px]">📅</span>{" "}
                       {formatDate(event.date)}
                     </p>
-                    <p className="text-xs font-medium text-gray-500 truncate flex items-center gap-2">
-                      <span className="bg-gray-100 p-1 rounded-md text-[10px]">
-                        📍
-                      </span>{" "}
+                    <p className="text-[11px] font-medium truncate flex items-center gap-2">
+                      <span className="bg-[#f1eee7] p-1 text-[10px]">📍</span>{" "}
                       {event.location}
                     </p>
                   </div>

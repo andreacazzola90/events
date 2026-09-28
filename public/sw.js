@@ -1,4 +1,6 @@
-const CACHE_NAME = 'eventscanner-v4'; // Incrementa versione per forzare update
+const CACHE_NAME = 'eventscanner-v5'; // Incrementa versione per forzare update
+const SHARE_CACHE_NAME = 'eventscanner-shared-files-v1';
+const SHARE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STATIC_CACHE = [
     '/',
     '/crea',
@@ -7,6 +9,73 @@ const STATIC_CACHE = [
     '/icon-192x192.png',
     '/icon-512x512.png'
 ];
+
+function getShareRequest(shareId) {
+    const url = new URL('/api/share-target', self.location.origin);
+    url.searchParams.set('shareId', shareId);
+    return new Request(url.toString());
+}
+
+async function pruneSharedFiles(cache) {
+    const requests = await cache.keys();
+    const cutoff = Date.now() - SHARE_MAX_AGE_MS;
+
+    await Promise.all(requests.map(async (request) => {
+        const response = await cache.match(request);
+        const storedAt = Number(response?.headers.get('X-EventScanner-Shared-At'));
+        if (!storedAt || storedAt < cutoff) {
+            await cache.delete(request);
+        }
+    }));
+}
+
+async function receiveSharedFile(request) {
+    try {
+        const formData = await request.formData();
+        const sharedFile = formData.get('image') || formData.get('file');
+        if (!(sharedFile instanceof File) || !sharedFile.type.startsWith('image/')) {
+            return Response.redirect(new URL('/crea?shared=true', self.location.origin), 303);
+        }
+
+        const shareId = typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const cache = await caches.open(SHARE_CACHE_NAME);
+        await pruneSharedFiles(cache);
+        await cache.put(
+            getShareRequest(shareId),
+            new Response(sharedFile, {
+                headers: {
+                    'Content-Type': sharedFile.type,
+                    'X-EventScanner-Shared-At': String(Date.now()),
+                },
+            })
+        );
+
+        const destination = new URL('/crea', self.location.origin);
+        destination.searchParams.set('shared', 'true');
+        destination.searchParams.set('shareId', shareId);
+        return Response.redirect(destination.toString(), 303);
+    } catch (error) {
+        console.error('[SW] Could not receive shared image:', error);
+        return Response.redirect(new URL('/crea?shared=true', self.location.origin), 303);
+    }
+}
+
+async function readSharedFile(shareId) {
+    const cache = await caches.open(SHARE_CACHE_NAME);
+    const request = getShareRequest(shareId);
+    const response = await cache.match(request);
+    if (!response) {
+        return new Response('Immagine condivisa non trovata o scaduta.', {
+            status: 404,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+    }
+
+    await cache.delete(request);
+    return response;
+}
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -27,7 +96,7 @@ self.addEventListener('activate', (event) => {
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cache) => {
-                    if (cache !== CACHE_NAME) {
+                    if (cache !== CACHE_NAME && cache !== SHARE_CACHE_NAME) {
                         console.log('[SW] Deleting old cache:', cache);
                         return caches.delete(cache);
                     }
@@ -53,27 +122,21 @@ self.addEventListener('fetch', (event) => {
 
     const requestUrl = new URL(event.request.url);
 
-    // Compatibility path: support legacy Web Share Target POST that may still hit /crea
-    if (event.request.method === 'POST' && requestUrl.pathname === '/crea') {
-        event.respondWith((async () => {
-            try {
-                const contentType = event.request.headers.get('content-type') || '';
-                if (!contentType.includes('multipart/form-data')) {
-                    return fetch(event.request);
-                }
+    // Store shared screenshots locally before redirecting into the app.
+    if (
+        event.request.method === 'POST' &&
+        (requestUrl.pathname === '/api/share-target' || requestUrl.pathname === '/crea')
+    ) {
+        event.respondWith(receiveSharedFile(event.request));
+        return;
+    }
 
-                const formData = await event.request.clone().formData();
-                return fetch('/api/share-target', {
-                    method: 'POST',
-                    body: formData,
-                    credentials: 'same-origin',
-                    redirect: 'follow',
-                });
-            } catch (error) {
-                console.error('[SW] Failed to forward legacy share POST /crea:', error);
-                return fetch(event.request);
-            }
-        })());
+    // The app retrieves each shared file once, then the cached copy is deleted.
+    if (event.request.method === 'GET' && requestUrl.pathname === '/api/share-target') {
+        const shareId = requestUrl.searchParams.get('shareId');
+        event.respondWith(shareId
+            ? readSharedFile(shareId)
+            : Promise.resolve(new Response('shareId richiesto.', { status: 400 })));
         return;
     }
 

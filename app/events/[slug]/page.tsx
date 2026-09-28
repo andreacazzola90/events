@@ -192,13 +192,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
     const similarEvents = await getSimilarEvents(event);
 
     return (
-        <div className="min-h-screen py-8 px-2 bg-light w-full event-detail-page">
-            <div className="container mx-auto px-8">
+        <div className="min-h-screen page-shell w-full event-detail-page">
+            <div className="editorial-container">
                 <div className="w-full space-y-8">
-
-                    {/* Desktop Layout: Image Left + Content Right */}
                     <div className="lg:flex lg:gap-8 lg:items-start">
-                        {/* Left Column - Image (Desktop) - 1/4 dello spazio */}
                         <div className="lg:w-1/4 event-image-sticky">
                             {event.imageUrl && (
                                 <div className="relative group event-image-container">
@@ -208,86 +205,83 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         alt={event.title}
                                         width={800}
                                         height={600}
-                                        className="w-full h-64 sm:h-80 lg:h-100 xl:h-112.5 object-cover transition-all duration-700"
+                                        className="w-full h-64 sm:h-80 lg:h-[30rem] object-cover transition-all duration-700"
                                         sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 100vw"
                                         priority
                                     />
-                                    {/* Gradient Overlay */}
-                                    <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                                 </div>
                             )}
                             {!event.imageUrl && (
-                                <div className="relative group event-image-container">
-                                    {/* Placeholder or empty */}
-                                </div>
+                                <div className="relative group event-image-container bg-[#f4f1eb]" />
                             )}
                         </div>
 
-                        {/* Right Column - Content (Desktop) / Full Width (Mobile) - 3/4 dello spazio */}
                         <div className="lg:w-3/4 mt-8 lg:mt-0">
-                            <div className="event-content-card">
+                            <div className="surface-panel p-5 md:p-8">
                                 <div className="space-y-8">
                                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-text bg-clip-text text-transparent leading-tight">{event.title}</h1>
+                                        <div>
+                                            <p className="section-kicker mb-3">Evento</p>
+                                            <h1 className="section-title mb-0 text-[#1d1d1b]">{event.title}</h1>
+                                        </div>
                                         {(canEdit || calendarEmail) && (
                                             <div className="flex flex-wrap gap-3">
                                                 {calendarEmail && <SaveToCalendarButton eventId={event.id} />}
                                                 {canEdit && (
                                                     <TransitionLink
                                                         href={`/events/${slug}/edit`}
-                                                        className="inline-flex items-center justify-center px-4 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-secondary via-accent to-primary text-white hover:shadow-lg transition-all no-underline hover:no-underline whitespace-nowrap"
+                                                        className="industrial-link industrial-link-primary no-underline hover:no-underline whitespace-nowrap"
                                                     >
-                                                        ✏️ Modifica
+                                                        ✏️ Modifica <span aria-hidden="true">↗</span>
                                                     </TransitionLink>
                                                 )}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Event Info Grid */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-lg">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-base">
                                         <div className="space-y-4">
-                                            <p className="flex items-center gap-3 text-white"><CalendarIcon className="w-6 h-6 text-primary shrink-0" /> <span>{event.date}</span></p>
-                                            <p className="flex items-center gap-3 text-white"><ClockIcon className="w-6 h-6 text-primary shrink-0" /> <span>{event.time}</span></p>
-                                            <p className="flex items-center gap-3 text-white">
-                                                <MapPinIcon className="w-6 h-6 text-primary shrink-0" />
+                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><CalendarIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> <span>{event.date}</span></p>
+                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><ClockIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> <span>{event.time}</span></p>
+                                            <p className="flex items-center gap-3 text-[#1d1d1b]">
+                                                <MapPinIcon className="w-5 h-5 text-[#d65a38] shrink-0" />
                                                 <a
                                                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="hover:text-primary hover:underline transition-colors"
+                                                    className="text-[#1d1d1b] hover:text-[#d65a38] underline underline-offset-4 transition-colors"
                                                 >
                                                     {event.location}
                                                 </a>
                                             </p>
                                         </div>
                                         <div className="space-y-4">
-                                            {event.category && <p className="flex items-center gap-3 text-white"><span className="text-2xl shrink-0">🏷️</span> <span>{event.category}</span></p>}
-                                            {event.organizer && <p className="flex items-center gap-3 text-white"><span className="text-2xl shrink-0">👤</span> <span>{event.organizer}</span></p>}
-                                            {event.price && <p className="flex items-center gap-3 text-white"><span className="text-2xl shrink-0">💰</span> <span>{event.price}</span></p>}
+                                            {event.category && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">🏷️</span> <span>{event.category}</span></p>}
+                                            {event.organizer && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">👤</span> <span>{event.organizer}</span></p>}
+                                            {event.price && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">💰</span> <span>{event.price}</span></p>}
                                         </div>
                                     </div>
 
-                                    <div className="border-t border-white/20 pt-6">
+                                    <div className="border-t border-black/10 pt-6">
                                         <div className="flex items-start gap-3">
-                                            <svg className="w-8 h-8 text-white shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                                            <svg className="w-7 h-7 text-[#d65a38] shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                             </svg>
-                                            <p className="text-gray-300 whitespace-pre-wrap text-lg leading-relaxed flex-1">{event.description}</p>
+                                            <p className="text-[#5f5b56] whitespace-pre-wrap text-base leading-relaxed flex-1">{event.description}</p>
                                         </div>
                                     </div>
 
                                     {event.sourceUrl && (
-                                        <div className="border-t border-white/20 pt-6">
+                                        <div className="border-t border-black/10 pt-6">
                                             <div className="flex items-start gap-3">
-                                                <svg className="w-7 h-7 text-white shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                                                <svg className="w-6 h-6 text-[#d65a38] shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
                                                 </svg>
                                                 <a
                                                     href={event.sourceUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-primary hover:text-accent underline text-lg break-all flex-1"
+                                                    className="text-[#1d1d1b] hover:text-[#d65a38] underline underline-offset-4 text-base break-all flex-1"
                                                 >
                                                     {event.sourceUrl}
                                                 </a>
@@ -299,16 +293,15 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         </div>
                     </div>
 
-                    {/* Same Day Events */}
                     {sameDayEvents.length > 0 && (
-                        <div className="glass-effect rounded-3xl p-8 w-full max-w-full border border-white/10">
-                            <h2 className="text-3xl font-bold bg-gradient-text bg-clip-text text-transparent mb-6">Altri Eventi dello Stesso Giorno</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="surface-panel p-5 md:p-8 w-full max-w-full">
+                            <h2 className="text-3xl font-black tracking-[-0.06em] mb-6 text-[#1d1d1b]">Altri Eventi dello Stesso Giorno</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                 {sameDayEvents.map((sameDayEvent) => (
                                     <TransitionLink
                                         key={sameDayEvent.id}
                                         href={`/events/${generateUniqueSlug(sameDayEvent.title, sameDayEvent.id)}`}
-                                        className="glass-effect p-6 rounded-xl cursor-pointer hover:shadow-glow hover:scale-105 transition-all duration-300 border border-white/10 hover:border-primary/50 group block"
+                                        className="group block rounded-none border border-black/10 bg-white p-4 transition-all duration-300 hover:-translate-y-1 hover:border-[#d65a38] hover:shadow-[0_12px_30px_rgba(214,90,56,0.08)]"
                                     >
                                         {sameDayEvent.imageUrl && (
                                             <Image
@@ -316,16 +309,16 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                 alt={sameDayEvent.title}
                                                 width={400}
                                                 height={300}
-                                                className="w-full h-48 object-cover rounded-lg mb-3"
+                                                className="w-full h-44 object-cover mb-3"
                                                 sizes="(min-width: 1024px) 25vw, 50vw"
                                                 loading="lazy"
                                             />
                                         )}
-                                        <h3 className="font-bold text-xl mb-2 text-white group-hover:text-primary transition-colors truncate">{sameDayEvent.title}</h3>
-                                        <p className="text-gray-400 text-sm mb-3 line-clamp-2">{sameDayEvent.description}</p>
-                                        <div className="space-y-1 text-sm text-gray-400">
-                                            <p className="flex items-center gap-2"><ClockIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{sameDayEvent.time}</span></p>
-                                            <p className="flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{sameDayEvent.location}</span></p>
+                                        <h3 className="font-bold text-xl mb-2 text-[#1d1d1b] truncate group-hover:text-[#d65a38] transition-colors">{sameDayEvent.title}</h3>
+                                        <p className="text-[#5f5b56] text-sm mb-3 line-clamp-2">{sameDayEvent.description}</p>
+                                        <div className="space-y-1 text-sm text-[#5f5b56]">
+                                            <p className="flex items-center gap-2"><ClockIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{sameDayEvent.time}</span></p>
+                                            <p className="flex items-center gap-2"><MapPinIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{sameDayEvent.location}</span></p>
                                         </div>
                                     </TransitionLink>
                                 ))}
@@ -333,16 +326,15 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         </div>
                     )}
 
-                    {/* Similar Events */}
                     {similarEvents.length > 0 && (
-                        <div className="glass-effect rounded-3xl p-6 w-full max-w-full border border-white/10">
-                            <h2 className="text-3xl font-bold mb-6 bg-gradient-text bg-clip-text text-transparent">Eventi Simili</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="surface-panel p-5 md:p-8 w-full max-w-full">
+                            <h2 className="text-3xl font-black tracking-[-0.06em] mb-6 text-[#1d1d1b]">Eventi Simili</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                 {similarEvents.map((similarEvent) => (
                                     <TransitionLink
                                         key={similarEvent.id}
                                         href={`/events/${generateUniqueSlug(similarEvent.title, similarEvent.id)}`}
-                                        className="glass-effect p-4 rounded-lg cursor-pointer hover:shadow-glow hover:scale-105 transition-all duration-300 border border-white/10 hover:border-primary/50 group block"
+                                        className="group block rounded-none border border-black/10 bg-white p-4 transition-all duration-300 hover:-translate-y-1 hover:border-[#d65a38] hover:shadow-[0_12px_30px_rgba(214,90,56,0.08)]"
                                     >
                                         {similarEvent.imageUrl && (
                                             <Image
@@ -350,16 +342,16 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                 alt={similarEvent.title}
                                                 width={400}
                                                 height={300}
-                                                className="w-full h-48 object-cover rounded mb-2"
+                                                className="w-full h-44 object-cover mb-3"
                                                 sizes="(min-width: 1024px) 25vw, 50vw"
                                                 loading="lazy"
                                             />
                                         )}
-                                        <h3 className="font-semibold text-lg text-white group-hover:text-primary transition-colors truncate">{similarEvent.title}</h3>
-                                        <p className="text-gray-400 text-sm line-clamp-2">{similarEvent.description}</p>
-                                        <div className="mt-2 text-sm text-gray-400">
-                                            <p className="flex items-center gap-2"><CalendarIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{similarEvent.date}</span></p>
-                                            <p className="flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-primary shrink-0" /> <span className="truncate">{similarEvent.location}</span></p>
+                                        <h3 className="font-bold text-lg text-[#1d1d1b] truncate group-hover:text-[#d65a38] transition-colors">{similarEvent.title}</h3>
+                                        <p className="text-[#5f5b56] text-sm line-clamp-2 mt-2">{similarEvent.description}</p>
+                                        <div className="mt-3 text-sm text-[#5f5b56]">
+                                            <p className="flex items-center gap-2"><CalendarIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{similarEvent.date}</span></p>
+                                            <p className="flex items-center gap-2"><MapPinIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{similarEvent.location}</span></p>
                                         </div>
                                     </TransitionLink>
                                 ))}

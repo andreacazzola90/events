@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 
 export default function PWAHandler() {
     useEffect(() => {
-        // Register Service Worker (skip in development)
+        if (typeof window === 'undefined') return;
+
         if ('serviceWorker' in navigator) {
             if (process.env.NODE_ENV === 'development') {
                 console.log('[PWA] Skipping Service Worker registration in development');
@@ -12,42 +13,56 @@ export default function PWAHandler() {
             }
 
             navigator.serviceWorker
-                .register('/sw.js')
+                .register('/sw.js', { scope: '/' })
                 .then((registration) => {
                     console.log('[PWA] Service Worker registered:', registration);
 
-                    // Check for updates periodically
-                    setInterval(() => {
+                    const updateInterval = window.setInterval(() => {
                         registration.update();
-                    }, 60 * 60 * 1000); // Every hour
+                    }, 60 * 60 * 1000);
+
+                    return () => window.clearInterval(updateInterval);
                 })
                 .catch((error) => {
                     console.error('[PWA] Service Worker registration failed:', error);
                 });
         }
 
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
+        const handleBeforeInstallPrompt = (event: Event) => {
+            event.preventDefault();
             console.log('[PWA] Install prompt available');
 
-            // You can show a custom install button here
-            // For now, we'll let the browser handle it
-        });
+            const promptEvent = event as BeforeInstallPromptEvent;
+            if (promptEvent && typeof promptEvent.preventDefault === 'function') {
+                promptEvent.preventDefault();
+            }
+        };
 
-        window.addEventListener('appinstalled', () => {
+        const handleAppInstalled = () => {
             console.log('[PWA] App installed successfully');
-        });
+        };
 
-        // Log if running as standalone PWA
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('appinstalled', handleAppInstalled);
+
         if (window.matchMedia('(display-mode: standalone)').matches) {
             console.log('[PWA] Running as standalone app');
         }
 
-        // iOS standalone detection
         if ((navigator as any).standalone) {
             console.log('[PWA] Running as iOS standalone app');
         }
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('appinstalled', handleAppInstalled);
+        };
     }, []);
 
-    return null; // This component doesn't render anything
+    return null;
 }
+
+type BeforeInstallPromptEvent = Event & {
+    prompt: () => Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};

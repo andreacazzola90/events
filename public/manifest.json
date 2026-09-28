@@ -2,11 +2,15 @@
   "name": "EventScanner",
   "short_name": "EventScanner",
   "description": "Scansiona e gestisci i tuoi eventi con AI",
+  "lang": "it",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#2563eb",
-  "theme_color": "#2563eb",
-  "orientation": "portrait",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "background_color": "#f1eee7",
+  "theme_color": "#f1eee7",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/icon-192x192.png",
@@ -26,13 +30,13 @@
       "name": "Crea Evento",
       "short_name": "Crea",
       "url": "/crea",
-      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Mappa Eventi",
       "short_name": "Mappa",
       "url": "/mappa",
-      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "share_target": {
@@ -51,6 +55,8 @@
       ]
     }
   },
-  "categories": ["productivity", "utilities"],
-  "screenshots": []
+  "categories": ["productivity", "utilities", "lifestyle"],
+  "screenshots": [],
+  "related_applications": [],
+  "prefer_related_applications": false
 }

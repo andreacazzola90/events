@@ -42,7 +42,7 @@ const nextConfig = {
     return [
       {
         source: "/manifest.json",
-        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
+        headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
       },
       {
         source: "/sw.js",

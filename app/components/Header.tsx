@@ -11,13 +11,18 @@ export default function Header() {
 
   // Body scroll lock when mobile menu is open
   useEffect(() => {
-    if (mobileOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
+    if (!mobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+
     return () => {
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
     };
   }, [mobileOpen]);
 
@@ -41,7 +46,7 @@ export default function Header() {
             </span>
           </TransitionLink>
 
-          <nav className="hidden md:flex items-center gap-6" aria-label="Navigazione principale">
+          <nav className="desktop-nav hidden md:flex items-center gap-6" aria-label="Navigazione principale">
             {navLinks.map((link) => {
               const isActive =
                 pathname === link.href ||
@@ -51,7 +56,7 @@ export default function Header() {
                   key={link.href}
                   href={link.href}
                   aria-current={isActive ? "page" : undefined}
-                  className={`site-nav-link text-[11px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${
+                  className={`desktop-nav-link site-nav-link text-[11px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${
                     isActive
                       ? "site-nav-active text-black"
                       : "text-black/55 hover:text-black"
@@ -120,46 +125,40 @@ export default function Header() {
         </div>
       </header>
 
-      {mobileOpen && (
-        <div id="mobile-menu" className="md:hidden fixed inset-0 z-100 bg-white pt-16" role="dialog" aria-modal="true" aria-label="Menu di navigazione">
-          <div className="editorial-container py-6 border-b border-black/10 flex justify-between items-center">
-            <span className="text-sm font-black uppercase tracking-[0.15em]">
-              Menu
-            </span>
-            <button
-              className="w-10 h-10 border border-black/20 text-black"
-              onClick={() => setMobileOpen(false)}
-              aria-label="Chiudi menu"
-            >
-              ×
-            </button>
-          </div>
-
-          <nav className="editorial-container py-8 flex flex-col gap-6" aria-label="Navigazione mobile">
-            {navLinks.map((link) => {
-              const isActive =
-                pathname === link.href ||
-                (link.href !== "/" && pathname.startsWith(link.href));
-              return (
-                <TransitionLink
-                  key={link.href}
-                  href={link.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`text-2xl font-black uppercase tracking-tight no-underline hover:no-underline ${
-                    isActive
-                      ? "bg-black text-white px-3 py-2 w-fit"
-                      : "text-black/50 hover:text-black"
-                  }`}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  {link.label}
-                </TransitionLink>
-              );
-            })}
+      <div
+        id="mobile-menu"
+        className={`mobile-menu md:hidden fixed inset-x-0 top-16 bottom-0 z-100 ${mobileOpen ? "mobile-menu-open" : ""}`}
+        role="dialog"
+        aria-modal={mobileOpen || undefined}
+        aria-hidden={!mobileOpen}
+        aria-label="Menu di navigazione"
+        inert={!mobileOpen}
+      >
+        <nav className="editorial-container mobile-menu-nav flex flex-col" aria-label="Navigazione mobile">
+          {navLinks.map((link) => {
+            const isActive =
+              pathname === link.href ||
+              (link.href !== "/" && pathname.startsWith(link.href));
+            return (
+              <TransitionLink
+                key={link.href}
+                href={link.href}
+                aria-current={isActive ? "page" : undefined}
+                className={`mobile-menu-link no-underline hover:no-underline ${
+                  isActive
+                    ? "mobile-menu-link-active"
+                    : "mobile-menu-link-idle"
+                }`}
+                onClick={() => setMobileOpen(false)}
+              >
+                {link.label}
+              </TransitionLink>
+            );
+          })}
 
             <TransitionLink
               href="/estensione"
-              className="mt-2 inline-flex items-center justify-center gap-2 h-11 border border-black/20 text-black text-xs uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
+              className="mobile-menu-secondary mt-8 inline-flex items-center justify-center gap-2"
               onClick={() => setMobileOpen(false)}
             >
               <svg
@@ -194,14 +193,13 @@ export default function Header() {
 
             <TransitionLink
               href="/crea"
-              className="mt-2 inline-flex items-center justify-center h-12 border border-black bg-black text-white text-sm uppercase tracking-[0.14em] font-bold no-underline hover:no-underline"
+              className="mobile-menu-primary mt-3 inline-flex items-center justify-center"
               onClick={() => setMobileOpen(false)}
             >
               Crea evento
             </TransitionLink>
-          </nav>
-        </div>
-      )}
+        </nav>
+      </div>
     </>
   );
 }

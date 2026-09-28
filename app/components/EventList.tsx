@@ -544,8 +544,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             : filteredEvents;
         const gridClasses =
           mode === "quick"
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
-            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5";
+            ? "event-list-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
+            : "event-list-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5";
 
         return (
           <>
@@ -564,9 +564,9 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   <TransitionLink
                     key={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="event-card group block no-underline hover:no-underline bg-white border border-black/12 hover:border-black/30 transition-colors"
+                    className="event-card group block no-underline hover:no-underline bg-white border border-black/12 transition-colors"
                   >
-                    <div className="relative overflow-hidden">
+                    <div className="event-card-media relative overflow-hidden">
                       <FavoriteButton
                         eventId={event.id}
                         initialIsFavorite={favoriteIds.has(event.id)}
@@ -584,11 +584,11 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                           alt={event.title}
                           width={600}
                           height={400}
-                          className="w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105"
+                          className="event-card-image w-full h-48 object-cover transition-transform duration-700 group-hover:scale-105"
                           sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                         />
                       ) : (
-                        <div className="w-full h-48 bg-black/5 flex items-center justify-center">
+                        <div className="event-card-placeholder w-full h-48 flex items-center justify-center">
                           <div className="text-sm uppercase tracking-[0.12em] text-black/40 font-bold">
                             No image
                           </div>
@@ -607,7 +607,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                       })()}
                     </div>
 
-                    <div className="p-4 space-y-3">
+                    <div className="event-card-body p-4 space-y-3">
                       <div className="space-y-2">
                         <h3 className="text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
                           {cleanText(event.title)}

@@ -27,10 +27,10 @@ export default function MappaPage() {
     }, []);
 
     return (
-        <main className="h-[calc(100vh-4rem)] w-full bg-black" aria-label="Mappa degli eventi">
+        <main className="h-[calc(100vh-4rem)] w-full bg-[#f5f2ec]" aria-label="Mappa degli eventi">
             <h1 className="sr-only">Mappa eventi Schio e Alto Vicentino</h1>
-            <div className="h-full w-full">
-                <div className="h-full w-full">
+            <div className="h-full w-full px-2 pt-2 pb-2 md:px-4 md:pt-4 md:pb-4">
+                <div className="h-full w-full overflow-hidden border border-black/10 bg-white shadow-[0_12px_30px_rgba(29,29,27,0.06)]">
                     <EventMap />
                 </div>
             </div>

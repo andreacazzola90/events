@@ -15,22 +15,24 @@ export default function HomeMotion({ children }: { children: React.ReactNode }) 
 
     const context = gsap.context(() => {
       gsap.from("[data-hero-reveal]", {
-        y: 36,
-        duration: 0.95,
-        stagger: 0.11,
+        y: 28,
+        opacity: 0,
+        duration: 0.9,
+        stagger: 0.12,
         ease: "power3.out",
         clearProps: "all",
       });
 
       gsap.utils.toArray<HTMLElement>("[data-scroll-reveal]").forEach((section) => {
         gsap.from(section, {
-          y: 42,
-          duration: 0.85,
-          ease: "power3.out",
+          y: 30,
+          opacity: 0,
+          duration: 0.75,
+          ease: "power2.out",
           clearProps: "all",
           scrollTrigger: {
             trigger: section,
-            start: "top 90%",
+            start: "top 88%",
             once: true,
           },
         });

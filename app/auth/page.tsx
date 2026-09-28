@@ -32,26 +32,27 @@ function AuthPageContent() {
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center auth-page bg-white">
-            <div className="w-full max-w-md mx-auto px-6 py-16">
+        <main className="min-h-screen flex items-center justify-center auth-page bg-white page-shell">
+            <div className="w-full max-w-md mx-auto px-4 md:px-6">
 
-                <div className="mb-10">
-                    <p className="section-kicker mb-3">EventScanner</p>
-                    <h1 className="text-4xl font-black tracking-tight leading-tight mb-2">
-                        {view === 'login' ? 'Accedi al tuo account' : view === 'forgot' ? 'Recupera password' : 'Crea un account'}
-                    </h1>
-                    <p className="text-black/55 text-sm">
-                        {view === 'login'
-                            ? 'Inserisci le tue credenziali per continuare.'
-                            : view === 'forgot'
-                                ? 'Ti invieremo un link per reimpostare la password.'
-                                : 'Registrati per salvare i tuoi eventi preferiti.'}
-                    </p>
-                </div>
+                <div className="surface-panel p-6 md:p-8">
+                    <div className="mb-8">
+                        <p className="section-kicker mb-3">EventScanner</p>
+                        <h1 className="text-4xl font-black tracking-tight leading-tight mb-2">
+                            {view === 'login' ? 'Accedi al tuo account' : view === 'forgot' ? 'Recupera password' : 'Crea un account'}
+                        </h1>
+                        <p className="text-black/55 text-sm m-0">
+                            {view === 'login'
+                                ? 'Inserisci le tue credenziali per continuare.'
+                                : view === 'forgot'
+                                    ? 'Ti invieremo un link per reimpostare la password.'
+                                    : 'Registrati per salvare i tuoi eventi preferiti.'}
+                        </p>
+                    </div>
 
-                <div className="mono-divider mb-8" />
+                    <div className="mono-divider mb-8" />
 
-                <div>
+                    <div>
                     {view === 'login' && (
                         <>
                             <LoginForm />
@@ -104,6 +105,7 @@ function AuthPageContent() {
                             </div>
                         </>
                     )}
+                    </div>
                 </div>
             </div>
         </main>

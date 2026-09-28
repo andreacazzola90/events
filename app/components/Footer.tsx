@@ -2,7 +2,7 @@
 import { TransitionLink } from "./TransitionLink";
 import { useSession } from "next-auth/react";
 
-export default function Footer() {
+export default function Footer({ version }: { version: string }) {
   const { data: session } = useSession();
 
   const navLinks = [
@@ -19,10 +19,15 @@ export default function Footer() {
     { href: "#", label: "Dati Societari" },
   ];
 
+  const projectLinks = [
+    { href: "/ui-ux", label: "Regole UI/UX" },
+    { href: "/versioni", label: "Novità e versioni" },
+  ];
+
   return (
-    <footer className="site-footer border-t border-black/10 py-12">
+    <footer className="site-footer border-t border-black/10 py-12 md:py-16">
       <div className="editorial-container">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 pb-10 border-b border-black/10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 pb-10 border-b border-black/10">
           <div>
             <TransitionLink
               href="/"
@@ -44,6 +49,24 @@ export default function Footer() {
             </h3>
             <ul className="space-y-2">
               {navLinks.map((link) => (
+                <li key={link.href}>
+                  <TransitionLink
+                    href={link.href}
+                    className="text-black/65 hover:text-black transition-colors text-sm no-underline hover:no-underline"
+                  >
+                    {link.label}
+                  </TransitionLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-black font-bold mb-4 uppercase tracking-[0.14em] text-xs">
+              Progetto
+            </h3>
+            <ul className="space-y-2">
+              {projectLinks.map((link) => (
                 <li key={link.href}>
                   <TransitionLink
                     href={link.href}
@@ -80,12 +103,21 @@ export default function Footer() {
             © {new Date().getFullYear()} EventScanner
           </p>
 
-          <a
-            href="mailto:hello@eventscanner.ai"
-            className="text-black/65 hover:text-black text-sm no-underline hover:no-underline"
-          >
-            hello@eventscanner.ai
-          </a>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <a
+              href="mailto:hello@eventscanner.ai"
+              className="text-black/65 hover:text-black text-sm no-underline hover:no-underline"
+            >
+              hello@eventscanner.ai
+            </a>
+            <TransitionLink
+              href="/versioni"
+              aria-label={`Versione ${version}, novità e cronologia`}
+              className="text-black/65 hover:text-black text-xs font-bold uppercase tracking-[0.12em] no-underline hover:no-underline"
+            >
+              v{version}
+            </TransitionLink>
+          </div>
         </div>
       </div>
     </footer>

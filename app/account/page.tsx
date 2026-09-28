@@ -437,9 +437,9 @@ export default function AccountPage() {
   }
 
   return (
-    <main className="min-h-screen account-page">
-      <div className="max-w-6xl mx-auto px-6 pt-8">
-        <div className="glass-effect p-6">
+    <main className="min-h-screen page-shell account-page">
+      <div className="editorial-container mb-8">
+        <div className="account-tabs-shell surface-panel p-3 md:p-4">
           <div className="flex flex-wrap gap-3" role="tablist" aria-label="Sezioni account">
             <button
               type="button"
@@ -447,7 +447,7 @@ export default function AccountPage() {
               aria-selected={activeTab === "profile"}
               aria-controls="tab-panel-profile"
               onClick={() => setActiveTab("profile")}
-              className={`btn ${activeTab === "profile" ? "btn-primary" : "btn-outline"}`}
+              className={`account-tab ${activeTab === "profile" ? "account-tab-active" : ""}`}
             >
               Profilo
             </button>
@@ -457,7 +457,7 @@ export default function AccountPage() {
               aria-selected={activeTab === "events"}
               aria-controls="tab-panel-events"
               onClick={() => setActiveTab("events")}
-              className={`btn ${activeTab === "events" ? "btn-primary" : "btn-outline"}`}
+              className={`account-tab ${activeTab === "events" ? "account-tab-active" : ""}`}
             >
               I miei eventi
             </button>
@@ -467,7 +467,7 @@ export default function AccountPage() {
               aria-selected={activeTab === "favorites"}
               aria-controls="tab-panel-favorites"
               onClick={() => setActiveTab("favorites")}
-              className={`btn ${activeTab === "favorites" ? "btn-primary" : "btn-outline"}`}
+              className={`account-tab ${activeTab === "favorites" ? "account-tab-active" : ""}`}
             >
               Preferiti
             </button>
@@ -477,7 +477,7 @@ export default function AccountPage() {
               aria-selected={activeTab === "stats"}
               aria-controls="tab-panel-stats"
               onClick={() => setActiveTab("stats")}
-              className={`btn ${activeTab === "stats" ? "btn-primary" : "btn-outline"}`}
+              className={`account-tab ${activeTab === "stats" ? "account-tab-active" : ""}`}
             >
               Statistiche
             </button>
@@ -488,7 +488,7 @@ export default function AccountPage() {
                 aria-selected={activeTab === "admin"}
                 aria-controls="tab-panel-admin"
                 onClick={() => setActiveTab("admin")}
-                className={`btn ${activeTab === "admin" ? "btn-primary" : "btn-outline"}`}
+                className={`account-tab ${activeTab === "admin" ? "account-tab-active" : ""}`}
               >
                 Admin tools
               </button>
@@ -499,7 +499,7 @@ export default function AccountPage() {
               aria-selected={activeTab === "password"}
               aria-controls="tab-panel-password"
               onClick={() => setActiveTab("password")}
-              className={`btn ${activeTab === "password" ? "btn-primary" : "btn-outline"}`}
+              className={`account-tab ${activeTab === "password" ? "account-tab-active" : ""}`}
             >
               Password
             </button>
@@ -509,43 +509,44 @@ export default function AccountPage() {
 
       {/* Hero Section */}
       {activeTab === "profile" && (
-      <section className="hero-section" id="tab-panel-profile" role="tabpanel" aria-labelledby="tab-panel-profile">
-        <div className="max-w-6xl mx-auto px-6 py-16">
-          <div className="glass-effect rounded-3xl p-8 md:p-12 animate-fadeInUp">
+      <section className="account-profile-section" id="tab-panel-profile" role="tabpanel" aria-labelledby="tab-panel-profile">
+        <div className="editorial-container py-4 md:py-8">
+          <div className="account-profile-card surface-panel p-6 md:p-10 animate-fadeInUp">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
               <div className="flex-1">
-                <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
-                  Your <span className="gradient-text">Profile</span>
+                <p className="section-kicker mb-3">Area personale</p>
+                <h1 className="section-title mb-8">
+                  Il tuo <span className="site-brand-accent">profilo.</span>
                 </h1>
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-linear-to-br from-pink-500 to-purple-600 rounded-full flex items-center justify-center">
+                    <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
                       <span className="text-xl">👤</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 text-sm">Name</span>
-                      <p className="text-white font-semibold text-lg">
-                        {session.user?.name || "Not available"}
+                      <span className="text-gray-400 text-sm">Nome</span>
+                      <p className="text-white font-semibold text-lg mb-0">
+                        {session.user?.name || "Non disponibile"}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-linear-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center">
+                    <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
                       <span className="text-xl">📧</span>
                     </div>
                     <div>
                       <span className="text-gray-400 text-sm">Email</span>
-                      <p className="text-white font-semibold text-lg">
+                      <p className="text-white font-semibold text-lg mb-0">
                         {session.user?.email}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-linear-to-br from-pink-600 to-purple-500 rounded-full flex items-center justify-center">
+                    <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
                       <span className="text-xl">🆔</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 text-sm">User ID</span>
+                      <span className="text-gray-400 text-sm">ID utente</span>
                       <p className="text-white font-mono text-sm">
                         {(session.user as any)?.id || "N/A"}
                       </p>
@@ -553,12 +554,12 @@ export default function AccountPage() {
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-linear-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center">
+                      <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
                         <span className="text-xl">⭐</span>
                       </div>
                       <div>
-                        <span className="text-gray-400 text-sm">Type</span>
-                        <p className="text-emerald-300 font-semibold text-lg">
+                        <span className="text-gray-400 text-sm">Tipo account</span>
+                        <p className="text-emerald-300 font-semibold text-lg mb-0">
                           admin
                         </p>
                       </div>
@@ -571,24 +572,24 @@ export default function AccountPage() {
                   onClick={() => router.push("/crea")}
                   className="btn btn-primary btn-lg inline-flex items-center gap-3 font-bold text-lg"
                 >
-                  ✨ Create Event
+                  ✨ Crea evento
                 </button>
                 <button
                   onClick={handleLogout}
                   className="btn btn-outline btn-secondary btn-lg inline-flex items-center gap-3 font-bold text-lg"
                 >
-                  🚪 Logout
+                  🚪 Esci
                 </button>
               </div>
             </div>
 
             <form
               onSubmit={handleSaveCalendarEmail}
-              className="mt-10 border-t border-white/20 pt-8 space-y-3"
+              className="account-calendar-email mt-10 border-t border-white/20 pt-8 space-y-3"
             >
               <label className="block space-y-2" htmlFor="calendar-email">
                 <span className="text-white font-semibold text-lg flex items-center gap-2">
-                  📅 Add to calendar
+                  📅 Email per il calendario
                 </span>
                 <span className="block text-gray-400 text-sm">
                   Inserisci l&apos;email a cui inviare gli eventi da salvare nel tuo calendario.
@@ -602,7 +603,7 @@ export default function AccountPage() {
                   type="email"
                   value={calendarEmail}
                   onChange={(e) => setCalendarEmail(e.target.value)}
-                  className="flex-1 rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
+                  className="account-input flex-1 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
                   placeholder="nome@esempio.it"
                   autoComplete="email"
                   maxLength={254}
@@ -621,9 +622,9 @@ export default function AccountPage() {
       </section>
       )}
 
-      <div className="max-w-6xl mx-auto px-6 pb-16 space-y-8">
+      <div className="editorial-container pb-12 space-y-8">
         {activeTab === "password" && (
-        <div id="tab-panel-password" role="tabpanel" className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-password" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">🔐</span>
             Recupera Password
@@ -699,7 +700,7 @@ export default function AccountPage() {
 
         {/* Your Events Section */}
         {activeTab === "events" && (
-        <div id="tab-panel-events" role="tabpanel" className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-events" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">🎵</span>
             {isAdmin ? 'All Events (Admin)' : 'Your Events'}
@@ -736,7 +737,7 @@ export default function AccountPage() {
                         {dayGroup.events.map((event) => (
                           <div
                             key={event.id}
-                            className="card bg-base-100/5 border border-base-200/40 cursor-pointer group hover:border-primary/60 hover:shadow-xl transition-all duration-300"
+                            className="account-event-card cursor-pointer group transition-all duration-300"
                             onClick={() =>
                               router.push(
                                 `/events/${generateUniqueSlug(event.title, event.id)}`,
@@ -750,16 +751,16 @@ export default function AccountPage() {
                                   alt={event.title}
                                   width={600}
                                   height={400}
-                                  className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
+                                  className="account-event-image w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
                                   sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                                 />
                               ) : (
-                                <div className="w-full h-40 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
+                                <div className="account-event-placeholder w-full h-40 flex items-center justify-center">
                                   <div className="text-4xl opacity-50">🎵</div>
                                 </div>
                               )}
 
-                              <div className="badge badge-success absolute top-3 right-3 text-xs font-semibold">
+                              <div className="account-event-origin absolute top-3 right-3 text-xs font-semibold">
                                 {event.origin === "user"
                                   ? isAdminEventsView ? "UTENTE" : "TU"
                                   : "CRON"}
@@ -819,7 +820,7 @@ export default function AccountPage() {
 
         {/* Favorite Events Section */}
         {activeTab === "favorites" && (
-        <div id="tab-panel-favorites" role="tabpanel" className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-favorites" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">❤️</span>
             Favorite Events
@@ -833,7 +834,7 @@ export default function AccountPage() {
               {favoriteEvents.map((event) => (
                 <div
                   key={event.id}
-                  className="card bg-base-100/5 border border-base-200/40 cursor-pointer group hover:border-pink-500/60 hover:shadow-xl transition-all duration-300"
+                  className="account-event-card cursor-pointer group transition-all duration-300"
                   onClick={() =>
                     router.push(
                       `/events/${generateUniqueSlug(event.title, event.id)}`,
@@ -851,17 +852,17 @@ export default function AccountPage() {
                         alt={event.title}
                         width={600}
                         height={400}
-                        className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
+                        className="account-event-image w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
                         sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                       />
                     ) : (
-                      <div className="w-full h-40 bg-linear-to-br from-pink-500/20 to-purple-600/20 flex items-center justify-center">
+                      <div className="account-event-placeholder w-full h-40 flex items-center justify-center">
                         <div className="text-4xl opacity-50">🎵</div>
                       </div>
                     )}
 
-                    <div className="badge badge-error absolute top-3 right-3 text-xs font-semibold">
-                      FAV
+                    <div className="account-event-origin absolute top-3 right-3 text-xs font-semibold">
+                      PREFERITO
                     </div>
                   </div>
 
@@ -901,13 +902,13 @@ export default function AccountPage() {
 
         {/* Statistics Section */}
         {activeTab === "stats" && (
-        <div id="tab-panel-stats" role="tabpanel" className="glass-effect rounded-2xl p-8">
+        <div id="tab-panel-stats" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">📊</span>
             Your Stats
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl p-6 text-white relative overflow-hidden">
+            <div className="account-stat-card p-6 relative overflow-hidden">
               <div className="relative z-10">
                 <div className="text-4xl font-black mb-2">
                   {userEvents.length}
@@ -921,7 +922,7 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <div className="bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl p-6 text-white relative overflow-hidden">
+            <div className="account-stat-card p-6 relative overflow-hidden">
               <div className="relative z-10">
                 <div className="text-4xl font-black mb-2">
                   {
@@ -938,7 +939,7 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <div className="bg-linear-to-br from-pink-600 to-purple-500 rounded-2xl p-6 text-white relative overflow-hidden">
+            <div className="account-stat-card p-6 relative overflow-hidden">
               <div className="relative z-10">
                 <div className="text-4xl font-black mb-2">
                   {new Set(userEvents.map((e) => e.category)).size}
@@ -957,7 +958,7 @@ export default function AccountPage() {
 
         {/* Admin Cron Controls */}
         {isAdmin && activeTab === "admin" && (
-          <div id="tab-panel-admin" role="tabpanel" className="glass-effect rounded-2xl p-8">
+          <div id="tab-panel-admin" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
             <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
               <span className="text-2xl">🛠️</span>
               <span>Admin Tools</span>

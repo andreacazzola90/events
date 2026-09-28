@@ -3,18 +3,40 @@
 :root {
   --background: #f1eee7;
   --background-secondary: #e8e4db;
-  --foreground: #20221f;
-  --foreground-muted: #595959;
-  --accent: #20221f;
-  --accent-secondary: #2a2a2a;
-  --accent-light: #efefef;
-  --border: #e5e5e5;
-  --card-bg: #ffffff;
-  --shadow-dice: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --background-soft: #faf7f2;
+  --foreground: #1d1d1b;
+  --foreground-muted: #5f5b56;
+  --accent: #d65a38;
+  --accent-strong: #b84b2d;
+  --accent-soft: #f4d9d3;
+  --ink-soft: #2b2a28;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-strong: #ffffff;
+  --line: rgba(29, 29, 27, 0.12);
+  --shadow-soft: 0 18px 42px rgba(20, 18, 16, 0.08);
+  --shadow-card: 0 10px 28px rgba(20, 18, 16, 0.06);
+  --rounded: 0px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at top left, rgba(214, 90, 56, 0.08), transparent 24%),
+    linear-gradient(180deg, #f5f2ec 0%, #f1eee7 100%);
   color: var(--foreground);
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 100vh;
@@ -24,6 +46,15 @@ body {
   letter-spacing: -0.01em;
   transition: background-color 0.2s ease, color 0.2s ease;
   overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(214, 90, 56, 0.18);
+  color: var(--foreground);
+}
+
+main {
+  position: relative;
 }
 
 h1,
@@ -171,26 +202,29 @@ button {
 }
 
 /* Auth/account pages follow the same monochrome visual language as the rest of the site */
-.auth-page,
+.auth-page {
+  background: var(--background);
+  color: var(--foreground);
+}
+
 .account-page {
-  background: #ffffff;
-  color: #111111;
+  background:
+    radial-gradient(circle at 90% 6%, rgba(214, 90, 56, 0.07), transparent 25rem),
+    var(--background);
+  color: var(--foreground);
 }
 
-.auth-page .hero-section,
-.account-page .hero-section {
+.auth-page .hero-section {
   background: #ffffff;
 }
 
-.auth-page .glass-effect,
-.account-page .glass-effect {
+.auth-page .glass-effect {
   background: #ffffff;
   border: 1px solid #e5e5e5;
   backdrop-filter: none;
 }
 
-.auth-page .gradient-text,
-.account-page .gradient-text {
+.auth-page .gradient-text {
   color: #111111;
 }
 
@@ -261,6 +295,14 @@ button {
   border: 1px solid #d1d5db;
 }
 
+.auth-page input {
+  border-color: var(--line);
+}
+
+.auth-page input:focus {
+  border-color: var(--accent);
+}
+
 .auth-page input::placeholder,
 .account-page input::placeholder,
 .account-page textarea::placeholder {
@@ -308,6 +350,117 @@ button {
 .auth-page .btn:hover,
 .account-page .btn:hover {
   opacity: 0.9;
+}
+
+.account-tabs-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.account-tab {
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid transparent;
+  color: var(--foreground-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.account-tab:hover {
+  border-color: var(--line);
+  color: var(--foreground);
+  transform: translateY(-1px);
+}
+
+.account-tab-active,
+.account-tab-active:hover {
+  border-color: var(--foreground);
+  background: var(--foreground);
+  color: #fff;
+}
+
+.account-profile-card,
+.account-content-panel {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--shadow-card);
+  animation: none;
+}
+
+.account-profile-icon {
+  flex: 0 0 auto;
+  border: 1px solid rgba(214, 90, 56, 0.18);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.account-calendar-email {
+  border-color: var(--line);
+}
+
+.account-input,
+.account-page input,
+.account-page textarea {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--foreground);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.account-input:focus,
+.account-page input:focus,
+.account-page textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(214, 90, 56, 0.14);
+  outline-offset: 1px;
+}
+
+.account-event-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  box-shadow: 0 1px 0 rgba(29, 29, 27, 0.05);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease, box-shadow 0.35s ease;
+}
+
+.account-event-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+
+.account-event-placeholder {
+  background: linear-gradient(135deg, #e8e4db, #faf7f2);
+  color: var(--foreground-muted);
+}
+
+.account-event-origin {
+  border: 1px solid rgba(29, 29, 27, 0.12);
+  background: var(--background-soft);
+  color: var(--foreground);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.account-stat-card {
+  min-height: 9rem;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, var(--background-soft), var(--background-secondary));
+  color: var(--foreground);
+}
+
+.account-stat-card > div:first-child > div:first-child {
+  color: var(--accent-strong);
+}
+
+.account-stat-card > div:first-child > div:nth-child(2) {
+  color: var(--foreground-muted);
 }
 
 /* Cron page aligned to site light monochrome theme */
@@ -363,18 +516,175 @@ button {
   padding: 0 clamp(1.25rem, 4vw, 4rem);
 }
 
+.page-shell {
+  padding-top: clamp(4rem, 8vw, 8rem);
+  padding-bottom: clamp(4rem, 8vw, 7rem);
+}
+
+.surface-panel {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+}
+
 .section-kicker {
   font-size: 0.72rem;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #646464;
-  font-weight: 700;
+  font-weight: 800;
+}
+
+.section-title {
+  margin: 0;
+  font-size: clamp(2.3rem, 5vw, 4.5rem);
+  line-height: 0.94;
+  letter-spacing: -0.07em;
+  font-weight: 900;
+}
+
+.section-lead {
+  max-width: 40rem;
+  color: var(--foreground-muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.floaty {
+  animation: floaty 6s ease-in-out infinite;
 }
 
 /* Editorial / industrial surfaces */
 .site-header {
   background: rgba(241, 238, 231, 0.96);
   backdrop-filter: blur(18px);
+  box-shadow: 0 1px 0 rgba(29, 29, 27, 0.05);
+}
+
+.desktop-nav-link {
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.desktop-nav-link:hover {
+  transform: translateY(-1px);
+}
+
+.mobile-menu {
+  z-index: 600;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(214, 90, 56, 0.12), transparent 32rem),
+    linear-gradient(155deg, #faf7f2 0%, #f1eee7 76%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-0.75rem);
+  visibility: hidden;
+  transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.45s;
+}
+
+.mobile-menu-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.mobile-menu-nav {
+  padding-top: clamp(2rem, 7vh, 5rem);
+  padding-bottom: 2rem;
+  gap: 0;
+}
+
+.mobile-menu-link {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.65rem 0;
+  font-size: clamp(2rem, 8vw, 4.5rem);
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  animation: none;
+  transition: color 0.2s ease, padding 0.25s ease;
+}
+
+.mobile-menu-link::before {
+  content: "↗";
+  color: var(--accent);
+  font-size: 0.8rem;
+  opacity: 0;
+  transform: translate(-0.4rem, 0.2rem);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.mobile-menu-link:hover::before,
+.mobile-menu-link-active::before {
+  opacity: 1;
+  transform: translate(0, 0);
+}
+
+.mobile-menu-open .mobile-menu-link {
+  animation: fadeInUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mobile-menu-open .mobile-menu-link:nth-child(1) { animation-delay: 70ms; }
+.mobile-menu-open .mobile-menu-link:nth-child(2) { animation-delay: 120ms; }
+.mobile-menu-open .mobile-menu-link:nth-child(3) { animation-delay: 170ms; }
+.mobile-menu-open .mobile-menu-link:nth-child(4) { animation-delay: 220ms; }
+
+.mobile-menu-link-active {
+  color: var(--foreground) !important;
+  padding-left: 0.35rem;
+}
+
+.mobile-menu-link-idle {
+  color: rgba(29, 29, 27, 0.45) !important;
+}
+
+.mobile-menu-link-idle:hover {
+  color: var(--foreground) !important;
+  padding-left: 0.35rem;
+}
+
+.mobile-menu-secondary,
+.mobile-menu-primary {
+  min-height: 3.25rem;
+  padding: 0.8rem 1rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
+  transition: color 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+}
+
+.mobile-menu-secondary {
+  border: 1px solid rgba(29, 29, 27, 0.24);
+  color: var(--foreground) !important;
+}
+
+.mobile-menu-secondary:hover {
+  border-color: var(--foreground);
+  background: var(--foreground);
+  color: white !important;
+}
+
+.mobile-menu-primary {
+  min-height: 3.5rem;
+  background: var(--accent);
+  color: white !important;
+}
+
+.mobile-menu-primary:hover {
+  background: var(--accent-strong);
 }
 
 .site-footer {
@@ -675,14 +985,129 @@ button {
 }
 
 .event-card {
+  position: relative;
   overflow: hidden;
-  box-shadow: 0 1px 0 rgba(32, 34, 31, 0.08);
-  transition: border-color 0.25s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  border-color: rgba(29, 29, 27, 0.12);
+  box-shadow: 0 1px 0 rgba(29, 29, 27, 0.06);
+  transition: border-color 0.25s ease, box-shadow 0.35s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .event-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 18px 36px rgba(32, 34, 31, 0.12);
+  transform: translateY(-6px);
+  border-color: var(--accent);
+  box-shadow: 0 18px 36px rgba(29, 29, 27, 0.11), 0 5px 16px rgba(214, 90, 56, 0.08);
+}
+
+.event-card-media {
+  background: var(--background-secondary);
+}
+
+.event-card-media::after {
+  position: absolute;
+  inset: 40% 0 0;
+  background: linear-gradient(180deg, transparent, rgba(29, 29, 27, 0.16));
+  content: "";
+  opacity: 0.65;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.event-card:hover .event-card-media::after {
+  opacity: 0.95;
+}
+
+.event-card-image {
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.event-card-placeholder {
+  background: linear-gradient(135deg, #e8e4db, #faf7f2);
+  color: var(--foreground-muted);
+}
+
+.event-card-body h3 {
+  transition: color 0.2s ease;
+}
+
+.event-card:hover .event-card-body h3 {
+  color: var(--accent-strong);
+}
+
+.event-list-grid > .event-card {
+  animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.event-list-grid > .event-card:nth-child(4n + 1) { animation-delay: 0ms; }
+.event-list-grid > .event-card:nth-child(4n + 2) { animation-delay: 55ms; }
+.event-list-grid > .event-card:nth-child(4n + 3) { animation-delay: 110ms; }
+.event-list-grid > .event-card:nth-child(4n + 4) { animation-delay: 165ms; }
+
+.event-calendar {
+  box-shadow: var(--shadow-card);
+}
+
+.calendar-toolbar h2 {
+  margin: 0;
+  color: var(--foreground);
+  text-align: center;
+}
+
+.calendar-month-button {
+  min-height: 2.75rem;
+  background: var(--background-soft);
+  color: var(--foreground);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.calendar-month-button:hover {
+  border-color: var(--foreground);
+  background: var(--foreground);
+  color: white;
+}
+
+.calendar-day {
+  min-width: 0;
+  gap: 0.1rem;
+  border-color: rgba(29, 29, 27, 0.08);
+  background: rgba(255, 255, 255, 0.48);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.calendar-day.has-events {
+  border-color: rgba(29, 29, 27, 0.14);
+  background: #fff;
+}
+
+.calendar-day.has-events:hover {
+  z-index: 1;
+  border-color: var(--accent);
+  box-shadow: 0 5px 14px rgba(29, 29, 27, 0.08);
+}
+
+.calendar-day.is-today {
+  border-color: var(--accent);
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.calendar-day.is-today > div:first-child {
+  color: var(--accent-strong);
+}
+
+.calendar-event-link {
+  border-left: 2px solid var(--accent);
+  background: #f5e7e2;
+  color: var(--foreground) !important;
+  font-weight: 700;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.calendar-event-link:hover {
+  background: var(--accent);
+  color: white !important;
 }
 
 .page-heading {
@@ -711,6 +1136,61 @@ button {
 
   .home-crosshair {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .mobile-menu-nav {
+    padding-top: 2.25rem;
+  }
+
+  .calendar-toolbar {
+    gap: 0.5rem;
+  }
+
+  .calendar-month-button {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    overflow: hidden;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .calendar-month-button::after {
+    font-size: 1rem;
+  }
+
+  .calendar-month-button:first-child::after { content: "←"; }
+  .calendar-month-button:last-child::after { content: "→"; }
+
+  .calendar-toolbar h2 {
+    font-size: 1rem;
+  }
+
+  .calendar-day {
+    min-height: 4.5rem !important;
+    padding: 0.25rem !important;
+  }
+
+  .calendar-weekdays > div {
+    padding: 0.35rem 0.1rem;
+    text-align: center;
+    font-size: 0.58rem;
+  }
+
+  .calendar-event-link {
+    height: 0.28rem;
+    padding: 0;
+    overflow: hidden;
+    border-left-width: 2px;
+    color: transparent !important;
+    font-size: 0;
+  }
+
+  .account-tab {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.62rem;
   }
 }
 
@@ -748,6 +1228,17 @@ button {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .mobile-menu,
+  .mobile-menu-link,
+  .event-card,
+  .account-event-card,
+  .account-profile-card,
+  .account-content-panel {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
   }
 }
 

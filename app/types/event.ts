@@ -36,6 +36,16 @@ export interface EventData {
   origin?: string;
 }
 
+/** Existing DB event that a scanned event likely duplicates. */
+export interface DuplicateMatch {
+  id: number;
+  title: string;
+  date: string;
+  time: string;
+  location: string;
+  slug: string;
+}
+
 export interface OCRResponse {
   ParsedResults: {
     ParsedText: string;

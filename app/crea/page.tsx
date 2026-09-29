@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { useRouter } from 'next/navigation';
 import ImageUploader from '../components/ImageUploader';
-import { EventData } from '../types/event';
+import { DuplicateMatch, EventData } from '../types/event';
 import EventDisplay from '../components/EventDisplay';
 import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
@@ -59,8 +59,43 @@ export default function CreaEvento() {
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
     const [linkReceived, setLinkReceived] = useState(false);
-    const [saving, setSaving] = useState(false);
     const [debugInfo, setDebugInfo] = useState<any>(null);
+    const [duplicates, setDuplicates] = useState<(DuplicateMatch | null)[]>([]);
+    const duplicateCheckId = useRef(0);
+
+    const checkDuplicates = async (list: EventData[]) => {
+        const checkId = ++duplicateCheckId.current;
+        setDuplicates([]);
+        try {
+            const response = await fetch('/api/events/check-duplicates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    events: list.map(({ title, date, sourceUrl }) => ({ title, date, sourceUrl })),
+                }),
+            });
+            if (!response.ok || checkId !== duplicateCheckId.current) return;
+            const data = await response.json();
+            const found: (DuplicateMatch | null)[] = Array.isArray(data.duplicates) ? data.duplicates : [];
+            setDuplicates(found);
+            const count = found.filter(Boolean).length;
+            if (count > 0) {
+                toast.warning(count === 1 && list.length === 1
+                    ? 'Questo evento esiste già nel calendario.'
+                    : `${count} eventi su ${list.length} esistono già nel calendario.`);
+            }
+        } catch (err) {
+            // The server still blocks duplicates on save, so a failed pre-check is not fatal.
+            console.warn('[Crea] Duplicate check failed:', err);
+        }
+    };
+
+    const resetEvents = () => {
+        setEvents([]);
+        setImageUrl(null);
+        setDebugInfo(null);
+        setDuplicates([]);
+    };
 
     useEffect(() => {
         return () => {
@@ -106,6 +141,7 @@ export default function CreaEvento() {
         setDebugInfo(debug);
         setProcessingSharedImage(false);
         setError(null);
+        checkDuplicates(eventsWithImage);
     };
 
 
@@ -202,9 +238,7 @@ export default function CreaEvento() {
             }
 
             // Reset state after successful save
-            setEvents([]);
-            setImageUrl(null);
-            setDebugInfo(null);
+            resetEvents();
             // Redirect to event detail when exactly one event was created
             if (successfulSaves === 1 && firstSavedSlug) {
                 router.push(`/events/${firstSavedSlug}`);
@@ -214,115 +248,6 @@ export default function CreaEvento() {
         } catch (error) {
             console.error('Error saving events:', error);
             throw error; // Re-throw to let the MultipleEventsEditor handle it
-        }
-    };
-
-    const handleSaveSingle = async (updatedData: EventData) => {
-        setSaving(true);
-        setError(null);
-        try {
-            let savedEvent;
-
-            // Salva l'evento sul database
-            if (updatedData.imageUrl && updatedData.imageUrl.startsWith('blob:')) {
-                const response = await fetch(updatedData.imageUrl);
-                const blob = await response.blob();
-                const formData = new FormData();
-                formData.append('eventData', JSON.stringify(updatedData));
-                formData.append('image', blob, 'event-image.jpg');
-
-                const saveResponse = await fetch('/api/events', {
-                    method: 'POST',
-                    body: formData,
-                });
-                if (!saveResponse.ok) {
-                    let message = 'Failed to save event';
-                    try {
-                        const body = await saveResponse.json();
-                        if (saveResponse.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
-                            message = body?.message || 'Questo evento è già stato creato.';
-                            toast.info(message);
-                            console.warn('[Crea] Duplicate event detected on single save (FormData):', message);
-                            setSaving(false);
-                            return;
-                        }
-                        if (body?.message || body?.error) {
-                            message = body.message || body.error;
-                        }
-                    } catch {
-                        // ignore JSON parse errors, use default message
-                    }
-                    throw new Error(message);
-                }
-
-                savedEvent = await saveResponse.json();
-            } else {
-                // No image upload needed, use regular JSON
-                const response = await fetch('/api/events', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(updatedData),
-                });
-                if (!response.ok) {
-                    let message = 'Failed to save event';
-                    try {
-                        const body = await response.json();
-                        if (response.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
-                            message = body?.message || 'Questo evento è già stato creato.';
-                            toast.info(message);
-                            console.warn('[Crea] Duplicate event detected on single save (JSON):', message);
-                            setSaving(false);
-                            return;
-                        }
-                        if (body?.message || body?.error) {
-                            message = body.message || body.error;
-                        }
-                    } catch {
-                        // ignore JSON parse errors, use default message
-                    }
-                    throw new Error(message);
-                }
-
-                savedEvent = await response.json();
-            }
-
-            // Track event creation
-            trackEventCreate(savedEvent);
-            trackEvent('event_create', 'Events', updatedData.title);
-
-            console.log('Event saved successfully, ID:', savedEvent.id);
-
-            // Clear service worker cache
-            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                console.log('[App] Sending CLEAR_CACHE message to service worker');
-                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
-
-                // Wait a moment for cache to clear
-                await new Promise(resolve => setTimeout(resolve, 300));
-            }
-
-            // Force hard reload to bypass all cache
-            if (savedEvent?.slug) {
-                console.log('Redirecting to event detail page:', savedEvent.slug);
-                window.location.href = `/events/${savedEvent.slug}`;
-            } else {
-                console.log('Forcing hard reload to homepage');
-                window.location.href = '/?refresh=' + Date.now();
-            }
-        } catch (error) {
-            console.error('Error saving event:', error);
-            const msg = error instanceof Error ? error.message : 'Errore nel salvataggio dell\'evento';
-            setError(msg);
-            toast.error(msg);
-            logClientError({
-                message: msg,
-                source: 'CreaEvento.handleSaveSingle',
-                severity: 'error',
-                details: error instanceof Error ? { stack: error.stack } : undefined,
-            });
-            setSaving(false);
         }
     };
 
@@ -382,6 +307,7 @@ export default function CreaEvento() {
                 // Ora anche il flusso link ha debug (groq + google)
                 setDebugInfo(data.debug || null);
                 setLinkUrl('');
+                checkDuplicates(normalized);
             } else {
                 setError('Nessun evento trovato dal link');
             }
@@ -474,9 +400,7 @@ export default function CreaEvento() {
                             {events.length > 0 && (
                                 <button
                                     onClick={() => {
-                                        setEvents([]);
-                                        setImageUrl(null);
-                                        setDebugInfo(null);
+                                        resetEvents();
                                         setError(null);
                                     }}
                                     className="industrial-link industrial-link-outline"
@@ -510,9 +434,7 @@ export default function CreaEvento() {
                                         onProcessed={(data, imgUrl, debug) => handleNewEvents(data, imgUrl, debug)}
                                         onError={(message: string) => {
                                             setError(message);
-                                            setEvents([]);
-                                            setImageUrl(null);
-                                            setDebugInfo(null);
+                                            resetEvents();
                                         }}
                                     />
                                 </div>
@@ -575,17 +497,22 @@ export default function CreaEvento() {
                         )}
 
                         {/* Event Editing Interface */}
-                        {saving ? (
-                            <div className="surface-panel p-6 md:p-8 animate-fadeInUp">
-                                <LoadingAnimation message="Salvataggio evento in corso" phase="saving" />
-                            </div>
-                        ) : events.length > 1 ? (
+                        {events.length > 1 ? (
                             <MultipleEventsEditor
                                 events={events}
+                                duplicates={duplicates}
+                                onEventsChange={checkDuplicates}
                                 onSaveAll={handleSaveAll}
                             />
                         ) : events.length === 1 ? (
-                            <EventDisplay eventData={events[0]} onSave={handleSaveSingle} />
+                            <EventDisplay
+                                eventData={events[0]}
+                                duplicate={duplicates[0]}
+                                onSave={(updated) => {
+                                    setEvents([updated]);
+                                    checkDuplicates([updated]);
+                                }}
+                            />
                         ) : null}
                     </div>
                 </div>

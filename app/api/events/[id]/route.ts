@@ -5,6 +5,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import { generateUniqueSlug } from '../../../../lib/slug-utils';
+import { toIsoDate } from '../../../../lib/event-utils';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 
 function isAdminSession(session: any): boolean {
@@ -97,7 +98,7 @@ export async function PUT(
             data: {
                 title: data.title,
                 description: data.description,
-                date: data.date,
+                date: toIsoDate(data.date),
                 time: data.time,
                 location: data.location,
                 organizer: data.organizer,

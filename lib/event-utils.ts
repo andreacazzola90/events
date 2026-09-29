@@ -1,5 +1,13 @@
 import { STANDARD_CATEGORIES, CATEGORY_MAPPING, PRICE_NORMALIZATION_MAP } from './constants';
+import { parseEventDate } from './calendar-ics';
 import type { EventData } from '../app/types/event';
+
+/** YYYY-MM-DD for any supported date format; unparseable values are returned unchanged. */
+export function toIsoDate(raw: string): string {
+    const parts = parseEventDate(raw);
+    if (!parts) return raw;
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
 
 /**
  * Normalizza la categoria dell'evento.

@@ -7,10 +7,22 @@ import { groupEventsByDate } from '../../../lib/event-utils';
 import { buildEventExtractionHints } from '../../../lib/event-hints';
 import type { EventData } from '../../types/event';
 import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extension-cors';
+import { isWebSearchConfigured, webSearch } from '../../../lib/google-search';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
+
+/** First URL printed on the poster (http(s)://, www. or bare domain with path), ignoring e-mail addresses. */
+function extractUrlFromText(text: string): string | undefined {
+  const pattern = /(?<![@\w.])((?:https?:\/\/|www\.)[^\s<>"'()]+|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:it|com|org|net|eu|info|events?|shop|store|club|art|music)(?:\/[^\s<>"'()]*)?)(?![\w@])/gi;
+  const candidates = (text.match(pattern) || [])
+    .map((url) => url.replace(/[.,;:!?»”]+$/, ''))
+    .filter((url) => url.length > 4);
+  const best = candidates.find((url) => /^(https?:\/\/|www\.)/i.test(url)) || candidates[0];
+  if (!best) return undefined;
+  return /^https?:\/\//i.test(best) ? best : `https://${best}`;
+}
 
 
 export async function POST(request: NextRequest) {
@@ -498,19 +510,22 @@ REGOLE:
       // Capture Groq Raw Data (before verification)
       const groqRawData = JSON.parse(JSON.stringify(eventData));
       let googleRawData = null;
+      const urlFromImage = extractUrlFromText(ocrText || rawText);
+      if (urlFromImage) console.log('🔗 URL found on the image:', urlFromImage);
 
       // ----------------------------------------------------------------
-      // STEP 3: GOOGLE SEARCH VERIFICATION
+      // STEP 3: WEB SEARCH VERIFICATION + ENRICHMENT
       // ----------------------------------------------------------------
-      if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX) {
-        console.log('🌍 Starting Google Search Verification...');
-        const { googleSearch } = await import('../../../lib/google-search');
+      if (isWebSearchConfigured()) {
+        console.log('🌍 Starting web search verification...');
 
         // Helper function to verify a single event
         const verifyEvent = async (event: any) => {
           try {
-            const query = `${event.title} ${event.location} ${event.date} event`;
-            const searchResults = await googleSearch(query);
+            const query = [event.title, event.location, event.date]
+              .filter((part: unknown) => typeof part === 'string' && part && part !== 'non trovato')
+              .join(' ');
+            const searchResults = await webSearch(query);
 
             if (searchResults.length > 0) {
               console.log(`✅ Found ${searchResults.length} search results for "${event.title}"`);
@@ -521,21 +536,22 @@ REGOLE:
               DATI ESTRATTI DALL'IMMAGINE:
               ${JSON.stringify(event, null, 2)}
               
-              RISULTATI RICERCA GOOGLE (FONTI ESTERNE):
+              RISULTATI RICERCA WEB (FONTI ESTERNE):
               ${JSON.stringify(searchResults, null, 2)}
               
               COMPITO:
-              Verifica e correggi i dati dell'evento usando le fonti esterne.
+              Verifica, correggi e ARRICCHISCI i dati dell'evento usando le fonti esterne.
               
               REGOLE:
               1. Se i risultati di ricerca confermano i dati, MANTIENILI.
-              2. Se i risultati forniscono dettagli mancanti (es. indirizzo completo, orario preciso, prezzo), AGGIUNGILI.
+              2. Se i risultati forniscono dettagli mancanti o "non trovato" (es. indirizzo completo, orario preciso, prezzo, organizzatore), AGGIUNGILI.
               3. Se i risultati CONTRADDICONO i dati (es. data sbagliata, luogo diverso), CORREGGI i dati usando la fonte più affidabile (es. ticketone, sito ufficiale, facebook page).
-              4. Se i risultati non c'entrano nulla, MANTIENI i dati originali.
-              5. La CATEGORIA deve rimanere una di: music, nightlife, culture, food, sport, family, theater, party, walk, other.
-              6. Estrai il link più pertinente all'evento (es. pagina ufficiale, TicketOne, evento Facebook) dai risultati di ricerca e inseriscilo nel campo "sourceUrl".
+              4. Se i risultati non riguardano QUESTO evento (stesso titolo e stessa data), MANTIENI i dati originali e non aggiungere nulla.
+              5. Se le fonti contengono informazioni utili in più (programma, artisti/ospiti, prenotazione, biglietti, come arrivare), aggiungile in fondo alla "description" come lista puntata, senza inventare nulla.
+              6. La CATEGORIA deve rimanere una di: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro (o la categoria originale).
+              7. ${urlFromImage ? `Nel campo "sourceUrl" usa ESATTAMENTE questo link stampato sulla locandina: ${urlFromImage}` : 'Estrai il link più pertinente all\'evento (es. pagina ufficiale, TicketOne, evento Facebook) dai risultati di ricerca e inseriscilo nel campo "sourceUrl".'}
               
-              Rispondi SOLO con il JSON corretto dell'evento (senza markdown).
+              Rispondi SOLO con il JSON dell'evento con gli stessi campi (title, description, date, time, location, organizer, category, price, sourceUrl), senza markdown.
               `;
 
               const verificationCompletion = await groq.chat.completions.create({
@@ -556,7 +572,7 @@ REGOLE:
               
               if (first !== -1 && last !== -1) {
                 try {
-                  const verifiedEvent = JSON.parse(verifiedJsonStr.slice(first, last + 1));
+                  const verifiedEvent = { ...event, ...JSON.parse(verifiedJsonStr.slice(first, last + 1)) };
                   console.log('✨ Event verified and updated:', verifiedEvent.title);
                   return { verifiedEvent, searchResults };
                 } catch (pError) {
@@ -593,9 +609,9 @@ REGOLE:
           };
         }
         
-        console.log('✅ Google Verification Complete');
+        console.log('✅ Web search verification complete');
       } else {
-        console.log('ℹ️ Skipping Google Verification (Keys missing)');
+        console.log('ℹ️ Skipping web search verification (no provider configured)');
       }
 
       // Normalizza eventi finali
@@ -677,7 +693,7 @@ REGOLE:
 
       // Fallback aggiuntivo: se dopo la verifica Google alcuni eventi non hanno ancora un URL affidabile,
       // prova una nuova ricerca usando il testo del JSON (titolo/organizzatore/luogo/descrizione)
-      if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX) {
+      if (!urlFromImage && isWebSearchConfigured()) {
         const eventsNeedingUrl = finalEvents.filter(event => {
           const current = event.sourceUrl?.trim();
           if (!current) return true;
@@ -687,7 +703,6 @@ REGOLE:
 
         if (eventsNeedingUrl.length > 0) {
           console.log('🌍 Additional URL search for events without sourceUrl...');
-          const { googleSearch: secondaryGoogleSearch } = await import('../../../lib/google-search');
 
           for (const event of eventsNeedingUrl) {
             try {
@@ -696,7 +711,7 @@ REGOLE:
               const query = parts.join(' ');
               if (!query || query.trim().length < 5) continue;
 
-              const results = await secondaryGoogleSearch(query);
+              const results = await webSearch(query);
               if (results.length > 0) {
                 // Scegli il risultato più probabile (al momento il primo è sufficiente)
                 const best = results[0];
@@ -708,6 +723,11 @@ REGOLE:
             }
           }
         }
+      }
+
+      // A link printed on the poster beats anything guessed by the LLM or web search.
+      if (urlFromImage) {
+        finalEvents = finalEvents.map(event => ({ ...event, sourceUrl: urlFromImage }));
       }
 
       // Normalizza i campi mancanti: usa placeholder "non trovato" (tranne prezzo e rawText)
@@ -726,7 +746,7 @@ REGOLE:
         normalized.category = normalize(normalized.category);
 
         // Normalizza URL (se presente) in forma assoluta quando possibile
-        if (normalized.sourceUrl) {
+        if (normalized.sourceUrl && normalized.sourceUrl !== urlFromImage) {
           normalized.sourceUrl = normalizeUrl(normalized.sourceUrl) || normalized.sourceUrl;
         }
 

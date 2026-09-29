@@ -1,23 +1,36 @@
 
 'use client';
 
-import { EventData } from '@/types/event';
-import { CalendarIcon, ClockIcon, MapPinIcon } from './EventIcons';
-const CategoryIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01" /></svg>;
-const UserIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-7 8-7s8 3 8 7" /></svg>;
-const PriceIcon = (props: any) => <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 8v8m0 0a4 4 0 1 1 0-8 4 4 0 1 1 0 8zm0 0h4m-4 0H8" /></svg>;
+import { DuplicateMatch, EventData } from '../types/event';
+import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import SaveAnimation from './SaveAnimation';
 import { toast } from 'react-toastify';
 
 interface EventDisplayProps {
     eventData: EventData;
     onSave?: (updatedData: EventData) => void;
+    duplicate?: DuplicateMatch | null;
 }
 
-export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
+const isMissing = (value?: string) => !value || !value.trim() || /^non trovato$/i.test(value.trim());
+
+function formatDateLong(raw?: string): string {
+    if (!raw) return '';
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const dmy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    const [y, m, d] = iso ? [iso[1], iso[2], iso[3]] : dmy ? [dmy[3], dmy[2], dmy[1]] : [];
+    if (!y) return raw;
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    if (Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d1b] focus:outline-none focus:border-[#d65a38] transition-colors';
+
+export default function EventDisplay({ eventData, onSave, duplicate }: EventDisplayProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
@@ -45,41 +58,53 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
         setImageUrl(eventData.imageUrl);
     }, [eventData.imageUrl]);
 
-    const renderEditableField = (label: string, field: keyof EventData) => {
-        let icon = null;
-        if (field === 'date') icon = <CalendarIcon className="field-icon date-icon w-5 h-5 text-blue-500" />;
-        if (field === 'time') icon = <ClockIcon className="field-icon time-icon w-5 h-5 text-blue-500" />;
-        if (field === 'location') icon = <MapPinIcon className="field-icon location-icon w-5 h-5 text-blue-500" />;
-        if (field === 'category') icon = <CategoryIcon className="field-icon category-icon w-5 h-5 text-blue-500" />;
-        if (field === 'organizer') icon = <UserIcon className="field-icon organizer-icon w-5 h-5 text-blue-500" />;
-        if (field === 'price') icon = <PriceIcon className="field-icon price-icon w-5 h-5 text-blue-500" />;
-        return (
-            <div className={`editable-field field-${field} flex items-start space-x-4`}>
-                {icon && <span className="field-icon-wrapper mt-2">{icon}</span>}
-                {!icon && <span className="field-label text-gray-600 w-24 mt-2">{label}:</span>}
-                {isEditing ? (
-                    <>
-                        <input
-                            type="text"
-                            name={field}
-                            list={field === 'category' ? "category-suggestions" : undefined}
-                            defaultValue={eventData[field] as string || ''}
-                            className={`field-input field-${field}-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
-                        />
-                        {field === 'category' && (
-                            <datalist id="category-suggestions">
-                                {STANDARD_CATEGORIES.map(cat => (
-                                    <option key={cat} value={cat} />
-                                ))}
-                            </datalist>
-                        )}
-                    </>
-                ) : (
-                    <span className={`field-display field-${field}-display flex-1 py-2`}>{eventData[field] || ''}</span>
-                )}
+    const missingValue = <span className="text-[#b84b2d] italic font-medium">Da completare</span>;
+
+    const renderInput = (field: keyof EventData, placeholder?: string) => (
+        <>
+            <input
+                type="text"
+                name={field}
+                list={field === 'category' ? 'category-suggestions' : undefined}
+                defaultValue={isMissing(eventData[field] as string) ? '' : (eventData[field] as string)}
+                placeholder={placeholder}
+                className={`field-input field-${field}-input ${inputClass}`}
+            />
+            {field === 'category' && (
+                <datalist id="category-suggestions">
+                    {STANDARD_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat} />
+                    ))}
+                </datalist>
+            )}
+        </>
+    );
+
+    /** Big tile for the key facts (date, time, place). */
+    const renderKeyFact = (field: 'date' | 'time' | 'location', label: string, icon: ReactNode, display: ReactNode, placeholder: string) => (
+        <div className={`event-key-fact field-${field} bg-white p-4 flex items-start gap-3 min-w-0`}>
+            <span className="shrink-0 text-[#d65a38] mt-0.5">{icon}</span>
+            <div className="min-w-0 flex-1">
+                <p className="section-kicker mb-1">{label}</p>
+                {isEditing
+                    ? renderInput(field, placeholder)
+                    : <div className="text-lg font-bold leading-snug text-[#1d1d1b] wrap-break-word">{isMissing(eventData[field]) ? missingValue : display}</div>}
             </div>
-        );
-    };
+        </div>
+    );
+
+    /** Compact row for secondary details. */
+    const renderDetailRow = (field: keyof EventData, label: string, icon: ReactNode, display?: ReactNode, placeholder?: string) => (
+        <div className={`event-detail-row field-${field} flex items-start gap-3 py-3 border-b border-black/10 last:border-b-0`}>
+            <span className="shrink-0 text-[#5f5b56] mt-0.5">{icon}</span>
+            <span className="w-28 shrink-0 text-sm text-[#5f5b56] mt-0.5">{label}</span>
+            <div className="flex-1 min-w-0 text-[#1d1d1b] wrap-break-word">
+                {isEditing
+                    ? renderInput(field, placeholder)
+                    : isMissing(eventData[field] as string) ? missingValue : (display ?? (eventData[field] as string))}
+            </div>
+        </div>
+    );
 
     const handleSave = async () => {
         if (!formRef.current) return;
@@ -219,26 +244,47 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
             setIsSaving(false);
         }
     };
+    const hasTime = isEditing || !isMissing(eventData.time);
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(eventData.location || '')}`;
+
     return (
         <div className="event-display-container space-y-6">
+            {duplicate && (
+                <div role="alert" className="event-duplicate-alert flex items-start gap-4 border border-[#d65a38]/50 bg-[#fff7f4] p-5">
+                    <AlertIcon className="w-6 h-6 shrink-0 text-[#b84b2d] mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                        <p className="font-bold text-[#8f3823] mb-1">Questo evento esiste già</p>
+                        <p className="text-sm text-[#5f5b56] mb-3">
+                            “{duplicate.title}” · {formatDateLong(duplicate.date)}
+                            {duplicate.location && !isMissing(duplicate.location) ? ` · ${duplicate.location}` : ''}.
+                            {' '}Non è possibile pubblicarlo di nuovo.
+                        </p>
+                        <a href={`/events/${duplicate.slug}`} className="industrial-link industrial-link-outline">
+                            Vai all’evento esistente <span aria-hidden="true">→</span>
+                        </a>
+                    </div>
+                </div>
+            )}
+
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }} className="event-form">
-                <div className="event-main-layout flex flex-col md:flex-row gap-8">
-                    <div className="event-image-section rounded-lg overflow-hidden shadow-lg w-full md:min-w-55 md:max-w-[320px] shrink-0 flex flex-col items-center justify-center bg-white">
+                <div className="event-main-layout grid gap-6 md:gap-8 md:grid-cols-[minmax(0,320px)_1fr] items-start">
+                    <div className="event-image-section surface-panel overflow-hidden md:sticky md:top-24">
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
-                                alt="Immagine evento"
-                                className="event-image w-full h-auto object-cover mb-2"
+                                alt="Locandina evento"
+                                className="event-image w-full h-auto object-cover"
                             />
                         ) : (
-                            <div className="event-image-placeholder w-full h-55 flex items-center justify-center text-gray-400">Nessuna immagine</div>
+                            <div className="event-image-placeholder w-full h-55 flex items-center justify-center text-[#5f5b56]">Nessuna immagine</div>
                         )}
                         {isEditing && (
-                            <div className="p-4 w-full">
+                            <label className="block p-4 border-t border-black/10 text-sm text-[#5f5b56]">
+                                Cambia immagine
                                 <input
                                     type="file"
                                     accept="image/*"
-                                    className="event-image-upload text-sm w-full"
+                                    className="event-image-upload mt-2 text-sm w-full"
                                     onChange={e => {
                                         const file = e.target.files?.[0];
                                         if (file) {
@@ -247,22 +293,91 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                         }
                                     }}
                                 />
-                            </div>
+                            </label>
                         )}
                     </div>
-                    <div className="event-details-section text-black flex-1 bg-linear-to-br from-white to-gray-50 rounded-lg shadow-md p-4 md:p-6">
-                        {/* Bottoni sopra il titolo */}
-                        <div className="event-actions flex gap-2 mb-4 justify-end">
-                            {!isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={handleAddEvent}
-                                    disabled={isSaving}
-                                    className="event-add-button px-6 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white bg-linear-to-r from-blue-500 via-blue-600 to-blue-700 hover:from-blue-600 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isSaving ? '💾 Salvataggio...' : '✨ Aggiungi Evento'}
-                                </button>
+
+                    <div className="event-details-section surface-panel p-5 md:p-8 text-[#1d1d1b] space-y-6 min-w-0">
+                        <header className="event-header space-y-3">
+                            {isEditing ? (
+                                <label className="flex items-center gap-2 text-sm text-[#5f5b56]">
+                                    <TagIcon className="w-4 h-4 shrink-0" />
+                                    <span className="shrink-0">Categoria</span>
+                                    {renderInput('category')}
+                                </label>
+                            ) : !isMissing(eventData.category) && (
+                                <span className="event-category inline-flex items-center gap-1.5 bg-[#f4d9d3] text-[#8f3823] px-3 py-1 text-xs font-bold uppercase tracking-wider">
+                                    <TagIcon className="w-3.5 h-3.5" />
+                                    {eventData.category}
+                                </span>
                             )}
+                            <h2 className="event-title text-3xl md:text-4xl font-black leading-tight tracking-tight">
+                                {isEditing ? (
+                                    <input
+                                        type="text"
+                                        name="title"
+                                        defaultValue={eventData.title}
+                                        className={`event-title-input ${inputClass} text-2xl font-black`}
+                                    />
+                                ) : (
+                                    isMissing(eventData.title) ? missingValue : eventData.title
+                                )}
+                            </h2>
+                        </header>
+
+                        <div className={`event-key-facts grid gap-px bg-black/10 border border-black/10 ${hasTime ? 'sm:grid-cols-[1.2fr_0.8fr]' : ''}`}>
+                            {renderKeyFact('date', 'Quando', <CalendarIcon className="w-6 h-6" />, <span className="first-letter:uppercase">{formatDateLong(eventData.date)}</span>, 'GG/MM/AAAA')}
+                            {hasTime && renderKeyFact('time', 'Ora', <ClockIcon className="w-6 h-6" />, eventData.time, 'HH:MM')}
+                            <div className={hasTime ? 'sm:col-span-2' : ''}>
+                                {renderKeyFact(
+                                    'location',
+                                    'Dove',
+                                    <MapPinIcon className="w-6 h-6" />,
+                                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="event-location-link underline decoration-[#d65a38]/40 underline-offset-4 hover:decoration-[#d65a38]">
+                                        {eventData.location}
+                                    </a>,
+                                    'Luogo, indirizzo, città',
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="event-secondary-details">
+                            {renderDetailRow('organizer', 'Organizzatore', <MegaphoneIcon className="w-5 h-5" />)}
+                            {renderDetailRow('price', 'Ingresso', <TicketIcon className="w-5 h-5" />)}
+                            {renderDetailRow(
+                                'sourceUrl',
+                                'Link',
+                                <LinkIcon className="w-5 h-5" />,
+                                eventData.sourceUrl && /^https?:\/\//i.test(eventData.sourceUrl) ? (
+                                    <a
+                                        href={eventData.sourceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="event-source-link text-[#b84b2d] underline underline-offset-4 break-all"
+                                    >
+                                        {eventData.sourceUrl.replace(/^https?:\/\/(www\.)?/, '')}
+                                    </a>
+                                ) : eventData.sourceUrl,
+                                'https://...',
+                            )}
+                        </div>
+
+                        <div className="event-field-description">
+                            <p className="section-kicker mb-2 flex items-center gap-2">
+                                <TextIcon className="w-4 h-4" /> Descrizione
+                            </p>
+                            {isEditing ? (
+                                <textarea
+                                    name="description"
+                                    defaultValue={isMissing(eventData.description) ? '' : eventData.description}
+                                    className={`event-description-textarea ${inputClass} min-h-40`}
+                                />
+                            ) : isMissing(eventData.description) ? missingValue : (
+                                <p className="event-description-text whitespace-pre-line leading-relaxed text-[#2b2a28] mb-0">{eventData.description}</p>
+                            )}
+                        </div>
+
+                        <div className="event-actions flex flex-col-reverse sm:flex-row gap-3 pt-4 border-t border-black/10">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -273,104 +388,21 @@ export default function EventDisplay({ eventData, onSave }: EventDisplayProps) {
                                     }
                                 }}
                                 disabled={isSaving}
-                                className={`event-edit-save-button px-4 py-2 rounded-full font-bold shadow-button transition-all duration-200 text-white disabled:opacity-50 disabled:cursor-not-allowed ${isEditing
-                                    ? 'bg-linear-to-r from-green-400 via-green-500 to-green-600 hover:from-green-500 hover:to-green-700'
-                                    : 'bg-linear-to-r from-primary via-accent to-secondary hover:from-pink-600 hover:to-yellow-400'
-                                    }`}
+                                className="event-edit-save-button btn btn-outline disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {isEditing ? 'Salva' : 'Modifica'}
+                                {isEditing ? 'Salva modifiche' : 'Modifica dettagli'}
                             </button>
-                        </div>
-
-                        {/* Titolo con tutto lo spazio orizzontale */}
-                        <div className="event-header mb-4">
-                            <h2 className="event-title text-2xl font-bold text-black">
-                                {isEditing ? (
-                                    <input
-                                        type="text"
-                                        name="title"
-                                        defaultValue={eventData.title}
-                                        className="event-title-input w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black"
-                                    />
-                                ) : (
-                                    eventData.title
-                                )}
-                            </h2>
-                        </div>
-                        {/* Campi dell'evento */}
-                        <div className="event-fields space-y-4">
-                            <div className="event-field-date">
-                                {renderEditableField('Data', 'date')}
-                            </div>
-                            <div className="event-field-time">
-                                {(isEditing || (eventData.time && eventData.time.trim().toLowerCase() !== 'non trovato')) && (
-                                    renderEditableField('Ora', 'time')
-                                )}
-                            </div>
-                            <div className="event-field-location flex items-start space-x-4">
-                                <MapPinIcon className="location-icon w-5 h-5 text-blue-500 mt-2" />
-                                {isEditing ? (
-                                    <input
-                                        type="text"
-                                        name="location"
-                                        defaultValue={eventData.location || ''}
-                                        className="event-location-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                ) : (
-                                    <a
-                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(eventData.location || '')}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="event-location-link flex-1 py-2 text-blue-600 hover:text-blue-800 underline"
-                                    >
-                                        {eventData.location || ''}
-                                    </a>
-                                )}
-                            </div>
-                            <div className="event-field-category">
-                                {renderEditableField('Categoria', 'category')}
-                            </div>
-                            <div className="event-field-organizer">
-                                {renderEditableField('Organizzatore', 'organizer')}
-                            </div>
-                            <div className="event-field-price">
-                                {renderEditableField('Prezzo', 'price')}
-                            </div>
-                            <div className="event-field-description flex items-start space-x-4">
-                                <span className="description-label text-gray-600 w-24 mt-2">Descrizione:</span>
-                                {isEditing ? (
-                                    <textarea
-                                        name="description"
-                                        defaultValue={eventData.description}
-                                        className="event-description-textarea flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-25"
-                                    />
-                                ) : (
-                                    <span className="event-description-text flex-1 py-2">{eventData.description}</span>
-                                )}
-                            </div>
-                            <div className="event-field-source flex items-start space-x-4">
-                                <span className="source-label text-gray-600 w-24 mt-2">Link:</span>
-                                {isEditing ? (
-                                    <input
-                                        type="text"
-                                        name="sourceUrl"
-                                        defaultValue={eventData.sourceUrl || ''}
-                                        placeholder="https://..."
-                                        className="event-source-input flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                ) : eventData.sourceUrl ? (
-                                    <a
-                                        href={eventData.sourceUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="event-source-link flex-1 py-2 text-blue-600 hover:text-blue-800 underline break-all"
-                                    >
-                                        {eventData.sourceUrl}
-                                    </a>
-                                ) : (
-                                    <span className="text-gray-400 py-2 italic">Nessun link trovato</span>
-                                )}
-                            </div>
+                            {!isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={handleAddEvent}
+                                    disabled={isSaving || !!duplicate}
+                                    title={duplicate ? 'Questo evento esiste già' : undefined}
+                                    className="event-add-button btn btn-primary sm:ml-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSaving ? 'Pubblicazione…' : duplicate ? 'Evento già presente' : 'Pubblica evento'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

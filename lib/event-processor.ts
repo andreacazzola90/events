@@ -6,7 +6,7 @@ import { extractTextFromImage } from '../app/lib/ocr';
 import { compressImage } from '../app/lib/image-utils';
 import { groupEventsByDate } from './event-utils';
 import { buildEventExtractionHints } from './event-hints';
-import { googleSearch } from './google-search';
+import { isWebSearchConfigured, webSearch } from './google-search';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -760,13 +760,13 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
     let googleRawData: any = null;
 
     // Enrichment logic (step 2: verifica Google, se configurata)
-    if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX) {
+    if (isWebSearchConfigured()) {
         console.log('🌍 [processEventLink] Starting Google Search Verification...');
 
         const verifyEvent = async (event: EventData) => {
             try {
                 const query = `${event.title} ${event.location} ${event.date} event`;
-                const searchResults = await googleSearch(query);
+                const searchResults = await webSearch(query);
 
                 if (searchResults.length === 0) {
                     console.log('⚠️ No search results found, skipping verification for', event.title);

@@ -6,6 +6,8 @@ import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../pages/api/auth/[...nextauth]";
 import { generateUniqueSlug } from "../../../lib/slug-utils";
+import { findDuplicateEvent } from "../../../lib/event-duplicates";
+import { toIsoDate } from "../../../lib/event-utils";
 import { authenticateExtensionRequest } from "../../../lib/extension-auth";
 import {
   extensionCorsPreflight,
@@ -97,7 +99,8 @@ export async function POST(request: NextRequest) {
     const eventDataToSave: any = {
       title: eventData.title || "",
       description: eventData.description || "",
-      date: eventData.date || "",
+      // Stored as YYYY-MM-DD: list queries filter dates with string comparison.
+      date: toIsoDate(eventData.date || ""),
       time: eventData.time || "",
       location: eventData.location || "",
       organizer: eventData.organizer || "",
@@ -122,38 +125,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for duplicate events (same title, date and location)
-    if (
-      eventDataToSave.title &&
-      eventDataToSave.date &&
-      eventDataToSave.location
-    ) {
-      const existing = await prisma.event.findFirst({
-        where: {
-          title: eventDataToSave.title,
-          date: eventDataToSave.date,
-          location: eventDataToSave.location,
-        },
-      });
-
-      if (existing) {
-        console.log(
-          "[API /events POST] Duplicate event detected, skipping create. Existing ID:",
-          existing.id,
-        );
-        return withExtensionCors(
-          NextResponse.json(
-            {
-              error: "EVENT_DUPLICATE",
-              message:
-                "Questo evento è già stato creato (stesso titolo, data e luogo).",
-              existingEventId: existing.id,
-            },
-            { status: 409 },
-          ),
-          request,
-        );
-      }
+    const duplicate = await findDuplicateEvent(eventDataToSave);
+    if (duplicate) {
+      console.log(
+        "[API /events POST] Duplicate event detected, skipping create. Existing ID:",
+        duplicate.id,
+      );
+      return withExtensionCors(
+        NextResponse.json(
+          {
+            error: "EVENT_DUPLICATE",
+            message: `Questo evento esiste già: "${duplicate.title}" (${duplicate.date}).`,
+            existingEventId: duplicate.id,
+            existingEventSlug: duplicate.slug,
+          },
+          { status: 409 },
+        ),
+        request,
+      );
     }
 
     // Geocode location once at creation time to store coordinates

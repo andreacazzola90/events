@@ -67,3 +67,37 @@ export function MapPinIcon({ className = "w-5 h-5" }) {
         </svg>
     );
 }
+
+const detailIconProps = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    viewBox: "0 0 24 24",
+    "aria-hidden": true as const,
+};
+
+export function TicketIcon({ className = "w-5 h-5" }) {
+    return <svg className={className} {...detailIconProps}><path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z" /><path d="M15 8v1M15 11.5v1M15 15v1" /></svg>;
+}
+
+export function MegaphoneIcon({ className = "w-5 h-5" }) {
+    return <svg className={className} {...detailIconProps}><path d="M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1z" /><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /></svg>;
+}
+
+export function TagIcon({ className = "w-5 h-5" }) {
+    return <svg className={className} {...detailIconProps}><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" /><circle cx="7.5" cy="7.5" r="1.3" /></svg>;
+}
+
+export function LinkIcon({ className = "w-5 h-5" }) {
+    return <svg className={className} {...detailIconProps}><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1" /><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" /></svg>;
+}
+
+export function TextIcon({ className = "w-5 h-5" }) {
+    return <svg className={className} {...detailIconProps}><path d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>;
+}
+
+export function AlertIcon({ className = "w-5 h-5" }) {
+    return <svg className={className} {...detailIconProps}><path d="M12 3 2 20h20z" /><path d="M12 10v4M12 17h.01" /></svg>;
+}

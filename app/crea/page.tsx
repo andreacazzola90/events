@@ -451,8 +451,8 @@ export default function CreaEvento() {
                 />
             </Suspense>
 
-            <main className="min-h-screen page-shell">
-                <section className="editorial-container mb-10 md:mb-14">
+            <main className="min-h-screen page-shell create-event-page">
+                <section className="editorial-container create-page-intro mb-10 md:mb-14">
                     <div className="animate-fadeInUp flex flex-col items-start gap-5">
                         <div>
                             <p className="section-kicker mb-4">EventScanner / Nuovo evento</p>
@@ -488,10 +488,10 @@ export default function CreaEvento() {
                 </section>
 
                 <div className="editorial-container">
-                    <div className="space-y-8">
+                    <div className="create-content-stack space-y-8">
                         {/* Creation Methods - Only show if no events extracted */}
                         {events.length === 0 && (
-                            <div className="grid md:grid-cols-2 gap-8">
+                            <div className="create-methods-grid grid md:grid-cols-2 gap-8">
                                 {processingSharedImage && (
                                     <div className="md:col-span-2 surface-panel p-6 md:p-8 animate-fadeInUp">
                                         <LoadingAnimation message="Scansione immagine condivisa in corso" phase="shared-image" />
@@ -499,8 +499,8 @@ export default function CreaEvento() {
                                 )}
 
                                 {/* Image Upload Method - First on Mobile */}
-                                <div className="surface-panel p-6 md:p-8 order-1 md:order-2">
-                                    <div className="mb-6 border-b border-black/10 pb-5">
+                                <div className="surface-panel create-method-card p-6 md:p-8 order-1 md:order-2">
+                                    <div className="create-method-intro mb-6 border-b border-black/10 pb-5">
                                         <p className="section-kicker mb-2">Metodo 01</p>
                                         <h2 className="text-2xl font-black text-[#1d1d1b] mb-2">Carica una locandina</h2>
                                         <p className="text-sm text-[#5f5b56] mb-0">L’analisi dell’immagine compilerà i dettagli dell’evento.</p>
@@ -518,8 +518,8 @@ export default function CreaEvento() {
                                 </div>
 
                                 {/* Link Input Method - Second on Mobile */}
-                                <div className="surface-panel p-6 md:p-8 order-2 md:order-1">
-                                    <div className="mb-6 border-b border-black/10 pb-5">
+                                <div className="surface-panel create-method-card p-6 md:p-8 order-2 md:order-1">
+                                    <div className="create-method-intro mb-6 border-b border-black/10 pb-5">
                                         <p className="section-kicker mb-2">Metodo 02</p>
                                         <h2 className="text-2xl font-black text-[#1d1d1b] mb-2">Importa da un link</h2>
                                         <p className="text-sm text-[#5f5b56] mb-0">Inserisci la pagina dell’evento per estrarne le informazioni.</p>

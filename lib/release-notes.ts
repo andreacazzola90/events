@@ -1,5 +1,49 @@
 export const releaseNotes = [
   {
+    version: "0.3.4",
+    date: "28 settembre 2026",
+    title: "Contenuti principali più immediati su mobile",
+    groups: [
+      {
+        label: "Eventi e home",
+        items: [
+          "Compattato l'hero mobile per mostrare prima la selezione eventi.",
+          "Aggiunta la ricerca sempre visibile nella pagina Eventi; filtri avanzati raccolti nel pannello dedicato.",
+          "Ridotte le descrizioni secondarie nelle card mobile per dare priorità a titolo, data e luogo.",
+        ],
+      },
+      {
+        label: "Creazione evento",
+        items: [
+          "Ridotti testi e spazi introduttivi per portare subito in vista caricamento locandina e importazione link.",
+          "Semplificato e localizzato il picker immagini per fotocamera e galleria.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.3.3",
+    date: "28 settembre 2026",
+    title: "Esperienza mobile app-like",
+    groups: [
+      {
+        label: "Navigazione mobile",
+        items: [
+          "Aggiunta una barra inferiore persistente con accesso diretto a Eventi, Mappa, Crea, Calendario e Profilo.",
+          "Introdotte icone outline essenziali con etichette sempre visibili e stati di selezione chiari.",
+          "Adattati header, contenuti e footer alle safe area di iPhone e alle aree di navigazione Android.",
+        ],
+      },
+      {
+        label: "PWA e mappa",
+        items: [
+          "Reso azionabile il prompt di installazione PWA dal pulsante nell'header.",
+          "Migliorata la leggibilità e la disposizione della legenda mappa sui telefoni.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.3.2",
     date: "28 settembre 2026",
     title: "Caricamento più rapido delle pagine",

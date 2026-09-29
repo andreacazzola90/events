@@ -149,7 +149,7 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             <div
                 {...getRootProps()}
                 onClick={handleAreaClick}
-                className={`p-10 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors
+                className={`image-upload-zone p-10 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors
             ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
             ${isProcessing ? 'pointer-events-none' : ''}`}
             >
@@ -179,14 +179,14 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                             : <LoadingAnimation message="Scansione immagine in corso" phase="scan-image" />
                     ) : (
                         <>
-                            <div className="text-4xl">📸</div>
-                            <p className="text-lg font-medium">
+                            <div className="image-upload-symbol" aria-hidden="true">＋</div>
+                            <p className="image-upload-title text-lg font-medium">
                                 {isDragActive
-                                    ? "Drop the image here..."
-                                    : "Tap to add image or drag and drop"}
+                                    ? "Rilascia qui la locandina"
+                                    : "Aggiungi una locandina"}
                             </p>
-                            <p className="text-sm text-gray-500">
-                                Supports JPG, PNG, GIF, WebP (max 10MB)
+                            <p className="image-upload-hint text-sm text-gray-500">
+                                Scatta una foto o scegli un’immagine · max 10 MB
                             </p>
                         </>
                     )}
@@ -195,29 +195,29 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
 
             {/* Mobile Source Picker Modal */}
             {showSourcePicker && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 animate-fade-in">
-                    <div className="bg-white w-full rounded-t-3xl p-6 animate-slide-up">
+                <div className="image-source-overlay fixed inset-0 flex items-end justify-center z-50 animate-fade-in">
+                    <div className="image-source-sheet bg-white w-full p-6 animate-slide-up">
                         <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6"></div>
 
-                        <h3 className="text-xl font-semibold mb-4 text-center">Scegli sorgente</h3>
+                        <h3 className="text-xl font-semibold mb-4 text-center">Aggiungi una locandina</h3>
 
                         <div className="space-y-3">
                             <button
                                 onClick={handleCameraClick}
-                                className="w-full flex items-center gap-4 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+                                className="image-source-option w-full flex items-center gap-4 p-4 transition-colors"
                             >
-                                <div className="text-3xl">📷</div>
+                                <div className="image-source-icon" aria-hidden="true">＋</div>
                                 <div className="text-left flex-1">
                                     <div className="font-semibold text-gray-900">Fotocamera</div>
-                                    <div className="text-sm text-gray-600">Scatta una foto</div>
+                                    <div className="text-sm text-gray-600">Scatta una foto alla locandina</div>
                                 </div>
                             </button>
 
                             <button
                                 onClick={handleGalleryClick}
-                                className="w-full flex items-center gap-4 p-4 bg-green-50 hover:bg-green-100 rounded-xl transition-colors"
+                                className="image-source-option w-full flex items-center gap-4 p-4 transition-colors"
                             >
-                                <div className="text-3xl">🖼️</div>
+                                <div className="image-source-icon" aria-hidden="true">▧</div>
                                 <div className="text-left flex-1">
                                     <div className="font-semibold text-gray-900">Galleria</div>
                                     <div className="text-sm text-gray-600">Scegli dalla galleria</div>

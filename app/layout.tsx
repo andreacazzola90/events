@@ -96,6 +96,7 @@ export const viewport = {
   themeColor: "#f1eee7",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover" as const,
 };
 
 export default function RootLayout({
@@ -131,7 +132,7 @@ export default function RootLayout({
             <PWAHandler />
             <LoadingIndicator />
             <Header />
-            <main className="min-h-screen pt-16">
+            <main className="app-main min-h-screen">
               <PageTransitionWrapper>{children}</PageTransitionWrapper>
             </main>
             <Footer version={packageMetadata.version} />

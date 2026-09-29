@@ -9,6 +9,7 @@ import { trackSearch } from "../lib/gtm";
 import { trackEvent } from "../lib/analytics";
 import { STANDARD_CATEGORIES } from "../../lib/constants";
 import FavoriteButton from "./FavoriteButton";
+import { AppIcon, CalendarIcon, MapPinIcon } from "./EventIcons";
 import type { DbEvent } from "../../app/types/event";
 
 type EventListMode = "full" | "quick";
@@ -446,6 +447,17 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
           </div>
         </div>
       ) : (
+        <>
+        <label className="mobile-event-search lg:hidden">
+          <AppIcon name="search" className="h-5 w-5 shrink-0 text-[#d65a38]" />
+          <input
+            type="search"
+            placeholder="Cerca eventi"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Cerca eventi"
+          />
+        </label>
         <div className="bg-white border border-black/10 overflow-hidden">
           <button
             onClick={() => setFiltersOpen(!filtersOpen)}
@@ -481,7 +493,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   aria-label="Cerca eventi"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
+                  className="hidden lg:block bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
                 />
                 <select
                   value={category}
@@ -551,6 +563,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             </form>
           </div>
         </div>
+        </>
       )}
 
       {(() => {
@@ -628,14 +641,14 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                         <h3 className="text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
                           {cleanText(event.title)}
                         </h3>
-                        <p className="text-black/60 text-sm line-clamp-2">
+                        <p className="event-card-description text-black/60 text-sm line-clamp-2">
                           {cleanText(event.description)}
                         </p>
                       </div>
 
                       <div className="space-y-1 text-sm border-t border-black/10 pt-3">
                         <div className="flex items-center gap-2 text-black/80">
-                          <span className="w-4">•</span>
+                          <CalendarIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
                           <span>
                             {(() => {
                               const dateObj = parseEventDate(event.date);
@@ -658,13 +671,13 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
 
                         {event.location && (
                           <div className="flex items-center gap-2 text-black/80">
-                            <span className="w-4 shrink-0">•</span>
+                            <MapPinIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
                             <span className="truncate">{event.location}</span>
                           </div>
                         )}
 
                         {event.organizer && (
-                          <div className="flex items-center gap-2 text-black/80">
+                          <div className="event-card-organizer flex items-center gap-2 text-black/80">
                             <span className="w-4 shrink-0">•</span>
                             <span className="truncate">{event.organizer}</span>
                           </div>

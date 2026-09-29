@@ -11,6 +11,7 @@ import Image from "next/image";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DbEvent } from "../../app/types/event";
+import { AppIcon } from "./EventIcons";
 
 // Fix for default marker icons in Leaflet with Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -489,7 +490,7 @@ export default function EventMap() {
   const mapInitialCenter = validatedMapCenter ?? DEFAULT_MAP_CENTER;
 
   return (
-    <div className="relative h-full w-full overflow-hidden border border-black/10 bg-[#f9f7f2]">
+    <div className="event-map-shell relative h-full w-full overflow-hidden border border-black/10 bg-[#f9f7f2]">
       <div className="absolute inset-0">
         <MapContainer
           center={mapInitialCenter}
@@ -567,12 +568,12 @@ export default function EventMap() {
         </MapContainer>
       </div>
 
-      <div className="absolute left-3 right-3 top-3 bottom-3 sm:left-6 sm:right-auto sm:top-6 sm:bottom-6 sm:w-[420px] bg-[#fffdf9]/95 backdrop-blur-xl border border-black/10 shadow-[0_20px_50px_rgba(29,29,27,0.08)] z-500 overflow-hidden">
+      <div className="event-map-legend absolute left-3 right-3 top-3 bottom-3 sm:left-6 sm:right-auto sm:top-6 sm:bottom-6 sm:w-[420px] bg-[#fffdf9]/95 backdrop-blur-xl border border-black/10 shadow-[0_20px_50px_rgba(29,29,27,0.08)] z-500 overflow-hidden">
         <div className="p-5 border-b border-black/10 bg-white sticky top-0 z-20 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black text-[#1d1d1b] flex items-center gap-2 tracking-tight">
-                <span className="text-[#d65a38]">📍</span> Eventi
+                <AppIcon name="map" className="h-5 w-5 text-[#d65a38]" /> Eventi
               </h2>
               <p className="text-[11px] font-bold text-[#5f5b56] mt-1 uppercase tracking-[0.16em]">
                 {events.length}{" "}
@@ -585,7 +586,7 @@ export default function EventMap() {
                 className="px-3 py-2 bg-[#f1eee7] text-[#1d1d1b] text-sm font-semibold hover:bg-[#e8e4db] transition-colors"
                 title="Rimuovi filtro"
               >
-                ✕
+                <AppIcon name="close" className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -598,7 +599,7 @@ export default function EventMap() {
                 className="w-10 h-10 bg-[#1d1d1b] text-white hover:bg-[#d65a38] disabled:bg-[#d9d4cd] disabled:cursor-not-allowed transition-colors flex items-center justify-center shrink-0"
                 title="Usa la mia posizione"
               >
-                {isGeolocating ? "⏳" : "🎯"}
+                {isGeolocating ? <span className="map-control-spinner" aria-hidden="true" /> : <AppIcon name="locate" className="h-5 w-5" />}
               </button>
               <input
                 type="text"
@@ -620,7 +621,7 @@ export default function EventMap() {
                 disabled={isGeolocating || !filterCity.trim()}
                 className="px-4 py-2 bg-[#d65a38] text-white text-sm font-semibold hover:bg-[#b84b2d] disabled:bg-[#d9d4cd] disabled:cursor-not-allowed transition-colors"
               >
-                🔍
+                <AppIcon name="search" className="h-4 w-4" />
               </button>
             </div>
 

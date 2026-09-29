@@ -23,6 +23,10 @@ export async function getBrowser(options: LaunchOptions = {}) {
   if (isVercel) {
     console.log('📦 Using Vercel serverless configuration');
     try {
+      // @sparticuz/chromium only extracts its AL2023 libs (libnss3 etc.) when it detects a Node 20/22 Lambda runtime
+      if (!process.env.AWS_LAMBDA_JS_RUNTIME && !process.env.AWS_EXECUTION_ENV) {
+        process.env.AWS_LAMBDA_JS_RUNTIME = "nodejs22.x";
+      }
       const chromium = (await import("@sparticuz/chromium")).default;
       puppeteer = await import("puppeteer-core");
       launchOptions = {

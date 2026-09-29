@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
-import { generateUniqueSlug } from '@/lib/slug-utils';
+import { generateUniqueSlug } from '../../../../lib/slug-utils';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 
 function isAdminSession(session: any): boolean {

@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
     revalidatePath("/eventi", "page");
     revalidatePath("/tutti-gli-eventi", "page");
     revalidatePath("/mappa", "page");
-    revalidateTag("events-list", "max");
+    revalidateTag("events-list", { expire: 0 });
     const eventSlug = generateUniqueSlug(event.title, event.id);
     const eventDetailPath = `/events/${eventSlug}`;
     revalidatePath(eventDetailPath, "page");

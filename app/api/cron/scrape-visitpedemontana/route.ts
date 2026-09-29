@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { processEventLink } from '../../../../lib/event-processor';
 import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { geocodeLocation } from '@/lib/geocoding';
 
 export const maxDuration = 300; // 5 minuti per il cron job
@@ -788,6 +788,7 @@ async function scrapeOneSource(
     if (!dryRun && processedEvents.length > 0) {
       revalidatePath('/', 'layout');
       revalidatePath('/api/events', 'page');
+      revalidateTag('events-list', { expire: 0 });
     }
 
     console.log(`[VisitPedemontana] Scraping summary for "${sourceConfig.name}" (per link):`);

@@ -1,8 +1,10 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
+import { generateUniqueSlug } from '@/lib/slug-utils';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 
 function isAdminSession(session: any): boolean {
@@ -105,6 +107,10 @@ export async function PUT(
                 imageUrl: imageUrl,
             },
         });
+
+        revalidatePath('/', 'layout');
+        revalidateTag('events-list', { expire: 0 });
+        revalidatePath(`/events/${generateUniqueSlug(updated.title, updated.id)}`, 'page');
 
         return NextResponse.json(updated);
     } catch (error) {

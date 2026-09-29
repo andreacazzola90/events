@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { processEventLink } from "../../../../../lib/event-processor";
 import { getBrowser, closeBrowser } from "../../../../../lib/browser-vercel";
 import { geocodeLocation } from "@/lib/geocoding";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../../../pages/api/auth/[...nextauth]";
 
@@ -598,6 +598,7 @@ export async function POST(request: NextRequest) {
       if (!dryRun && savedEvents.length > 0) {
         revalidatePath("/", "layout");
         revalidatePath("/api/events", "page");
+        revalidateTag("events-list", { expire: 0 });
       }
 
       // Final summary event

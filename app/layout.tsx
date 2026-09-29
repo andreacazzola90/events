@@ -68,9 +68,9 @@ export const metadata: Metadata = {
       "Scopri gli eventi a Schio, Thiene, Valdagno e nell'Alto Vicentino. Concerti, mostre, sagre e molto altro. Aggiornato ogni giorno.",
     images: [
       {
-        url: "/icon-192x192.png",
-        width: 192,
-        height: 192,
+        url: "/icons/pwa-512.png",
+        width: 512,
+        height: 512,
         alt: "EventScanner - Eventi Alto Vicentino",
       },
     ],
@@ -110,7 +110,7 @@ export default function RootLayout({
     <html lang="it" data-theme="dicefm">
       <head>
         <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/icon-192x192.png" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
         {/* Google Search Console Verification */}
         {googleSiteVerification && (

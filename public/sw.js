@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eventscanner-v5'; // Incrementa versione per forzare update
+const CACHE_NAME = 'eventscanner-v7'; // Incrementa versione per forzare update
 const SHARE_CACHE_NAME = 'eventscanner-shared-files-v1';
 const SHARE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STATIC_CACHE = [
@@ -6,8 +6,8 @@ const STATIC_CACHE = [
     '/crea',
     '/mappa',
     '/manifest.json',
-    '/icon-192x192.png',
-    '/icon-512x512.png'
+    '/icons/pwa-192.png',
+    '/icons/pwa-512.png'
 ];
 
 function getShareRequest(shareId) {
@@ -263,8 +263,8 @@ self.addEventListener('push', (event) => {
     const title = data.title || 'EventScanner';
     const options = {
         body: data.body || 'Nuovo evento disponibile',
-        icon: '/icon-192x192.png',
-        badge: '/icon-192x192.png',
+        icon: '/icons/pwa-192.png',
+        badge: '/icons/pwa-maskable-192.png',
         data: data.url || '/'
     };
 

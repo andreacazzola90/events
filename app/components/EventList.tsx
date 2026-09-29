@@ -572,9 +572,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             ? filteredEvents.slice(0, visibleCount)
             : filteredEvents;
         const gridClasses =
-          mode === "quick"
-            ? "event-list-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
-            : "event-list-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5";
+          "event-list-grid grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5";
 
         return (
           <>
@@ -593,52 +591,11 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                   <TransitionLink
                     key={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="event-card group block no-underline hover:no-underline bg-white border border-black/12 transition-colors"
+                    className="event-card group flex items-stretch no-underline hover:no-underline bg-white transition-colors"
                   >
-                    <div className="event-card-media relative overflow-hidden">
-                      <FavoriteButton
-                        eventId={event.id}
-                        initialIsFavorite={favoriteIds.has(event.id)}
-                        onToggle={(newValue) =>
-                          handleFavoriteToggleLocal(event.id, newValue)
-                        }
-                      />
-                      {event.imageUrl ? (
-                        <Image
-                          src={
-                            event.imageUrl.startsWith("/uploads/")
-                              ? event.imageUrl
-                              : event.imageUrl
-                          }
-                          alt={event.title}
-                          width={600}
-                          height={400}
-                          className="event-card-image w-full h-48 object-cover transition-transform duration-700 group-hover:scale-105"
-                          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                        />
-                      ) : (
-                        <div className="event-card-placeholder w-full h-48 flex items-center justify-center">
-                          <div className="text-sm uppercase tracking-[0.12em] text-black/40 font-bold">
-                            No image
-                          </div>
-                        </div>
-                      )}
-
-                      {(() => {
-                        const label = getPriceLabel(event.price);
-                        return (
-                          <div
-                            className={`absolute top-3 right-3 px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold border border-white/30 ${getPriceBadgeClasses(label)}`}
-                          >
-                            {label}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="event-card-body p-4 space-y-3">
+                    <div className="event-card-body flex-1 min-w-0 p-4 md:p-5 space-y-3">
                       <div className="space-y-2">
-                        <h3 className="text-lg font-black text-black leading-tight line-clamp-2 transition-colors">
+                        <h3 className="text-lg md:text-xl font-black text-black leading-tight line-clamp-2 transition-colors">
                           {cleanText(event.title)}
                         </h3>
                         <p className="event-card-description text-black/60 text-sm line-clamp-2">
@@ -646,7 +603,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                         </p>
                       </div>
 
-                      <div className="space-y-1 text-sm border-t border-black/10 pt-3">
+                      <div className="space-y-1 text-sm">
                         <div className="flex items-center gap-2 text-black/80">
                           <CalendarIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
                           <span>
@@ -670,14 +627,14 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                         </div>
 
                         {event.location && (
-                          <div className="flex items-center gap-2 text-black/80">
+                          <div className="flex items-center gap-2 text-black/80 min-w-0">
                             <MapPinIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
                             <span className="truncate">{event.location}</span>
                           </div>
                         )}
 
                         {event.organizer && (
-                          <div className="event-card-organizer flex items-center gap-2 text-black/80">
+                          <div className="event-card-organizer flex items-center gap-2 text-black/80 min-w-0">
                             <span className="w-4 shrink-0">•</span>
                             <span className="truncate">{event.organizer}</span>
                           </div>
@@ -687,12 +644,49 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                       {event.category && (
                         <div className="pt-1">
                           <span
-                            className={`inline-flex items-center px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold text-white border border-black/20 ${getCategoryBadgeClasses(event.category)}`}
+                            className={`inline-flex items-center px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
                           >
                             {event.category}
                           </span>
                         </div>
                       )}
+                    </div>
+
+                    <div className="event-card-media relative overflow-hidden shrink-0 w-32 sm:w-44 lg:w-48 min-h-36">
+                      <FavoriteButton
+                        eventId={event.id}
+                        initialIsFavorite={favoriteIds.has(event.id)}
+                        onToggle={(newValue) =>
+                          handleFavoriteToggleLocal(event.id, newValue)
+                        }
+                      />
+                      {event.imageUrl ? (
+                        <Image
+                          src={event.imageUrl}
+                          alt={event.title}
+                          width={400}
+                          height={400}
+                          className="event-card-image absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          sizes="(min-width: 640px) 192px, 128px"
+                        />
+                      ) : (
+                        <div className="event-card-placeholder absolute inset-0 flex items-center justify-center">
+                          <div className="text-xs uppercase tracking-[0.12em] text-black/40 font-bold">
+                            No image
+                          </div>
+                        </div>
+                      )}
+
+                      {(() => {
+                        const label = getPriceLabel(event.price);
+                        return (
+                          <div
+                            className={`absolute bottom-2 right-2 z-10 px-2 py-1 text-[10px] uppercase tracking-[0.11em] font-bold ${getPriceBadgeClasses(label)}`}
+                          >
+                            {label}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </TransitionLink>
                 ))

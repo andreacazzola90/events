@@ -1126,14 +1126,12 @@ button {
 .event-card {
   position: relative;
   overflow: hidden;
-  border-color: rgba(29, 29, 27, 0.12);
   box-shadow: 0 1px 0 rgba(29, 29, 27, 0.06);
-  transition: border-color 0.25s ease, box-shadow 0.35s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: box-shadow 0.35s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .event-card:hover {
-  transform: translateY(-6px);
-  border-color: var(--accent);
+  transform: translateY(-4px);
   box-shadow: 0 18px 36px rgba(29, 29, 27, 0.11), 0 5px 16px rgba(214, 90, 56, 0.08);
 }
 
@@ -1430,9 +1428,8 @@ button {
     font-size: 0.62rem;
   }
 
-  .event-card-image,
-  .event-card-placeholder {
-    height: 9rem !important;
+  .event-card-media {
+    min-height: 8rem;
   }
 
   .event-card-body {
@@ -1454,7 +1451,6 @@ button {
   }
 
   .event-card-body > .space-y-3 > .space-y-1 {
-    padding-top: 0.45rem;
     font-size: 0.75rem;
   }
 

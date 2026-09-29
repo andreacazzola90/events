@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { EventData } from '@/types/event';
 import LoadingAnimation from './LoadingAnimation';
@@ -144,6 +144,50 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
         event.target.value = '';
     };
 
+    const processFileRef = useRef(processFile);
+    useEffect(() => {
+        processFileRef.current = processFile;
+    });
+
+    useEffect(() => {
+        if (isProcessing) return;
+
+        const handlePaste = (event: ClipboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+
+            const item = Array.from(event.clipboardData?.items ?? []).find(
+                (i) => i.kind === 'file' && i.type.startsWith('image/')
+            );
+            const file = item?.getAsFile();
+            if (!file) return;
+
+            event.preventDefault();
+            processFileRef.current(file);
+        };
+
+        document.addEventListener('paste', handlePaste);
+        return () => document.removeEventListener('paste', handlePaste);
+    }, [isProcessing]);
+
+    const handleClipboardClick = async () => {
+        try {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+                const type = item.types.find((t) => t.startsWith('image/'));
+                if (type) {
+                    const blob = await item.getType(type);
+                    const ext = type.split('/')[1] || 'png';
+                    await processFile(new File([blob], `clipboard.${ext}`, { type }));
+                    return;
+                }
+            }
+            toast.info('Nessuna immagine negli appunti');
+        } catch {
+            toast.error('Impossibile leggere gli appunti');
+        }
+    };
+
     return (
         <>
             <div
@@ -188,6 +232,9 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                             <p className="image-upload-hint text-sm text-gray-500">
                                 Scatta una foto o scegli un’immagine · max 10 MB
                             </p>
+                            <p className="image-upload-hint text-sm text-gray-500 hidden md:block">
+                                Oppure incolla un’immagine con Ctrl/⌘ + V
+                            </p>
                         </>
                     )}
                 </div>
@@ -221,6 +268,17 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                                 <div className="text-left flex-1">
                                     <div className="font-semibold text-gray-900">Galleria</div>
                                     <div className="text-sm text-gray-600">Scegli dalla galleria</div>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={handleClipboardClick}
+                                className="image-source-option w-full flex items-center gap-4 p-4 transition-colors"
+                            >
+                                <div className="image-source-icon" aria-hidden="true">⎘</div>
+                                <div className="text-left flex-1">
+                                    <div className="font-semibold text-gray-900">Appunti</div>
+                                    <div className="text-sm text-gray-600">Incolla un’immagine copiata</div>
                                 </div>
                             </button>
 

@@ -449,7 +449,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
       ) : (
         <>
         <label className="mobile-event-search lg:hidden">
-          <AppIcon name="search" className="h-5 w-5 shrink-0 text-[#d65a38]" />
+          <AppIcon name="search" className="h-5 w-5 shrink-0 text-[var(--accent)]" />
           <input
             type="search"
             placeholder="Cerca eventi"

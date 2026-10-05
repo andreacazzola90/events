@@ -106,7 +106,7 @@ export default function Header() {
             href="/"
             className="site-brand flex items-baseline gap-2 no-underline hover:no-underline"
           >
-            <span className="text-xl font-black tracking-tight text-black uppercase">
+            <span className="text-base font-semibold text-black">
               Event<span className="site-brand-accent">/</span>Scanner
             </span>
           </TransitionLink>

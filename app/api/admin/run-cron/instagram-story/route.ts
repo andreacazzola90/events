@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { withAdminAuth } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   return withAdminAuth(async () => {
+    let target: "instagram-story" | "visitpedemontana" = "instagram-story";
+    const startedAt = new Date();
     try {
-      let target: "instagram-story" | "visitpedemontana" = "instagram-story";
       let dryRun = false;
       try {
         const body = await request.json();
@@ -22,8 +25,8 @@ export async function POST(request: NextRequest) {
       // Marca il job come "running" nel DB così la UI può rilevarlo dopo un refresh
       await (prisma as any).cronJobRun.upsert({
         where: { jobKey: target },
-        update: { status: "running", startedAt: new Date(), finishedAt: null, resultJson: null },
-        create: { jobKey: target, status: "running" },
+        update: { status: "running", startedAt, finishedAt: null, resultJson: null },
+        create: { jobKey: target, status: "running", startedAt },
       });
 
       const headers: HeadersInit = {};
@@ -54,15 +57,17 @@ export async function POST(request: NextRequest) {
         } catch {
           data = { raw: text };
         }
-        if (!res.ok) jobStatus = "failed";
+        if (!res.ok || ["error", "partial-error", "failed"].includes(data?.status)) {
+          jobStatus = "failed";
+        }
       } catch (fetchError) {
         data = { error: fetchError instanceof Error ? fetchError.message : "Unknown error" };
         jobStatus = "failed";
       }
 
       // Aggiorna lo stato finale nel DB
-      await (prisma as any).cronJobRun.update({
-        where: { jobKey: target },
+      await prisma.cronJobRun.updateMany({
+        where: { jobKey: target, startedAt },
         data: {
           status: jobStatus,
           finishedAt: new Date(),
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
       // Prova a marcare il job come fallito se possibile
       try {
         await (prisma as any).cronJobRun.updateMany({
-          where: { status: "running" },
+          where: { jobKey: target, status: "running", startedAt },
           data: { status: "failed", finishedAt: new Date() },
         });
       } catch { /* ignore */ }

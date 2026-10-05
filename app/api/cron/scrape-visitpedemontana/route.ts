@@ -117,6 +117,8 @@ type CronSourceConfig = {
   requestTimeoutMs: number;
   maxPages: number;
   maxLinksPerRun: number;
+  nextApiPage: number;
+  pendingEventLinks: string[];
 };
 
 const DEFAULT_SOURCE_CONFIG: CronSourceConfig = {
@@ -133,6 +135,8 @@ const DEFAULT_SOURCE_CONFIG: CronSourceConfig = {
   requestTimeoutMs: 90000,
   maxPages: 30,
   maxLinksPerRun: 600,
+  nextApiPage: 0,
+  pendingEventLinks: [],
 };
 
 function toSourceConfig(row: any): CronSourceConfig {
@@ -154,6 +158,9 @@ function toSourceConfig(row: any): CronSourceConfig {
       Number(row?.maxLinksPerRun) > 0
         ? Number(row.maxLinksPerRun)
         : DEFAULT_SOURCE_CONFIG.maxLinksPerRun,
+    nextApiPage: Number.isInteger(row?.nextApiPage) && row.nextApiPage >= 0 ? row.nextApiPage : 0,
+    pendingEventLinks: Array.isArray(row?.pendingEventLinks)
+      ? row.pendingEventLinks.filter((url: unknown) => typeof url === 'string') : [],
   };
 }
 
@@ -162,25 +169,48 @@ function toSourceConfig(row: any): CronSourceConfig {
  * so the job still runs even with no CronSource rows configured. */
 async function resolveActiveSources(): Promise<CronSourceConfig[]> {
   const cronSourceModel = (prisma as any).cronSource;
-  if (!cronSourceModel) {
-    return [DEFAULT_SOURCE_CONFIG];
-  }
-
-  try {
-    const activeSources = await cronSourceModel.findMany({
-      where: { isActive: true },
-      orderBy: [{ updatedAt: 'desc' }],
-    });
-
-    if (!Array.isArray(activeSources) || activeSources.length === 0) {
-      return [DEFAULT_SOURCE_CONFIG];
+  let sourceConfigs = [DEFAULT_SOURCE_CONFIG];
+  if (cronSourceModel) {
+    try {
+      const activeSources = await cronSourceModel.findMany({
+        where: { isActive: true },
+        orderBy: [{ updatedAt: 'desc' }],
+      });
+      if (Array.isArray(activeSources) && activeSources.length > 0) {
+        sourceConfigs = activeSources.map(toSourceConfig);
+      }
+    } catch (error) {
+      console.warn('[VisitPedemontana] Failed loading CronSource rows, using default source:', error);
     }
-
-    return activeSources.map(toSourceConfig);
-  } catch (error) {
-    console.warn('[VisitPedemontana] Failed loading CronSource rows, using default source:', error);
-    return [DEFAULT_SOURCE_CONFIG];
   }
+
+  let lastStarted = new Map<string, number>();
+  const previousResults = new Map<string, Record<string, unknown>>();
+  try {
+    const runs = await prisma.cronJobRun.findMany({
+      where: { jobKey: { startsWith: 'scrape-source:' } },
+      select: { jobKey: true, startedAt: true, resultJson: true },
+    });
+    lastStarted = new Map(runs.map(run => [run.jobKey, run.startedAt.getTime()]));
+    for (const run of runs) {
+      try {
+        if (run.resultJson) previousResults.set(run.jobKey, JSON.parse(run.resultJson));
+      } catch {
+        previousResults.delete(run.jobKey);
+      }
+    }
+  } catch (error) {
+    console.warn('[VisitPedemontana] Failed loading source run order:', error);
+  }
+
+  return sourceConfigs.map(source => toSourceConfig({
+    ...source,
+    nextApiPage: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.nextApiPage,
+    pendingEventLinks: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.pendingEventLinks,
+  })).sort((first, second) =>
+    (lastStarted.get(`scrape-source:${first.id ?? 'default'}`) ?? 0) -
+    (lastStarted.get(`scrape-source:${second.id ?? 'default'}`) ?? 0),
+  );
 }
 
 function slugifyOrigin(name: string): string {
@@ -197,9 +227,15 @@ async function scrapeOneSource(
   sourceConfig: CronSourceConfig,
   today: Date,
   dryRun: boolean,
+  deadline: number,
 ): Promise<Record<string, any>> {
   let browser: any = null;
   let eventLinks: string[] = [];
+  let collectionIncomplete = false;
+  const collectionErrors: { url: string; error: string }[] = [];
+  let nextApiPage = sourceConfig.nextApiPage;
+  const collectionDeadline = deadline - 90_000;
+  const remainingCollectionTime = () => Math.max(1, collectionDeadline - Date.now());
   const originTag = slugifyOrigin(sourceConfig.name);
 
   try {
@@ -229,6 +265,7 @@ async function scrapeOneSource(
     browser = await getBrowser({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      timeout: Math.min(30_000, remainingCollectionTime()),
     });
 
     const page = await browser.newPage();
@@ -238,7 +275,7 @@ async function scrapeOneSource(
 
     const baseListUrl = listUrl;
     const visitedPages = new Set<string>();
-    const allEventLinks = new Set<string>();
+    const allEventLinks = new Set<string>(sourceConfig.pendingEventLinks);
     const desklineEventLinks = new Set<string>();
     let currentUrl = baseListUrl;
     const maxPages = sourceConfig.maxPages;
@@ -308,6 +345,10 @@ async function scrapeOneSource(
     });
 
     for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+      if (Date.now() + 5000 >= collectionDeadline) {
+        collectionIncomplete = true;
+        break;
+      }
       if (visitedPages.has(currentUrl)) {
         console.log(`[VisitPedemontana] Page already visited, stopping at ${currentUrl}`);
         break;
@@ -319,11 +360,11 @@ async function scrapeOneSource(
       // resolution before the Deskline widget fires its API call.
       await page.goto(currentUrl, {
         waitUntil: 'load',
-        timeout: sourceConfig.requestTimeoutMs,
+        timeout: Math.min(sourceConfig.requestTimeoutMs, remainingCollectionTime()),
       });
 
       // iubenda and similar cookie banners load lazily — wait 2s before trying to dismiss
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, Math.min(2000, remainingCollectionTime())));
       await dismissCookieBanner(page);
 
       // Wait for the Deskline event listing web-component to appear in the DOM.
@@ -337,8 +378,9 @@ async function scrapeOneSource(
       ];
       let dwFound = false;
       for (const sel of DW_READY_SELECTORS) {
+        if (Date.now() >= collectionDeadline) break;
         try {
-          await page.waitForSelector(sel, { timeout: 5000 });
+          await page.waitForSelector(sel, { timeout: Math.min(5000, remainingCollectionTime()) });
           console.log(`[VisitPedemontana] Deskline component ready ("${sel}").`);
           dwFound = true;
           break;
@@ -350,7 +392,10 @@ async function scrapeOneSource(
         console.warn(`[VisitPedemontana] No Deskline component found; waiting ${sourceConfig.waitMs}ms for JS rendering.`);
       }
       // Extra wait for Angular change detection and widget API calls to complete
-      await new Promise((resolve) => setTimeout(resolve, dwFound ? sourceConfig.waitMs / 2 : sourceConfig.waitMs));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(
+        dwFound ? sourceConfig.waitMs / 2 : sourceConfig.waitMs,
+        remainingCollectionTime(),
+      )));
 
       const { pageEventLinks, nextPageUrl, debugAnchors } = await page.evaluate(
         ({ eventLinkSelector, nextPageSelector, listHost }: { eventLinkSelector: string; nextPageSelector: string | null; listHost: string }) => {
@@ -578,12 +623,18 @@ async function scrapeOneSource(
         const pageSize = Math.max(1, Number(templateUrl.searchParams.get('pageSize') || '24'));
         const sourceOrigin = new URL(listUrl).origin;
 
-        for (let pageNo = 0; pageNo < 80; pageNo++) {
+        for (let pagesFetched = 0; pagesFetched < 80; pagesFetched++) {
+          if (Date.now() + 5000 >= collectionDeadline) {
+            collectionIncomplete = true;
+            break;
+          }
+          const pageNo = nextApiPage;
           const apiUrl = new URL(templateUrl.toString());
           apiUrl.searchParams.set('pageNo', String(pageNo));
           apiUrl.searchParams.set('pageSize', String(pageSize));
 
           const apiRes = await fetch(apiUrl.toString(), {
+            signal: AbortSignal.timeout(Math.min(10_000, remainingCollectionTime())),
             headers: {
               'DW-Source': desklineRequestHeaders['DW-Source'],
               'DW-SessionId': desklineRequestHeaders['DW-SessionId'],
@@ -594,6 +645,8 @@ async function scrapeOneSource(
           });
 
           if (!apiRes.ok) {
+            collectionIncomplete = true;
+            collectionErrors.push({ url: apiUrl.toString(), error: `Deskline API HTTP ${apiRes.status}` });
             console.warn(`[VisitPedemontana] Deskline API pagination stopped at page ${pageNo}. Status: ${apiRes.status}`);
             break;
           }
@@ -601,14 +654,20 @@ async function scrapeOneSource(
           const payload = await apiRes.json();
           const eventsCount = collectDesklineEvents(payload);
           if (eventsCount === 0) {
+            nextApiPage = 0;
             break;
           }
 
           if (eventsCount < pageSize) {
+            nextApiPage = 0;
             break;
           }
+          nextApiPage += 1;
+          if (pagesFetched === 79) collectionIncomplete = true;
         }
       } catch (error) {
+        collectionIncomplete = true;
+        collectionErrors.push({ url: listUrl, error: error instanceof Error ? error.message : 'Deskline API pagination failed' });
         console.warn('[VisitPedemontana] Deskline API pagination fallback failed:', error);
       }
     }
@@ -628,10 +687,6 @@ async function scrapeOneSource(
       return true;
     });
 
-    if (eventLinks.length > sourceConfig.maxLinksPerRun) {
-      eventLinks = eventLinks.slice(0, sourceConfig.maxLinksPerRun);
-    }
-
     console.log(`VisitPedemontana: collected ${eventLinks.length} potential event links across ${visitedPages.size} page(s).`);
 
     await closeBrowser(browser);
@@ -650,7 +705,8 @@ async function scrapeOneSource(
         .map((e: { sourceUrl: string | null }) => e.sourceUrl)
         .filter(Boolean) as string[],
     );
-    const newEventLinks = eventLinks.filter(url => !existingUrls.has(url));
+    const pendingLinks = eventLinks.filter(url => !existingUrls.has(url));
+    const newEventLinks = pendingLinks.slice(0, sourceConfig.maxLinksPerRun);
 
     console.log(`VisitPedemontana: ${newEventLinks.length} new events to process.`);
 
@@ -674,11 +730,12 @@ async function scrapeOneSource(
       skippedPast: 0,
       skippedDuplicateByFields: 0,
     };
-    const errors: { url: string; error: string }[] = [];
+    const errors: { url: string; error: string }[] = [...collectionErrors];
     const linkSummary: { url: string; visited: boolean; status: 'pending' | 'saved' | 'no-new-events' | 'error' }[] =
       newEventLinks.map(url => ({ url, visited: false, status: 'pending' }));
 
     for (const url of newEventLinks) {
+      if (Date.now() + 60_000 >= deadline) break;
       const summaryEntry = linkSummary.find(entry => entry.url === url) ||
         (() => {
           const entry = { url, visited: false, status: 'pending' as const };
@@ -798,9 +855,19 @@ async function scrapeOneSource(
       console.log(JSON.stringify(linkSummary, null, 2));
     }
 
+    const pendingEventLinks = [
+      ...linkSummary.filter(entry => !entry.visited).map(entry => entry.url),
+      ...pendingLinks.slice(sourceConfig.maxLinksPerRun),
+    ];
+    const deferred = pendingEventLinks.length;
     return {
-      status: dryRun ? 'dry-run' : 'success',
+      status: errors.length > 0 ? 'partial-error' :
+        deferred > 0 || collectionIncomplete ? 'partial' : dryRun ? 'dry-run' : 'success',
       dryRun,
+      deferred,
+      collectionIncomplete,
+      nextApiPage: dryRun ? sourceConfig.nextApiPage : nextApiPage,
+      pendingEventLinks: dryRun ? sourceConfig.pendingEventLinks : pendingEventLinks,
       found: eventLinks.length,
       new: newEventLinks.length,
       processed: dryRun ? dryRunStats.wouldSave : processedEvents.length,
@@ -816,6 +883,8 @@ async function scrapeOneSource(
     return {
       status: 'error',
       message: error instanceof Error ? error.message : 'Unknown error',
+      nextApiPage: sourceConfig.nextApiPage,
+      pendingEventLinks: sourceConfig.pendingEventLinks,
     };
   }
 }
@@ -829,6 +898,20 @@ export async function GET(request: NextRequest) {
 
   console.log('--- STARTING VISITPEDEMONTANA SCRAPER CRON JOB ---');
   const dryRun = request.nextUrl.searchParams.get('dryRun') === '1';
+  const runStartedAt = Date.now();
+  const aggregateStartedAt = new Date(runStartedAt);
+  const TIME_BUDGET_MS = 260_000;
+  const MIN_SOURCE_BUDGET_MS = 120_000;
+  const runDeadline = runStartedAt + TIME_BUDGET_MS;
+  try {
+    await prisma.cronJobRun.upsert({
+      where: { jobKey: 'visitpedemontana' },
+      update: { status: 'running', startedAt: aggregateStartedAt, finishedAt: null, resultJson: null },
+      create: { jobKey: 'visitpedemontana', status: 'running', startedAt: aggregateStartedAt },
+    });
+  } catch (error) {
+    console.warn('[VisitPedemontana] Failed recording aggregate start:', error);
+  }
 
   // Considera "oggi" senza orario per filtrare gli eventi passati
   const today = new Date();
@@ -837,38 +920,43 @@ export async function GET(request: NextRequest) {
   const sources = await resolveActiveSources();
   console.log(`[VisitPedemontana] Resolved ${sources.length} active source(s): ${sources.map(s => s.name).join(', ')}`);
 
-  // Stay comfortably under Vercel's maxDuration (300s) so one slow source
-  // can't starve the others; anything left is skipped and picked up next run.
-  const TIME_BUDGET_MS = 260_000;
-  const runStartedAt = Date.now();
   const results: Record<string, any>[] = [];
+  let sourcesProcessed = 0;
 
-  for (const source of sources) {
-    if (Date.now() - runStartedAt > TIME_BUDGET_MS) {
+  for (const [sourceIndex, source] of sources.entries()) {
+    const availableTime = runDeadline - Date.now();
+    if (availableTime < MIN_SOURCE_BUDGET_MS) {
       console.warn(`[VisitPedemontana] Time budget exceeded, skipping remaining source: ${source.name}`);
       results.push({ sourceId: source.id, sourceName: source.name, status: 'skipped', message: 'Time budget exceeded for this run' });
       continue;
     }
 
+    const sourcesWithinBudget = Math.min(
+      sources.length - sourceIndex,
+      Math.floor(availableTime / MIN_SOURCE_BUDGET_MS),
+    );
+    const sourceDeadline = Date.now() + Math.floor(availableTime / sourcesWithinBudget);
     const jobKey = `scrape-source:${source.id ?? 'default'}`;
+    const sourceStartedAt = new Date();
     try {
       await (prisma as any).cronJobRun.upsert({
         where: { jobKey },
-        update: { status: 'running', startedAt: new Date(), finishedAt: null, resultJson: null },
-        create: { jobKey, status: 'running' },
+        update: { status: 'running', startedAt: sourceStartedAt, finishedAt: null },
+        create: { jobKey, status: 'running', startedAt: sourceStartedAt },
       });
     } catch {
       // Observability only — never block the actual scrape on this.
     }
 
     try {
-      const result = await scrapeOneSource(source, today, dryRun);
+      sourcesProcessed += 1;
+      const result = await scrapeOneSource(source, today, dryRun, sourceDeadline);
       results.push({ sourceId: source.id, sourceName: source.name, ...result });
       try {
-        await (prisma as any).cronJobRun.update({
-          where: { jobKey },
+        await prisma.cronJobRun.updateMany({
+          where: { jobKey, startedAt: sourceStartedAt },
           data: {
-            status: result.status === 'error' ? 'failed' : 'completed',
+            status: ['error', 'partial-error'].includes(result.status) ? 'failed' : 'completed',
             finishedAt: new Date(),
             resultJson: JSON.stringify(result),
           },
@@ -881,8 +969,8 @@ export async function GET(request: NextRequest) {
       console.error(`[VisitPedemontana] Source "${source.name}" failed:`, error);
       results.push({ sourceId: source.id, sourceName: source.name, status: 'error', message });
       try {
-        await (prisma as any).cronJobRun.update({
-          where: { jobKey },
+        await prisma.cronJobRun.updateMany({
+          where: { jobKey, startedAt: sourceStartedAt },
           data: { status: 'failed', finishedAt: new Date(), resultJson: JSON.stringify({ error: message }) },
         });
       } catch {
@@ -891,12 +979,27 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const overallStatus = results.some(r => r.status === 'error') ? 'partial-error' : 'success';
+  const overallStatus = results.some(r => ['error', 'partial-error'].includes(r.status))
+    ? 'partial-error'
+    : results.some(r => ['partial', 'skipped'].includes(r.status)) ? 'partial' : 'success';
 
-  return NextResponse.json({
+  const response = {
     status: overallStatus,
     dryRun,
-    sourcesProcessed: results.length,
+    sourcesProcessed,
     sources: results,
-  });
+  };
+  try {
+    await prisma.cronJobRun.updateMany({
+      where: { jobKey: 'visitpedemontana', startedAt: aggregateStartedAt },
+      data: {
+        status: overallStatus === 'partial-error' ? 'failed' : 'completed',
+        finishedAt: new Date(),
+        resultJson: JSON.stringify(response),
+      },
+    });
+  } catch (error) {
+    console.warn('[VisitPedemontana] Failed recording aggregate result:', error);
+  }
+  return NextResponse.json(response);
 }

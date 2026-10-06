@@ -7,6 +7,8 @@ import { compressImage } from '../app/lib/image-utils';
 import { groupEventsByDate } from './event-utils';
 import { buildEventExtractionHints } from './event-hints';
 import { isWebSearchConfigured, webSearch } from './google-search';
+import { selectEventImage } from './event-image';
+import type { EventImageCandidate } from './event-image';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -95,6 +97,7 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
     logger.log('Launching browser...');
     let browser = null;
     let finalImageUrl: string | null = null;
+    let pageScreenshotForOcr: string | null = null;
     let pageText = '';
 
     // Create a timeout promise for the entire scraping operation
@@ -419,99 +422,65 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                 }
             
                 logger.log('Looking for images...');
-                const imageUrl = await page.evaluate(() => {
-                    const fbImg = document.querySelector('img[data-imgperflogname]');
-                    if (fbImg && (fbImg as HTMLImageElement).src) return (fbImg as HTMLImageElement).src;
+                const imageCandidates = await page.evaluate((): EventImageCandidate[] => {
+                    const candidates: EventImageCandidate[] = [];
+                    const add = (url: string | null | undefined, source: EventImageCandidate['source']) => {
+                        if (url?.trim()) candidates.push({ url: url.trim(), source });
+                    };
+                    const readImages = (value: any): string[] => {
+                        if (typeof value === 'string') return [value];
+                        if (Array.isArray(value)) return value.flatMap(readImages);
+                        if (value && typeof value === 'object') {
+                            return [value.url, value.contentUrl].filter((item): item is string => typeof item === 'string');
+                        }
+                        return [];
+                    };
+                    const visitSchema = (value: any) => {
+                        if (Array.isArray(value)) {
+                            value.forEach(visitSchema);
+                            return;
+                        }
+                        if (!value || typeof value !== 'object') return;
+                        const types = Array.isArray(value['@type']) ? value['@type'] : [value['@type']];
+                        if (types.some((type: unknown) => typeof type === 'string' && /event$/i.test(type))) {
+                            readImages(value.image).forEach(image => add(image, 'event-schema'));
+                        }
+                        Object.values(value).forEach(visitSchema);
+                    };
+
+                    document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
+                        try { visitSchema(JSON.parse(script.textContent || '')); } catch {}
+                    });
 
                     if (window.location.hostname.includes('dice.fm')) {
-                        const container = document.querySelector('.EventDetailsLayout__Container-sc-e27c8822-0.jbWxWb.hide-in-purchase-flow');
-                        if (container) {
-                            const img = container.querySelector('img');
-                            if (img && (img as HTMLImageElement).src && !(img as HTMLImageElement).src.includes('dice-fan-social.png') && !(img as HTMLImageElement).src.includes('favicon') && !(img as HTMLImageElement).src.includes('logo') && !(img as HTMLImageElement).src.includes('icon')) {
-                                return (img as HTMLImageElement).src;
-                            }
-                        }
-                        const imgStrict = document.querySelector('img.EventDetailsImage__Image');
-                        if (imgStrict && (imgStrict as HTMLImageElement).src && !(imgStrict as HTMLImageElement).src.includes('dice-fan-social.png') && !(imgStrict as HTMLImageElement).src.includes('favicon') && !(imgStrict as HTMLImageElement).src.includes('logo') && !(imgStrict as HTMLImageElement).src.includes('icon')) {
-                            return (imgStrict as HTMLImageElement).src;
-                        }
-                        const diceImgs = Array.from(document.querySelectorAll('img')).filter(img => {
-                            return Array.from(img.classList).some(cls => cls.startsWith('EventDetailsImage__Image-sc'));
-                        });
-                        const diceMainImg = diceImgs.find(img => (img as HTMLImageElement).src && !(img as HTMLImageElement).src.includes('dice-fan-social.png') && !(img as HTMLImageElement).src.includes('favicon') && !(img as HTMLImageElement).src.includes('logo') && !(img as HTMLImageElement).src.includes('icon'));
-                        if (diceMainImg) return (diceMainImg as HTMLImageElement).src;
-                        return null;
+                        const diceImage = document.querySelector('.EventDetailsLayout__Container-sc-e27c8822-0 img.EventDetailsImage__Image, img.EventDetailsImage__Image');
+                        add((diceImage as HTMLImageElement | null)?.currentSrc || (diceImage as HTMLImageElement | null)?.src, 'provider-event');
                     }
 
-                    const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
-                    if (ogImage) return ogImage;
-
-                    const ogImageSecure = document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content');
-                    if (ogImageSecure) return ogImageSecure;
-
-                    const twitterImage = document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
-                    if (twitterImage) return twitterImage;
-
-                    const itempropImage = document.querySelector('[itemprop="image"]')?.getAttribute('content') || document.querySelector('[itemprop="image"]')?.getAttribute('src');
-                    if (itempropImage) return itempropImage;
-
-                    const images = Array.from(document.querySelectorAll('img'));
-                    let biggestImg = null;
-                    let maxArea = 0;
-                    for (const img of images) {
-                        const src = img.src || '';
-                        if (!src || src.includes('dice-fan-social.png') || src.includes('favicon') || src.includes('logo') || src.includes('icon')) continue;
-                        const area = img.naturalWidth * img.naturalHeight;
-                        if (area > maxArea) {
-                            maxArea = area;
-                            biggestImg = img;
-                        }
-                    }
-                    if (biggestImg) return biggestImg.src;
-
-                    const titleEl = document.querySelector('h1, .event-title, [data-testid="event-title"]');
-                    if (titleEl) {
-                        let closestImg = null;
-                        let minDist = Infinity;
-                        for (const img of images) {
-                            if (!img.src) continue;
-                            const dist = Math.abs(img.getBoundingClientRect().top - titleEl.getBoundingClientRect().top);
-                            if (dist < minDist) {
-                                minDist = dist;
-                                closestImg = img;
-                            }
-                        }
-                        if (closestImg) return closestImg.src;
-                    }
-
-                    const firstVisible = images.find(img => {
-                        const rect = img.getBoundingClientRect();
-                        return img.src && rect.width > 0 && rect.height > 0 && window.getComputedStyle(img).display !== 'none' && window.getComputedStyle(img).visibility !== 'hidden';
-                    });
-                    if (firstVisible) return firstVisible.src;
-
-                    const firstImg = images.find(img => img.src);
-                    if (firstImg) return firstImg.src;
-
-                    return null;
+                    add(document.querySelector('meta[property="og:image"]')?.getAttribute('content'), 'og-image');
+                    add(document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content'), 'og-image');
+                    add(document.querySelector('meta[name="twitter:image"]')?.getAttribute('content'), 'twitter-image');
+                    const itempropImage = document.querySelector('[itemprop="image"]');
+                    add(itempropImage?.getAttribute('content') || itempropImage?.getAttribute('src') || itempropImage?.getAttribute('data-src'), 'itemprop-image');
+                    return candidates;
                 });
 
-                finalImageUrl = imageUrl;
+                finalImageUrl = selectEventImage(imageCandidates, url);
                 if (!finalImageUrl) {
-                    logger.log('No image found, taking screenshot...');
+                    logger.log('No event-specific image found; keeping a screenshot for OCR only');
                     const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 80 });
-                    const screenshotBase64 = Buffer.from(screenshotBuffer).toString('base64');
-                    finalImageUrl = `data:image/jpeg;base64,${screenshotBase64}`;
+                    pageScreenshotForOcr = `data:image/jpeg;base64,${Buffer.from(screenshotBuffer).toString('base64')}`;
                 }
 
                 await closeBrowser(browser);
-                return { pageText, finalImageUrl };
+                return { pageText, finalImageUrl, pageScreenshotForOcr };
             })(),
             scrapingTimeout
         ]);
 
         pageText = (scrapingResult as any).pageText;
         finalImageUrl = (scrapingResult as any).finalImageUrl;
+        pageScreenshotForOcr = (scrapingResult as any).pageScreenshotForOcr;
 
     } catch (browserError) {
         logger.error('Errore durante lo scraping con browser:', browserError);
@@ -544,16 +513,17 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
 
     // 1b. Estrai testo dall'immagine con OCR se disponibile
     let imageText = '';
-    if (finalImageUrl) {
+    const imageForOcr = finalImageUrl || pageScreenshotForOcr;
+    if (imageForOcr) {
         try {
             logger.log('🔍 Analizzando l\'immagine con OCR...');
             let imageBlob: Blob;
-            if (finalImageUrl.startsWith('data:')) {
-                const base64Data = finalImageUrl.split(',')[1];
+            if (imageForOcr.startsWith('data:')) {
+                const base64Data = imageForOcr.split(',')[1];
                 const buffer = Buffer.from(base64Data, 'base64');
                 imageBlob = new Blob([buffer], { type: 'image/jpeg' });
             } else {
-                const imageResponse = await fetch(finalImageUrl);
+                const imageResponse = await fetch(imageForOcr);
                 imageBlob = await imageResponse.blob();
             }
 

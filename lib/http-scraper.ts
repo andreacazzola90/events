@@ -1,3 +1,5 @@
+import { selectEventImage } from './event-image';
+
 export async function httpScraper(url: string): Promise<{ pageText: string; finalImageUrl: string | null }> {
   console.log('🌐 Using HTTP fallback scraper for:', url);
   
@@ -31,29 +33,12 @@ export async function httpScraper(url: string): Promise<{ pageText: string; fina
       .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
 
-    // Try to extract an image URL from meta tags or img tags
-    let imageUrl = null;
-    const ogImageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
-    const twitterImageMatch = html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)["']/i);
-    const firstImgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-
-    if (ogImageMatch) {
-      imageUrl = ogImageMatch[1];
-    } else if (twitterImageMatch) {
-      imageUrl = twitterImageMatch[1];
-    } else if (firstImgMatch) {
-      imageUrl = firstImgMatch[1];
-    }
-
-    // Make image URL absolute if it's relative
-    if (imageUrl && !imageUrl.startsWith('http')) {
-      const baseUrl = new URL(url);
-      if (imageUrl.startsWith('/')) {
-        imageUrl = `${baseUrl.origin}${imageUrl}`;
-      } else {
-        imageUrl = `${baseUrl.origin}/${imageUrl}`;
-      }
-    }
+    const ogImageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)['"][^>]*>/i);
+    const twitterImageMatch = html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)['"][^>]*>/i);
+    const imageUrl = selectEventImage([
+      ...(ogImageMatch ? [{ url: ogImageMatch[1], source: 'og-image' as const }] : []),
+      ...(twitterImageMatch ? [{ url: twitterImageMatch[1], source: 'twitter-image' as const }] : []),
+    ], url);
 
     console.log('✅ HTTP fallback scraping successful');
     return {

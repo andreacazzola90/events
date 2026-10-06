@@ -1,4 +1,4 @@
-import { selectEventImage } from './event-image';
+import { extractEventImageFromHtml } from './event-image';
 
 export async function httpScraper(url: string): Promise<{ pageText: string; finalImageUrl: string | null }> {
   console.log('🌐 Using HTTP fallback scraper for:', url);
@@ -33,12 +33,7 @@ export async function httpScraper(url: string): Promise<{ pageText: string; fina
       .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
 
-    const ogImageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)['"][^>]*>/i);
-    const twitterImageMatch = html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)['"][^>]*>/i);
-    const imageUrl = selectEventImage([
-      ...(ogImageMatch ? [{ url: ogImageMatch[1], source: 'og-image' as const }] : []),
-      ...(twitterImageMatch ? [{ url: twitterImageMatch[1], source: 'twitter-image' as const }] : []),
-    ], url);
+    const imageUrl = extractEventImageFromHtml(html, url);
 
     console.log('✅ HTTP fallback scraping successful');
     return {

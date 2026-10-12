@@ -1,3 +1,4 @@
+import "server-only";
 import nodemailer from "nodemailer";
 
 const DEFAULT_SMTP_HOST = "smtp.gmail.com";

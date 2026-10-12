@@ -165,7 +165,18 @@ Example 200 response (shape):
 ### PUT /api/events/[id]
 - File: [app/api/events/[id]/route.ts](../app/api/events/[id]/route.ts)
 - Purpose: update event by numeric id
-- Supports JSON or multipart updates
+- Requires an authenticated event owner or admin.
+- Supports JSON updates or multipart updates with a cropped `coverImage` (JPEG/PNG/WebP, maximum 4 MiB). The previous `imageUrl` remains unchanged if no new cover is uploaded.
+
+### POST /api/events/[id]/media
+- Requires an authenticated event owner or admin.
+- Multipart fields: `file` and `kind` (`image` or `pdf`). Accepts JPEG/PNG/WebP/PDF, maximum 4 MiB per file and 10 attachments per event.
+- Validates extension, MIME type, file signature, and event attachment count on the server; stores the original file in the Supabase `events` bucket and metadata in `EventMedia`.
+- `kind=cover` is reserved for cover replacement through the event update workflow.
+
+### DELETE /api/events/[id]/media?mediaId=<id>
+- Requires an authenticated event owner or admin.
+- Removes the matching attachment metadata and best-effort deletes its Supabase Storage object.
 
 Example request:
 
@@ -187,7 +198,7 @@ curl -X PUT "http://localhost:3000/api/events/120" \
 
 ### GET /api/events/[id]
 - File: [app/api/events/[id]/route.ts](../app/api/events/[id]/route.ts)
-- Purpose: fetch event detail by numeric id
+- Purpose: fetch event detail by numeric id, including ordered media attachments.
 
 Example request:
 

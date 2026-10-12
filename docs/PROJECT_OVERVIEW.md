@@ -77,6 +77,12 @@ Defined in [prisma/schema.prisma](../prisma/schema.prisma).
 - createdById (nullable FK -> User)
 - createdAt, updatedAt
 
+### EventMedia
+- id (PK), eventId (FK -> Event, cascade delete)
+- kind (`image` or `pdf`), fileName, MIME type, sizeBytes
+- storagePath and public URL in Supabase Storage
+- position, createdAt
+
 ### User
 - id (PK)
 - email (unique)

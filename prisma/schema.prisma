@@ -30,6 +30,23 @@ model Event {
   createdBy   User?      @relation(fields: [createdById], references: [id])
   favorites   Favorite[]
   calendarDeliveries GoogleCalendarDelivery[]
+  media       EventMedia[]
+}
+
+model EventMedia {
+  id          Int      @id @default(autoincrement())
+  eventId     Int
+  kind        String
+  fileName    String
+  mimeType    String
+  sizeBytes   Int
+  storagePath String   @unique
+  url         String
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, position])
 }
 
 model User {

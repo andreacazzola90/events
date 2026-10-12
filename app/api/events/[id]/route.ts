@@ -1,11 +1,11 @@
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import { generateUniqueSlug } from '../../../../lib/slug-utils';
 import { toIsoDate } from '../../../../lib/event-utils';
+import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase } from '../../../lib/supabase';
+import { validateEventMediaFile } from '../../../../lib/event-media';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 
 function isAdminSession(session: any): boolean {
@@ -14,8 +14,7 @@ function isAdminSession(session: any): boolean {
     return (
         user?.role === 'admin' ||
         user?.type === 'admin' ||
-        email === 'andreacazzola90@gmail.com' ||
-        email.startsWith('andreacazzola90@')
+        email === 'andreacazzola90@gmail.com'
     );
 }
 
@@ -23,6 +22,7 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    let uploadedCoverPath: string | null = null;
     try {
         const session: any = await getServerSession(authOptions as any);
         if (!session?.user) {
@@ -69,18 +69,17 @@ export async function PUT(
         } else if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
             data = JSON.parse(formData.get('eventData') as string);
-            imageFile = formData.get('image') as File | null;
+            imageFile = (formData.get('coverImage') || formData.get('image')) as File | null;
             imageUrl = data.imageUrl;
 
-            if (imageFile) {
-                const bytes = await imageFile.arrayBuffer();
-                const buffer = Buffer.from(bytes);
-                const timestamp = Date.now();
-                const filename = `${timestamp}-${imageFile.name}`;
-                const filepath = join(process.cwd(), 'public', 'uploads', 'events', filename);
-                await mkdir(join(process.cwd(), 'public', 'uploads', 'events'), { recursive: true });
-                await writeFile(filepath, buffer);
-                imageUrl = `/uploads/events/${filename}`;
+            if (imageFile instanceof File && imageFile.size > 0) {
+                const validation = validateEventMediaFile(imageFile.name, imageFile.type, new Uint8Array(await imageFile.arrayBuffer()), imageFile.size);
+                if (!validation.ok || validation.kind !== 'image') {
+                    return NextResponse.json({ error: validation.ok ? 'La copertina deve essere un’immagine' : validation.error }, { status: 400 });
+                }
+                const uploaded = await uploadEventMediaToSupabase(imageFile, eventId);
+                uploadedCoverPath = uploaded.storagePath;
+                imageUrl = uploaded.url;
             }
         } else {
             return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });
@@ -108,6 +107,7 @@ export async function PUT(
                 imageUrl: imageUrl,
             },
         });
+        uploadedCoverPath = null;
 
         revalidatePath('/', 'layout');
         revalidateTag('events-list', { expire: 0 });
@@ -115,6 +115,11 @@ export async function PUT(
 
         return NextResponse.json(updated);
     } catch (error) {
+        if (uploadedCoverPath) {
+            await deleteEventMediaFromSupabase(uploadedCoverPath).catch(() => {
+                console.error('[API /events/[id] PUT] Cleanup cover fallito');
+            });
+        }
         console.error('Error updating event:', error);
         return NextResponse.json({ error: 'Failed to update event' }, { status: 500 });
     }
@@ -134,6 +139,7 @@ export async function GET(
 
         const event = await prisma.event.findUnique({
             where: { id: eventId },
+            include: { media: { orderBy: { position: 'asc' } } },
         });
 
         if (!event) {

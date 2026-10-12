@@ -64,6 +64,8 @@ npx prisma generate
 
 For CI/production migration execution, use your established deployment pipeline policy.
 
+The event media feature adds `20261012160000_add_event_media`; apply it before deploying the editor/API changes. Event files use the existing public Supabase `events` bucket. Cover and each attachment are uploaded separately to stay within serverless request limits.
+
 ## 5.3 Vercel deploy
 
 - Push to main for production deployment.

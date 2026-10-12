@@ -1,4 +1,5 @@
 import 'server-only';
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 
@@ -104,6 +105,28 @@ export async function uploadImageToSupabase(
     console.error('[Supabase] Error uploading image:', error);
     throw error;
   }
+}
+
+export async function uploadEventMediaToSupabase(file: File, eventId: number) {
+  const safeName = file.name
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(-120) || "attachment";
+  const storagePath = `${eventId}/${randomUUID()}-${safeName}`;
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { error } = await supabase.storage.from("events").upload(storagePath, bytes, {
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("events").getPublicUrl(storagePath);
+  return { storagePath, url: data.publicUrl };
+}
+
+export async function deleteEventMediaFromSupabase(storagePath: string) {
+  const { error } = await supabase.storage.from("events").remove([storagePath]);
+  if (error) throw error;
 }
 
 /**

@@ -92,6 +92,7 @@ async function getEvent(slug: string) {
 
     const event = await prisma.event.findUnique({
         where: { id: eventId },
+           include: { media: { orderBy: { position: 'asc' } } },
     });
 
     return event;
@@ -152,8 +153,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
     const isAdmin =
         sessionUser?.role === 'admin' ||
         sessionUser?.type === 'admin' ||
-        sessionEmail === 'andreacazzola90@gmail.com' ||
-        sessionEmail.startsWith('andreacazzola90@');
+        sessionEmail === 'andreacazzola90@gmail.com';
 
     const canEdit =
         isAdmin ||
@@ -255,6 +255,35 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                 </a>
                                             </div>
                                         </div>
+                                    )}
+
+                                    {event.media?.length > 0 && (
+                                        <section className="border-t border-black/10 pt-6 space-y-4" aria-labelledby="event-media-heading">
+                                            <h2 id="event-media-heading" className="text-xl font-bold text-[#1d1d1b]">Immagini e documenti</h2>
+                                            {event.media.some((media: { kind: string }) => media.kind === 'image') && (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                    {event.media.filter((media: { kind: string }) => media.kind === 'image').map((media: { id: number; url: string; fileName: string }) => (
+                                                        <a key={media.id} href={media.url} target="_blank" rel="noreferrer" className="block overflow-hidden border border-black/10 bg-white">
+                                                            <Image src={media.url} alt={media.fileName} width={480} height={320} unoptimized className="w-full aspect-[3/2] object-cover" />
+                                                            <span className="block px-2 py-1 text-xs text-[#5f5b56] truncate">{media.fileName}</span>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {event.media.some((media: { kind: string }) => media.kind === 'pdf') && (
+                                                <ul className="space-y-2">
+                                                    {event.media.filter((media: { kind: string }) => media.kind === 'pdf').map((media: { id: number; url: string; fileName: string; sizeBytes: number }) => (
+                                                        <li key={media.id}>
+                                                            <a href={media.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-[#1d1d1b] underline underline-offset-4">
+                                                                <span aria-hidden="true" className="text-xs font-bold text-[#d65a38]">PDF</span>
+                                                                <span>{media.fileName}</span>
+                                                                <span className="text-xs text-[#686868]">({(media.sizeBytes / (1024 * 1024)).toFixed(1)} MB)</span>
+                                                            </a>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </section>
                                     )}
                                 </div>
                             </div>

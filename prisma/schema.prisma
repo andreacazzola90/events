@@ -28,9 +28,26 @@ model Event {
   updatedAt   DateTime   @updatedAt
   createdById Int?
   createdBy   User?      @relation(fields: [createdById], references: [id])
+  eventSeriesId Int?
+  eventSeries EventSeries? @relation(fields: [eventSeriesId], references: [id], onDelete: SetNull)
   favorites   Favorite[]
   calendarDeliveries GoogleCalendarDelivery[]
   media       EventMedia[]
+
+  @@index([eventSeriesId, date, time])
+}
+
+model EventSeries {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique
+  title       String
+  description String   @default("")
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  events      Event[]
+
+  @@index([isPublished, updatedAt])
 }
 
 model EventMedia {

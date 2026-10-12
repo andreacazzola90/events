@@ -92,7 +92,10 @@ async function getEvent(slug: string) {
 
     const event = await prisma.event.findUnique({
         where: { id: eventId },
-           include: { media: { orderBy: { position: 'asc' } } },
+           include: {
+               media: { orderBy: { position: 'asc' } },
+               eventSeries: { select: { title: true, slug: true, isPublished: true } },
+           },
     });
 
     return event;
@@ -194,6 +197,14 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         <div>
                                             <p className="section-kicker mb-3">Evento</p>
                                             <h1 className="section-title mb-0 text-[#1d1d1b]">{event.title}</h1>
+                                            {event.eventSeries?.isPublished && (
+                                                <TransitionLink
+                                                    href={`/rassegne/${event.eventSeries.slug}`}
+                                                    className="mt-3 inline-flex text-sm font-semibold text-[#a33f24] underline underline-offset-4"
+                                                >
+                                                    Programma completo: {event.eventSeries.title}
+                                                </TransitionLink>
+                                            )}
                                         </div>
                                         {canEdit && (
                                             <div className="flex flex-wrap gap-3">

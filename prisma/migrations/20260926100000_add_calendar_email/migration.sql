@@ -1,0 +1,1 @@
+-- No-op: calendarEmail is added by 20260926120000_add_user_calendar_email.

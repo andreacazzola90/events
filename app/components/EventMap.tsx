@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   MapContainer,
   TileLayer,
@@ -62,7 +64,13 @@ const isValidLatLngTuple = (
 const DEFAULT_MAP_CENTER: [number, number] = [45.7175, 11.3593];
 
 // Component to control map view
-function MapController({ center }: { center: [number, number] | null }) {
+function MapController({
+  center,
+  zoom,
+}: {
+  center: [number, number] | null;
+  zoom: number;
+}) {
   const map = useMap();
 
   useEffect(() => {
@@ -79,13 +87,13 @@ function MapController({ center }: { center: [number, number] | null }) {
     }
 
     try {
-      map.flyTo(center, 14, {
+      map.flyTo(center, zoom, {
         duration: 1.5,
       });
     } catch {
-      map.setView(center, 14, { animate: false });
+      map.setView(center, zoom, { animate: false });
     }
-  }, [center, map]);
+  }, [center, map, zoom]);
 
   return null;
 }
@@ -144,7 +152,9 @@ export default function EventMap() {
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(
     DEFAULT_MAP_CENTER,
   );
+  const [mapZoom, setMapZoom] = useState(14);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [isEventListOpen, setIsEventListOpen] = useState(false);
 
   // Geographic filter state
   const [filterCity, setFilterCity] = useState("");
@@ -315,6 +325,7 @@ export default function EventMap() {
       if (isValidLatLngTuple(latLng)) {
         setUserLocation({ lat: latLng[0], lng: latLng[1] });
         setMapCenter(latLng);
+        setMapZoom(14);
         console.log(`[EventMap] City "${filterCity}" geocoded to:`, coords);
       } else {
         alert("Impossibile trovare la città. Riprova con un nome diverso.");
@@ -343,6 +354,7 @@ export default function EventMap() {
         };
         setUserLocation(location);
         setMapCenter([location.lat, location.lng]);
+        setMapZoom(14);
         setFilterCity(""); // Clear city input
         console.log("[EventMap] User location:", location);
         setIsGeolocating(false);
@@ -366,6 +378,7 @@ export default function EventMap() {
 
     // Reset map center to Schio
     setMapCenter(DEFAULT_MAP_CENTER);
+    setMapZoom(14);
   };
 
   // Cache in-memory per la geocodifica
@@ -448,6 +461,7 @@ export default function EventMap() {
     const coords: [unknown, unknown] = [event.lat, event.lng];
     if (isValidLatLngTuple(coords)) {
       setMapCenter(coords);
+      setMapZoom(16);
       setSelectedEventId(event.id);
     }
   };
@@ -490,7 +504,7 @@ export default function EventMap() {
   const mapInitialCenter = validatedMapCenter ?? DEFAULT_MAP_CENTER;
 
   return (
-    <div className="event-map-shell relative h-full w-full overflow-hidden border border-black/10 bg-[#f9f7f2]">
+    <div className="event-map-shell relative h-full w-full overflow-hidden bg-[#f9f7f2]">
       <div className="absolute inset-0">
         <MapContainer
           center={mapInitialCenter}
@@ -505,7 +519,7 @@ export default function EventMap() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapLifecycleController center={validatedMapCenter} />
-          <MapController center={validatedMapCenter} />
+          <MapController center={validatedMapCenter} zoom={mapZoom} />
           {events.map((event) => {
             const coords: [unknown, unknown] = [event.lat, event.lng];
 
@@ -518,7 +532,7 @@ export default function EventMap() {
                 key={event.id}
                 position={coords}
                 eventHandlers={{
-                  click: () => setSelectedEventId(event.id),
+                  click: () => handleEventClick(event),
                 }}
               >
                 <Popup maxWidth={300}>
@@ -533,7 +547,11 @@ export default function EventMap() {
                         sizes="(min-width: 1024px) 25vw, 50vw"
                       />
                     )}
-                    <h3 className="font-bold text-lg mb-1">{event.title}</h3>
+                    <h3 className="font-bold text-lg mb-1">
+                      <Link href={`/events/${event.id}`} className="hover:text-[#d65a38]">
+                        {event.title}
+                      </Link>
+                    </h3>
                     <p className="text-sm text-gray-600 mb-2">
                       {event.description}
                     </p>
@@ -568,8 +586,8 @@ export default function EventMap() {
         </MapContainer>
       </div>
 
-      <div className="event-map-legend absolute left-3 right-3 top-3 bottom-3 sm:left-6 sm:right-auto sm:top-6 sm:bottom-6 sm:w-[420px] bg-[#fffdf9]/95 backdrop-blur-xl border border-black/10 shadow-[0_20px_50px_rgba(29,29,27,0.08)] z-500 overflow-hidden">
-        <div className="p-5 border-b border-black/10 bg-white sticky top-0 z-20 space-y-4">
+      <div className={`event-map-legend absolute bottom-3 left-3 right-3 z-[500] flex flex-col overflow-hidden bg-[#fffdf9]/95 shadow-[0_20px_50px_rgba(29,29,27,0.08)] backdrop-blur-xl ${isEventListOpen ? "h-[72dvh]" : "h-auto"} sm:bottom-6 sm:left-6 sm:right-auto sm:top-6 sm:w-[420px]`}>
+        <div className="sticky top-0 z-20 shrink-0 space-y-4 border-b border-black/10 bg-white p-4 sm:p-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black text-[#1d1d1b] flex items-center gap-2 tracking-tight">
@@ -580,18 +598,32 @@ export default function EventMap() {
                 {userLocation ? `entro ${maxDistance || "∞"}km` : "risultati"}
               </p>
             </div>
-            {userLocation && (
+            <div className="flex items-center gap-2">
+              {userLocation && (
+                <button
+                  onClick={handleClearFilter}
+                  className="flex h-10 w-10 items-center justify-center bg-[#f1eee7] text-[#1d1d1b] text-sm font-semibold transition-colors hover:bg-[#e8e4db]"
+                  title="Rimuovi filtro"
+                  aria-label="Rimuovi filtro geografico"
+                >
+                  <AppIcon name="close" className="h-4 w-4" />
+                </button>
+              )}
               <button
-                onClick={handleClearFilter}
-                className="px-3 py-2 bg-[#f1eee7] text-[#1d1d1b] text-sm font-semibold hover:bg-[#e8e4db] transition-colors"
-                title="Rimuovi filtro"
+                type="button"
+                onClick={() => setIsEventListOpen((open) => !open)}
+                aria-expanded={isEventListOpen}
+                aria-controls="map-event-list"
+                aria-label={isEventListOpen ? "Chiudi lista eventi" : "Apri lista eventi"}
+                title={isEventListOpen ? "Chiudi lista eventi" : "Apri lista eventi"}
+                className="flex h-10 w-10 items-center justify-center bg-[#1d1d1b] text-white transition-colors hover:bg-[#d65a38] sm:hidden"
               >
-                <AppIcon name="close" className="h-4 w-4" />
+                {isEventListOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
               </button>
-            )}
+            </div>
           </div>
 
-          <div className="space-y-3">
+          <div className={`${isEventListOpen ? "block" : "hidden"} space-y-3 sm:block`}>
             <div className="flex gap-2">
               <button
                 onClick={handleUseMyLocation}
@@ -649,7 +681,7 @@ export default function EventMap() {
             )}
           </div>
         </div>
-        <div className="divide-y divide-black/10 overflow-y-auto custom-scrollbar h-[calc(100%-210px)]">
+        <div id="map-event-list" className={`${isEventListOpen ? "flex" : "hidden"} min-h-0 flex-1 flex-col divide-y divide-black/10 overflow-y-auto custom-scrollbar sm:flex`}>
           {events.map((event) => (
             <div
               key={event.id}
@@ -678,7 +710,13 @@ export default function EventMap() {
                 )}
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
                   <h3 className="font-bold text-[#1d1d1b] leading-tight group-hover:text-[#d65a38] transition-colors line-clamp-2 text-base">
-                    {event.title}
+                    <Link
+                      href={`/events/${event.id}`}
+                      onClick={(clickEvent) => clickEvent.stopPropagation()}
+                      className="hover:text-[#d65a38]"
+                    >
+                      {event.title}
+                    </Link>
                   </h3>
                   <div className="mt-2 space-y-1.5 text-[#5f5b56]">
                     <p className="text-[11px] font-bold text-[#d65a38] flex items-center gap-2">

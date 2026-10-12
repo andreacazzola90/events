@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { createEventWithCalendar, scheduleCalendarDeliveries } from "../../../../lib/google-calendar";
 import { processEventLink } from "../../../../../lib/event-processor";
 import { getBrowser, closeBrowser } from "../../../../../lib/browser-vercel";
 import { geocodeLocation } from "@/lib/geocoding";
@@ -536,7 +537,7 @@ export async function POST(request: NextRequest) {
               longitude = coords.longitude;
             }
 
-            const saved = await prisma.event.create({
+            const saved = await createEventWithCalendar({
               data: {
                 title,
                 description: eventData.description || "",
@@ -596,6 +597,7 @@ export async function POST(request: NextRequest) {
 
       // ─── 5. Revalidate cache ─────────────────────────────────────────────────
       if (!dryRun && savedEvents.length > 0) {
+        scheduleCalendarDeliveries();
         revalidatePath("/", "layout");
         revalidatePath("/api/events", "page");
         revalidateTag("events-list", { expire: 0 });

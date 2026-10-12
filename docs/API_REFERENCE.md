@@ -333,3 +333,48 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 - Extension-specific CORS is applied in extension login and events/image flows.
 - User/admin protection is handled by auth helpers in protected routes.
 - Cron routes rely on Authorization: Bearer <CRON_SECRET> when secret is configured.
+
+## 7) Calendar preferences and Google connection
+
+### GET /api/account/calendar-email
+- Requires an authenticated session.
+- Returns `calendarEventType`, `googleCalendar` (null or `{ email }`), `googleCalendarConfigured`, and the latest delivery error in `calendarDeliveries`.
+- Returns 503 if the calendar database schema has not been deployed.
+
+### PUT /api/account/calendar-email
+- Requires an authenticated session.
+- Retained for compatibility with clients that save the internal native Google event type.
+- New future events published after connection are queued automatically, including scraper imports, without category filtering. Existing events are not backfilled. Google account/type restrictions can prevent special types; those errors are reported rather than silently changing type.
+
+### POST /api/account/google-calendar
+- Requires an authenticated session and a matching Origin header.
+- Requires server OAuth configuration; the user chooses the Google account in Google's consent flow.
+- Requests `calendar.events.owned` and read-only `calendar.calendarlist.readonly` access so the Profile can discover owned calendars.
+- Returns `{ "url": "https://accounts.google.com/..." }` and sets a short-lived encrypted HttpOnly OAuth cookie. Navigate to the URL to grant access.
+- Returns 403 for an invalid Origin and 503 for missing server OAuth configuration.
+
+### GET /api/account/google-calendar/calendars
+- Requires an authenticated Google Calendar connection with the calendar-list scope.
+- Returns owned calendars with `id`, `summary`, `backgroundColor`, and `primary`, plus `selectedCalendarId`.
+- Existing grants without the new scope must reconnect from Profile.
+
+### PUT /api/account/google-calendar/calendars
+- Requires an authenticated session and matching Origin header.
+- Body: `{ "calendarId": "..." }`. The ID is validated against the user's writable Google calendar list before being saved.
+- Returns `{ "selectedCalendarId": "..." }`; unknown IDs are rejected.
+
+### GET /api/account/google-calendar/callback
+- OAuth redirect endpoint; requires the originating user's authenticated session.
+- Validates state, cookie expiry, PKCE, both Calendar scopes, and verified Google identity. The verified Google email becomes the connected calendar identity.
+- Stores only an encrypted refresh token and redirects to `/account?googleCalendar=connected` or a bounded error status.
+
+### DELETE /api/account/google-calendar
+- Requires an authenticated session and a matching Origin header.
+- Cancels pending deliveries, removes the Google connection, and attempts remote token revocation.
+- Existing Google events are not deleted.
+
+### GET /api/cron/sync-google-calendar
+- Requires `CRON_SECRET` bearer authorization; missing configuration returns 503, invalid authorization returns 401.
+- Drains eligible delivery records with concurrency leases and a bounded execution budget.
+- Returns `{ "delivered": 0, "skipped": 0, "retried": 0 }` counters.
+- Same-origin POST is also available to authenticated admins.

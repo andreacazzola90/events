@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Link2, LoaderCircle, Unlink } from "lucide-react";
 import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { groupEventsByScanOriginAndDate } from "../../lib/event-scan-groups";
@@ -12,6 +13,7 @@ import type { DbEvent } from "../types/event";
 type UserEvent = Omit<DbEvent, "createdAt"> & {
   createdAt: Date | string;
 };
+type GoogleCalendarOption = { id: string; summary: string; backgroundColor: string; primary: boolean };
 type AccountTab =
   | "profile"
   | "password"
@@ -47,9 +49,16 @@ export default function AccountPage() {
     text: string;
   } | null>(null);
   const [activeTab, setActiveTab] = useState<AccountTab>("profile");
-  const [calendarEmail, setCalendarEmail] = useState("");
-  const [savingCalendarEmail, setSavingCalendarEmail] = useState(false);
-  const [calendarEmailLoaded, setCalendarEmailLoaded] = useState(false);
+  const [calendarDeliveryError, setCalendarDeliveryError] = useState<string | null>(null);
+  const [googleCalendarEmail, setGoogleCalendarEmail] = useState<string | null>(null);
+  const [googleCalendars, setGoogleCalendars] = useState<GoogleCalendarOption[]>([]);
+  const [selectedGoogleCalendarId, setSelectedGoogleCalendarId] = useState("");
+  const [googleCalendarListLoading, setGoogleCalendarListLoading] = useState(false);
+  const [googleCalendarListError, setGoogleCalendarListError] = useState<string | null>(null);
+  const [googleCalendarConfigured, setGoogleCalendarConfigured] = useState(false);
+  const [googleCalendarBusy, setGoogleCalendarBusy] = useState(false);
+  const [savingGoogleCalendar, setSavingGoogleCalendar] = useState(false);
+  const [calendarSettingsLoaded, setCalendarSettingsLoaded] = useState(false);
 
   useEffect(() => {
     if (!session) return;
@@ -59,36 +68,99 @@ export default function AccountPage() {
         return res.json();
       })
       .then((data) => {
-        setCalendarEmail(data?.calendarEmail || "");
-        setCalendarEmailLoaded(true);
+        setCalendarDeliveryError(data?.calendarDeliveries?.[0]?.lastError || null);
+        setGoogleCalendarEmail(data?.googleCalendar?.email || null);
+        setGoogleCalendarConfigured(Boolean(data?.googleCalendarConfigured));
+        setCalendarSettingsLoaded(true);
+        if (data?.googleCalendar?.email) {
+          setGoogleCalendarListLoading(true);
+          fetch("/api/account/google-calendar/calendars")
+            .then(async response => {
+              const payload = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(payload.error || "google_calendar_unavailable");
+              return payload;
+            })
+            .then(payload => {
+              setGoogleCalendars(payload.calendars || []);
+              setSelectedGoogleCalendarId(payload.selectedCalendarId || "");
+              setGoogleCalendarListError(null);
+            })
+            .catch(error => {
+              setGoogleCalendarListError(error instanceof Error ? error.message : "google_calendar_unavailable");
+            })
+            .finally(() => setGoogleCalendarListLoading(false));
+        } else {
+          setGoogleCalendars([]);
+          setSelectedGoogleCalendarId("");
+          setGoogleCalendarListError(null);
+        }
       })
-      .catch(() => toast.error("Impossibile caricare l'email calendario"));
+      .catch(() => toast.error("Impossibile caricare le preferenze Google Calendar"));
   }, [session]);
 
-  const handleSaveCalendarEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingCalendarEmail(true);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get("googleCalendar");
+    if (!result) return;
+    if (result === "connected") toast.success("Google Calendar collegato");
+    else if (result === "denied") toast.info("Collegamento Google annullato");
+    else if (result === "missing_scope") toast.error("Autorizzazione al calendario non concessa");
+    else toast.error("Collegamento Google non riuscito. Riprova.");
+    url.searchParams.delete("googleCalendar");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  const handleGoogleCalendarChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextCalendarId = event.target.value;
+    const previousCalendarId = selectedGoogleCalendarId;
+    setSelectedGoogleCalendarId(nextCalendarId);
+    setSavingGoogleCalendar(true);
+    setGoogleCalendarListError(null);
     try {
-      const res = await fetch("/api/account/calendar-email", {
+      const response = await fetch("/api/account/google-calendar/calendars", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ calendarEmail }),
+        body: JSON.stringify({ calendarId: nextCalendarId }),
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(payload?.error || "Errore durante il salvataggio dell'email calendario");
-        return;
-      }
-      setCalendarEmail(payload.calendarEmail || "");
-      toast.success(
-        payload.calendarEmail
-          ? "Email calendario salvata"
-          : "Email calendario rimossa",
-      );
-    } catch {
-      toast.error("Problema di connessione, riprova.");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Impossibile salvare il calendario Google");
+      setSelectedGoogleCalendarId(payload.selectedCalendarId);
+      setCalendarDeliveryError(null);
+    } catch (error) {
+      setSelectedGoogleCalendarId(previousCalendarId);
+      setGoogleCalendarListError(error instanceof Error ? error.message : "google_calendar_unavailable");
+      toast.error(error instanceof Error ? error.message : "Problema di connessione, riprova.");
     } finally {
-      setSavingCalendarEmail(false);
+      setSavingGoogleCalendar(false);
+    }
+  };
+
+  const handleConnectGoogleCalendar = async () => {
+    setGoogleCalendarBusy(true);
+    try {
+      const response = await fetch("/api/account/google-calendar", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Collegamento Google non riuscito");
+      window.location.assign(payload.url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Problema di connessione, riprova.");
+    } finally {
+      setGoogleCalendarBusy(false);
+    }
+  };
+
+  const handleDisconnectGoogleCalendar = async () => {
+    setGoogleCalendarBusy(true);
+    try {
+      const response = await fetch("/api/account/google-calendar", { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Impossibile scollegare Google Calendar");
+      setGoogleCalendarEmail(null);
+      toast.success("Google Calendar scollegato");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Problema di connessione, riprova.");
+    } finally {
+      setGoogleCalendarBusy(false);
     }
   };
 
@@ -583,40 +655,85 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <form
-              onSubmit={handleSaveCalendarEmail}
-              className="account-calendar-email mt-10 border-t border-white/20 pt-8 space-y-3"
-            >
-              <label className="block space-y-2" htmlFor="calendar-email">
-                <span className="text-white font-semibold text-lg flex items-center gap-2">
-                  📅 Email per il calendario
-                </span>
-                <span className="block text-gray-400 text-sm">
-                  Inserisci l&apos;email a cui inviare gli eventi da salvare nel tuo calendario.
-                  Se impostata, nella pagina di ogni evento comparirà il pulsante &quot;Salva nel calendario&quot;.
-                  Lascia vuoto per disattivare.
-                </span>
-              </label>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input
-                  id="calendar-email"
-                  type="email"
-                  value={calendarEmail}
-                  onChange={(e) => setCalendarEmail(e.target.value)}
-                  className="account-input flex-1 border border-white/20 px-4 py-3 text-white placeholder:text-gray-400"
-                  placeholder="nome@esempio.it"
-                  autoComplete="email"
-                  maxLength={254}
-                />
+            <div className="account-calendar-email mt-10 border-t border-white/20 pt-8 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-5 !mt-5">
+                <div className="min-w-0">
+                  <h3 className="text-white font-semibold text-base">Google Calendar</h3>
+                  <p className="text-sm text-gray-400 break-all" role="status">
+                    {!calendarSettingsLoaded ? "Caricamento..." : googleCalendarEmail
+                      ? `${googleCalendarEmail} · Collegato`
+                      : googleCalendarConfigured ? "Non collegato" : "Configurazione Google non disponibile"}
+                  </p>
+                </div>
                 <button
-                  type="submit"
-                  disabled={savingCalendarEmail || !calendarEmailLoaded}
-                  className="btn btn-primary"
+                  type="button"
+                  onClick={googleCalendarEmail ? handleDisconnectGoogleCalendar : handleConnectGoogleCalendar}
+                  disabled={!calendarSettingsLoaded || googleCalendarBusy || savingGoogleCalendar || (!googleCalendarEmail && !googleCalendarConfigured)}
+                  className="btn btn-outline inline-flex items-center justify-center gap-2 shrink-0 text-white"
                 >
-                  {savingCalendarEmail ? "Salvataggio..." : "Salva"}
+                  {googleCalendarBusy ? <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />
+                    : googleCalendarEmail ? <Unlink size={18} aria-hidden="true" /> : <Link2 size={18} aria-hidden="true" />}
+                  {googleCalendarBusy ? "Attendi..." : googleCalendarEmail ? "Scollega" : "Collega Google Calendar"}
                 </button>
               </div>
-            </form>
+              {googleCalendarEmail && (
+                <div className="max-w-md space-y-2 pt-3">
+                  <label htmlFor="calendar-event-type" className="block text-white font-semibold text-sm">Tipo di evento Google Calendar</label>
+                  <div className="flex items-center gap-3">
+                    {googleCalendars.find(calendar => calendar.id === selectedGoogleCalendarId) && (
+                      <span
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 rounded-full border border-white/50"
+                        style={{ backgroundColor: googleCalendars.find(calendar => calendar.id === selectedGoogleCalendarId)?.backgroundColor }}
+                      />
+                    )}
+                    <select
+                      id="calendar-event-type"
+                      value={selectedGoogleCalendarId}
+                      onChange={handleGoogleCalendarChange}
+                      disabled={googleCalendarListLoading || savingGoogleCalendar || googleCalendarBusy || googleCalendars.length === 0}
+                      className="account-input min-w-0 flex-1 border border-white/20 px-4 py-3 text-white text-sm bg-transparent"
+                    >
+                      {googleCalendars.map(calendar => (
+                        <option key={calendar.id} value={calendar.id}>
+                          {calendar.summary}{calendar.primary ? " (principale)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {googleCalendarListError && (
+                    <div className="space-y-2" role="status">
+                      <p className="text-sm text-red-400">
+                        {googleCalendarListError === "google_calendar_reconnect_required"
+                          ? "Ricollega Google Calendar per autorizzare l’elenco dei calendari."
+                          : googleCalendarListError === "google_calendar_schema_update_required"
+                            ? "Aggiornamento database necessario per scegliere il calendario Google."
+                          : "Impossibile caricare o salvare i calendari Google. Riprova."}
+                      </p>
+                      {googleCalendarListError === "google_calendar_reconnect_required" && (
+                        <button type="button" onClick={handleConnectGoogleCalendar} disabled={googleCalendarBusy} className="btn btn-outline text-white">
+                          Ricollega Google Calendar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {!googleCalendarListLoading && !googleCalendarListError && googleCalendars.length === 0 && (
+                    <p className="text-sm text-gray-400" role="status">Nessun calendario Google scrivibile trovato.</p>
+                  )}
+                  {googleCalendarListLoading && <p className="text-sm text-gray-400" role="status">Caricamento calendari...</p>}
+                  {savingGoogleCalendar && <p className="text-sm text-gray-400" role="status">Salvataggio calendario...</p>}
+                </div>
+              )}
+              {calendarDeliveryError && (
+                <p className="text-sm text-red-500" role="status">
+                  {calendarDeliveryError === "google_reconnect_required" ? "Autorizzazione Google scaduta"
+                    : calendarDeliveryError === "google_event_time_required" ? "Il tipo selezionato richiede un evento con orario"
+                    : ["google_http_400", "google_http_403", "google_event_type_invalid"].includes(calendarDeliveryError)
+                      ? "Google ha rifiutato il tipo di evento o i permessi del calendario"
+                      : "Sincronizzazione in attesa di un nuovo tentativo"}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </section>

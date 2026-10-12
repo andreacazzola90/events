@@ -31,12 +31,21 @@ const imagesConfig = {
         protocol: "https",
         hostname: "visitpedemontana.com",
       },
+      {
+        protocol: "http",
+        hostname: "resc.deskline.net",
+      },
+      {
+        protocol: "https",
+        hostname: "resc.deskline.net",
+      },
     ],
   },
 };
 
 const nextConfig = {
   turbopack: {},
+  allowedDevOrigins: ["127.0.0.1"],
   compress: true,
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer", "tesseract.js", "sharp"],
   ...imagesConfig,

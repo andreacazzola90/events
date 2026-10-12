@@ -22,6 +22,20 @@ export const CATEGORY_MAPPING: Record<string, string> = {
     'other': 'altro'
 };
 
+export const GOOGLE_CALENDAR_EVENT_TYPES = [
+    { value: 'default', label: 'Evento' },
+    { value: 'birthday', label: 'Compleanno' },
+    { value: 'focusTime', label: 'Momento di concentrazione' },
+    { value: 'outOfOffice', label: 'Fuori sede' },
+    { value: 'workingLocation', label: 'Luogo di lavoro' },
+] as const;
+
+export type GoogleCalendarEventType = typeof GOOGLE_CALENDAR_EVENT_TYPES[number]['value'];
+
+export function normalizeGoogleCalendarEventType(input: unknown): GoogleCalendarEventType | null {
+    return GOOGLE_CALENDAR_EVENT_TYPES.find(type => type.value === input)?.value ?? null;
+}
+
 export const PRICE_NORMALIZATION_MAP: Record<string, string> = {
     'gratis': 'Gratuito',
     'ingresso libero': 'Gratuito',

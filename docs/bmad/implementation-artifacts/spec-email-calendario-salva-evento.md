@@ -7,6 +7,8 @@ baseline_commit: 'd14869d24703855c59e44ae1733f3b6f7b54e6e0'
 context: []
 ---
 
+> Obsoleta dal 2026-10-12: il pulsante manuale “Salva nel calendario” e il campo email sono stati rimossi. La connessione Google usa direttamente l’email verificata da OAuth; la colonna DB storica resta per non eliminare dati.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent

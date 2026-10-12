@@ -1,3 +1,6 @@
+import { DateTime } from "luxon";
+import type { GoogleCalendarEventType } from "./constants";
+
 export type CalendarEventInput = {
   id: number;
   title: string;
@@ -67,6 +70,59 @@ export function parseEventTime(raw?: string | null): { hour: number; minute: num
   const minute = +match[2];
   if (hour > 23 || minute > 59) return null;
   return { hour, minute };
+}
+
+export function buildGoogleCalendarEvent(event: CalendarEventInput, url: string, eventType: GoogleCalendarEventType = "default") {
+  const date = parseEventDate(event.date);
+  if (!date) return null;
+  const time = eventType === "birthday" ? null : parseEventTime(event.time);
+  if ((eventType === "focusTime" || eventType === "outOfOffice") && !time) return null;
+  const start = DateTime.fromObject({
+    ...date,
+    hour: time?.hour ?? 0,
+    minute: time?.minute ?? 0,
+  }, { zone: TIMEZONE });
+  if (!start.isValid || (time && (start.hour !== time.hour || start.minute !== time.minute))) return null;
+  const end = time ? start.plus({ minutes: DEFAULT_DURATION_MINUTES }) : start.plus({ days: 1 });
+  if (eventType === "birthday") {
+    return {
+      eventType,
+      summary: event.title || "Compleanno",
+      start: { date: start.toISODate()! },
+      end: { date: end.toISODate()! },
+      visibility: "private",
+      transparency: "transparent",
+      recurrence: [date.month === 2 && date.day === 29
+        ? "RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1"
+        : "RRULE:FREQ=YEARLY"],
+    };
+  }
+  return {
+    eventType,
+    summary: event.title || "Evento",
+    description: [event.description?.trim(), url].filter(Boolean).join("\n\n"),
+    location: event.location || "",
+    start: time ? { dateTime: start.toISO()!, timeZone: TIMEZONE } : { date: start.toISODate()! },
+    end: time ? { dateTime: end.toISO()!, timeZone: TIMEZONE } : { date: end.toISODate()! },
+    source: { title: "EventScanner", url },
+    transparency: eventType === "focusTime" || eventType === "outOfOffice" ? "opaque" : "transparent",
+    ...(eventType === "focusTime" ? { focusTimeProperties: { autoDeclineMode: "declineNone", chatStatus: "available" } } : {}),
+    ...(eventType === "outOfOffice" ? { outOfOfficeProperties: { autoDeclineMode: "declineNone" } } : {}),
+    ...(eventType === "workingLocation" ? {
+      visibility: "public",
+      workingLocationProperties: { type: "customLocation", customLocation: { label: event.location || event.title || "Evento" } },
+    } : {}),
+    extendedProperties: { private: { eventScannerId: String(event.id) } },
+  };
+}
+
+export function isUpcomingCalendarEvent(event: CalendarEventInput, now = new Date()): boolean {
+  const payload = buildGoogleCalendarEvent(event, "https://eventscanner.invalid");
+  if (!payload) return false;
+  const end = "dateTime" in payload.end
+    ? DateTime.fromISO(payload.end.dateTime!, { zone: TIMEZONE })
+    : DateTime.fromISO(payload.end.date!, { zone: TIMEZONE });
+  return end.toMillis() > now.getTime();
 }
 
 const pad = (n: number, len = 2) => String(n).padStart(len, "0");

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { createEventWithCalendar, scheduleCalendarDeliveries } from "../../lib/google-calendar";
 import { uploadImageToSupabase } from "../../lib/supabase";
 import { geocodeLocation } from "@/lib/geocoding";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
@@ -168,9 +169,10 @@ export async function POST(request: NextRequest) {
       JSON.stringify(eventDataToSave, null, 2),
     );
 
-    const event = await prisma.event.create({
+    const event = await createEventWithCalendar({
       data: eventDataToSave,
     });
+    scheduleCalendarDeliveries();
 
     console.log("[API /events POST] Event saved successfully, ID:", event.id);
 

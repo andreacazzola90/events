@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { createEventWithCalendar, scheduleCalendarDeliveries } from '../../../lib/google-calendar';
 import { processEventLink } from '../../../../lib/event-processor';
 import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
 import { revalidatePath, revalidateTag } from 'next/cache';
@@ -798,7 +799,7 @@ async function scrapeOneSource(
               longitude = coords.longitude;
             }
 
-            const savedEvent = await prisma.event.create({
+            const savedEvent = await createEventWithCalendar({
               data: {
                 title: eventData.title || 'Senza titolo',
                 description: eventData.description || '',
@@ -843,6 +844,7 @@ async function scrapeOneSource(
 
     // 5. Revalidate cache se abbiamo nuovi eventi
     if (!dryRun && processedEvents.length > 0) {
+      scheduleCalendarDeliveries();
       revalidatePath('/', 'layout');
       revalidatePath('/api/events', 'page');
       revalidateTag('events-list', { expire: 0 });

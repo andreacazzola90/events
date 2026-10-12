@@ -1,222 +1,240 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
 import { TransitionLink } from "../components/TransitionLink";
 import { generateUniqueSlug } from "../../lib/slug-utils";
+import { parseEventDate, parseEventTime } from "../../lib/calendar-ics";
+import { calendarDateLabel, calendarDays, calendarPeriodLabel, calendarToday, moveCalendarDate, type CalendarView } from "../../lib/calendar-view";
 import type { DbEvent } from "../types/event";
+
+const views: { value: CalendarView; label: string }[] = [
+  { value: "month", label: "Mese" },
+  { value: "week", label: "Settimana" },
+  { value: "threeDays", label: "3 giorni" },
+  { value: "day", label: "Giorno" },
+];
+
+function CalendarEventLink({ event, compact = false }: { event: DbEvent; compact?: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  return (
+    <TransitionLink href={`/events/${generateUniqueSlug(event.title, event.id)}`}
+      className={`calendar-event-link ${compact ? "is-compact" : ""}`} title={event.title}
+      aria-label={`${event.time || "Tutto il giorno"}, ${event.title}`}>
+      <span className="calendar-thumbnail" aria-hidden="true">
+        {event.imageUrl && !imageFailed ? (
+          <Image src={event.imageUrl} alt="" width={compact ? 28 : 56} height={compact ? 28 : 56}
+            unoptimized className="calendar-thumbnail-image" onError={() => setImageFailed(true)} />
+        ) : <ImageOff size={compact ? 14 : 20} />}
+      </span>
+      <span className="calendar-event-copy">
+        <span className="calendar-event-time">{event.time || "Tutto il giorno"}</span>
+        <span className="calendar-event-title">{event.title}</span>
+        {!compact && event.location && <span className="calendar-event-location">{event.location}</span>}
+      </span>
+    </TransitionLink>
+  );
+}
+
+function DayPreview({ date, events, onClose, onOpenDay }: {
+  date: string; events: DbEvent[]; onClose: () => void; onOpenDay: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement;
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, []);
+  return (
+    <dialog ref={dialogRef} className="calendar-preview" aria-labelledby="calendar-preview-title"
+      onCancel={onClose}
+      onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); onClose(); } }}
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
+      }}>
+      <div className="calendar-preview-header">
+        <div>
+          <h2 id="calendar-preview-title">{calendarDateLabel(date)}</h2>
+          <p>{events.length} {events.length === 1 ? "evento" : "eventi"}</p>
+        </div>
+        <button type="button" className="calendar-icon-button" aria-label="Chiudi anteprima" title="Chiudi anteprima" onClick={onClose}>
+          <X size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <ul className="calendar-event-list calendar-preview-list">
+        {events.map(event => <li key={event.id}><CalendarEventLink event={event} /></li>)}
+      </ul>
+      <button type="button" className="calendar-open-day" onClick={onOpenDay}>
+        Apri giorno <ArrowRight size={18} aria-hidden="true" />
+      </button>
+    </dialog>
+  );
+}
 
 export default function TuttiGliEventiPage() {
   const [events, setEvents] = useState<DbEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [monthDate, setMonthDate] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  const [loadError, setLoadError] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [anchorDate, setAnchorDate] = useState(calendarToday);
+  const [view, setView] = useState<CalendarView>("month");
+  const [previewDate, setPreviewDate] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusDayRef = useRef(false);
 
   useEffect(() => {
+    if (view === "day" && focusDayRef.current) {
+      headingRef.current?.focus({ preventScroll: true });
+      focusDayRef.current = false;
+    }
+  }, [view, anchorDate]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setLoadError(false);
     const fetchEvents = async () => {
       try {
-        const res = await fetch("/api/events?limit=500&includePast=true", { cache: "no-store" });
-        if (!res.ok) {
-          setEvents([]);
-          return;
-        }
-        const data = await res.json();
-        setEvents(Array.isArray(data) ? data : []);
+        const response = await fetch("/api/events?limit=500&includePast=true", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error("Calendar load failed");
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error("Invalid calendar response");
+        setEvents(data);
       } catch {
-        setEvents([]);
+        if (!controller.signal.aborted) { setEvents([]); setLoadError(true); }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
-
-    fetchEvents();
-  }, []);
-
-  const parseEventDate = (value: string): Date | null => {
-    if (!value) return null;
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-      const [day, month, year] = value
-        .split("/")
-        .map((part) => parseInt(part, 10));
-      const parsed = new Date(year, month - 1, day);
-      parsed.setHours(0, 0, 0, 0);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return null;
-    parsed.setHours(0, 0, 0, 0);
-    return parsed;
-  };
-
-  const toDateKey = (date: Date): string => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  };
+    void fetchEvents();
+    return () => controller.abort();
+  }, [reload]);
 
   const eventsByDate = useMemo(() => {
-    const map = new Map<string, DbEvent[]>();
+    const grouped = new Map<string, DbEvent[]>();
     for (const event of events) {
-      const parsed = parseEventDate(event.date);
-      if (!parsed) continue;
-      const key = toDateKey(parsed);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(event);
+      const date = parseEventDate(event.date);
+      if (!date) continue;
+      const key = `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+      const list = grouped.get(key) || [];
+      list.push(event);
+      grouped.set(key, list);
     }
-
-    for (const list of map.values()) {
-      list.sort((a, b) => (a.time || "").localeCompare(b.time || "", "it-IT"));
-    }
-
-    return map;
+    const minutes = (event: DbEvent) => {
+      const time = parseEventTime(event.time);
+      return time ? time.hour * 60 + time.minute : 24 * 60;
+    };
+    for (const list of grouped.values()) list.sort((first, second) => minutes(first) - minutes(second) || first.title.localeCompare(second.title, "it"));
+    return grouped;
   }, [events]);
 
-  const monthLabel = new Intl.DateTimeFormat("it-IT", {
-    month: "long",
-    year: "numeric",
-  }).format(monthDate);
-
-  const calendarDays = useMemo(() => {
-    const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-    const lastDay = new Date(
-      monthDate.getFullYear(),
-      monthDate.getMonth() + 1,
-      0,
-    );
-    const startOffset = (firstDay.getDay() + 6) % 7; // lunedi=0
-    const totalDays = lastDay.getDate();
-    const cells: Array<{ date: Date | null; key: string }> = [];
-
-    for (let i = 0; i < startOffset; i += 1) {
-      cells.push({ date: null, key: `empty-${i}` });
-    }
-
-    for (let day = 1; day <= totalDays; day += 1) {
-      const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
-      cells.push({ date, key: toDateKey(date) });
-    }
-
-    return cells;
-  }, [monthDate]);
+  const days = calendarDays(anchorDate, view);
+  const today = calendarToday();
+  const openDay = (date: string) => {
+    focusDayRef.current = true;
+    setAnchorDate(date);
+    setView("day");
+    setPreviewDate(null);
+    if (view === "day" && anchorDate === date) headingRef.current?.focus({ preventScroll: true });
+  };
 
   return (
     <main className="min-h-screen page-shell event-calendar-page">
       <div className="editorial-container">
         <div className="mb-12 page-heading">
           <p className="section-kicker">02 / Le date</p>
-          <h1 className="text-5xl md:text-7xl font-black mb-4 uppercase tracking-tight">
+          <h1 className="text-5xl md:text-7xl font-black mb-4 uppercase">
             Calendario<span className="site-brand-accent">.</span>
           </h1>
-          <p className="text-base text-black/60">
-            Vista mensile con eventi organizzati per data.
-          </p>
         </div>
-
-        <div className="animate-fadeInUp">
-          <section className="event-calendar border border-black/10 bg-white p-4 md:p-6">
-            <div className="calendar-toolbar flex items-center justify-between mb-4">
-              <button
-                type="button"
-                onClick={() =>
-                  setMonthDate(
-                    (prev) =>
-                      new Date(prev.getFullYear(), prev.getMonth() - 1, 1),
-                  )
-                }
-                aria-label="Mese precedente"
-                className="calendar-month-button px-3 py-2 border border-black/20 text-sm transition-colors"
-              >
-                Mese precedente
+        <section className="event-calendar" aria-label="Calendario eventi">
+          <div className="calendar-toolbar">
+            <div className="calendar-navigation">
+              <button type="button" className="calendar-icon-button" aria-label="Periodo precedente" title="Periodo precedente"
+                onClick={() => setAnchorDate(previous => moveCalendarDate(previous, view, -1))}>
+                <ChevronLeft size={20} aria-hidden="true" />
               </button>
-              <h2 className="text-xl md:text-2xl font-bold capitalize">
-                {monthLabel}
-              </h2>
-              <button
-                type="button"
-                onClick={() =>
-                  setMonthDate(
-                    (prev) =>
-                      new Date(prev.getFullYear(), prev.getMonth() + 1, 1),
-                  )
-                }
-                aria-label="Mese successivo"
-                className="calendar-month-button px-3 py-2 border border-black/20 text-sm transition-colors"
-              >
-                Mese successivo
+              <button type="button" className="calendar-icon-button" aria-label="Periodo successivo" title="Periodo successivo"
+                onClick={() => setAnchorDate(previous => moveCalendarDate(previous, view, 1))}>
+                <ChevronRight size={20} aria-hidden="true" />
+              </button>
+              <button type="button" className="calendar-today-button" onClick={() => setAnchorDate(calendarToday())}>
+                <CalendarDays size={16} aria-hidden="true" /> Oggi
               </button>
             </div>
-
-            <div className="calendar-weekdays grid grid-cols-7 text-xs md:text-sm font-bold uppercase tracking-wide text-black/60 mb-2" role="row">
-              {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => (
-                <div key={d} className="p-2" role="columnheader" aria-label={d}>
-                  {d}
+            <div className="calendar-view-switch" role="group" aria-label="Visualizzazione calendario">
+              {views.map(mode => <button key={mode.value} type="button" aria-pressed={view === mode.value}
+                onClick={() => setView(mode.value)}>{mode.label}</button>)}
+            </div>
+          </div>
+          <h2 ref={headingRef} tabIndex={-1} className="calendar-period-title" aria-live="polite">{calendarPeriodLabel(anchorDate, view)}</h2>
+          {loading && <p className="calendar-status" role="status">Caricamento eventi...</p>}
+          {loadError && <div className="calendar-status" role="alert">Impossibile caricare gli eventi. <button type="button" onClick={() => setReload(previous => previous + 1)}>Riprova</button></div>}
+          <div className="calendar-scroll" tabIndex={0} aria-label="Eventi del periodo">
+            {view === "month" ? (
+              <div className="calendar-month-grid" role="table" aria-label={`Calendario eventi ${calendarPeriodLabel(anchorDate, view)}`}>
+                <div className="calendar-weekdays" role="row">
+                  {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map(day => <div key={day} role="columnheader">{day}</div>)}
                 </div>
-              ))}
-            </div>
-
-            <div className="calendar-days grid grid-cols-7 gap-1" role="grid" aria-label={`Calendario eventi ${monthLabel}`}>
-              {calendarDays.map((cell) => {
-                if (!cell.date) {
-                  return (
-                    <div
-                      key={cell.key}
-                      className="calendar-empty-day min-h-28 border border-transparent"
-                    />
-                  );
-                }
-
-                const key = cell.key;
-                const dayEvents = eventsByDate.get(key) || [];
-                const hasEvents = dayEvents.length > 0;
-                const isToday = toDateKey(new Date()) === key;
-
-                return (
-                  <div
-                    key={key}
-                    className={`calendar-day min-h-28 p-1.5 border text-left flex flex-col ${
-                      hasEvents
-                        ? "has-events border-black/20 bg-white"
-                        : "border-black/8 bg-white/60"
-                    } ${isToday ? "is-today" : ""}`}
-                  >
-                    <div
-                      className={`text-sm font-bold mb-1 ${
-                        hasEvents ? "text-black" : "text-black/40"
-                      }`}
-                    >
-                      {cell.date.getDate()}
+                <div className="calendar-days">
+                  {Array.from({ length: days.length / 7 }, (_, row) => (
+                    <div key={row} role="row" className="calendar-month-row">
+                      {days.slice(row * 7, row * 7 + 7).map((date, index) => {
+                        if (!date) return <div key={`empty-${index}`} role="cell" className="calendar-empty-day" aria-label="Fuori mese" />;
+                        const dayEvents = eventsByDate.get(date) || [];
+                        return (
+                          <div key={date} role="cell" data-date={date}
+                            aria-label={`${calendarDateLabel(date)}, ${dayEvents.length} eventi`}
+                            className={`calendar-day ${dayEvents.length ? "has-events" : ""} ${date === today ? "is-today" : ""}`}
+                            onClick={event => { if (!(event.target as Element).closest("a,button")) openDay(date); }}>
+                            <button type="button" className="calendar-day-number" aria-label={`Apri ${calendarDateLabel(date)}`} onClick={() => openDay(date)}>
+                              <span className="calendar-day-desktop-number">{Number(date.slice(-2))}</span>
+                              <time className="calendar-day-mobile-date" dateTime={date}>{calendarDateLabel(date, { weekday: "short", day: "numeric", month: "short" })}</time>
+                            </button>
+                            <ul className="calendar-event-list">
+                              {dayEvents.slice(0, 3).map(event => <li key={event.id}><CalendarEventLink event={event} compact /></li>)}
+                            </ul>
+                            {dayEvents.length > 3 && <button type="button" className="calendar-more-events"
+                              aria-haspopup="dialog" aria-label={`+${dayEvents.length - 3} ${dayEvents.length - 3 === 1 ? "evento" : "eventi"}`}
+                              onClick={() => setPreviewDate(date)}>
+                              +{dayEvents.length - 3}<span className="calendar-more-label"> {dayEvents.length - 3 === 1 ? "evento" : "eventi"}</span>
+                            </button>}
+                          </div>
+                        );
+                      })}
                     </div>
-                    {loading && hasEvents && (
-                      <div className="text-[10px] text-black/40">...</div>
-                    )}
-                    <div className="flex flex-col gap-0.5 overflow-hidden">
-                      {dayEvents.slice(0, 3).map((event) => (
-                        <TransitionLink
-                          key={event.id}
-                          href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                          className="calendar-event-link block text-[10px] leading-tight px-1 py-0.5 truncate transition-colors no-underline"
-                          title={event.title}
-                        >
-                          {event.time ? `${event.time} ` : ""}
-                          {event.title}
-                        </TransitionLink>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <div className="text-[10px] text-black/50 px-1">
-                          +{dayEvents.length - 3} altri
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className={`calendar-period-days is-${view}`}>
+                {days.map(date => {
+                  if (!date) return null;
+                  const dayEvents = eventsByDate.get(date) || [];
+                  return <section key={date} data-date={date} className={`calendar-period-day ${date === today ? "is-today" : ""}`}>
+                    <button type="button" className="calendar-day-heading" onClick={() => openDay(date)} aria-label={`Apri ${calendarDateLabel(date)}`}>
+                      <time dateTime={date}>{calendarDateLabel(date, { weekday: "short", day: "numeric", month: "short" })}</time>
+                      <span>{dayEvents.length} {dayEvents.length === 1 ? "evento" : "eventi"}</span>
+                    </button>
+                    <ul className="calendar-event-list">
+                      {dayEvents.map(event => <li key={event.id}><CalendarEventLink event={event} compact={view === "week"} /></li>)}
+                    </ul>
+                    {!loading && !loadError && !dayEvents.length && <p className="calendar-empty-message">Nessun evento</p>}
+                  </section>;
+                })}
+              </div>
+            )}
+          </div>
+          {previewDate && <DayPreview date={previewDate} events={eventsByDate.get(previewDate) || []}
+            onClose={() => setPreviewDate(null)} onOpenDay={() => openDay(previewDate)} />}
+        </section>
       </div>
     </main>
   );

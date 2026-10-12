@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "calendarEventType" TEXT NOT NULL DEFAULT 'default';

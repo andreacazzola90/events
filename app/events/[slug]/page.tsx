@@ -8,7 +8,6 @@ import FavoriteButton from '../../components/FavoriteButton';
 import { notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
-import SaveToCalendarButton from './SaveToCalendarButton';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
@@ -138,30 +137,6 @@ async function getSimilarEvents(currentEvent: any) {
     return similarEvents;
 }
 
-async function getUserCalendarEmail(userId: number): Promise<string | null> {
-    try {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { calendarEmail: true },
-        });
-        return user?.calendarEmail ?? null;
-    } catch (error: any) {
-        const message = String(error?.message || "");
-        const isMissingColumn =
-            error?.code === 'P2022' ||
-            error?.code === 'P2021' ||
-            message.includes('calendarEmail') ||
-            message.includes('does not exist') ||
-            message.includes('column');
-
-        if (isMissingColumn) {
-            return null;
-        }
-
-        throw error;
-    }
-}
-
 export default async function EventDetailPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
     const event = await getEvent(slug);
@@ -183,10 +158,6 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
     const canEdit =
         isAdmin ||
         (!Number.isNaN(sessionUserId) && event.createdById === sessionUserId);
-
-    const calendarEmail = Number.isNaN(sessionUserId)
-        ? null
-        : await getUserCalendarEmail(sessionUserId);
 
     const sameDayEvents = await getSameDayEvents(event.date, event.id);
     const similarEvents = await getSimilarEvents(event);
@@ -224,17 +195,14 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                             <p className="section-kicker mb-3">Evento</p>
                                             <h1 className="section-title mb-0 text-[#1d1d1b]">{event.title}</h1>
                                         </div>
-                                        {(canEdit || calendarEmail) && (
+                                        {canEdit && (
                                             <div className="flex flex-wrap gap-3">
-                                                {calendarEmail && <SaveToCalendarButton eventId={event.id} />}
-                                                {canEdit && (
-                                                    <TransitionLink
-                                                        href={`/events/${slug}/edit`}
-                                                        className="industrial-link industrial-link-primary no-underline hover:no-underline whitespace-nowrap"
-                                                    >
-                                                        ✏️ Modifica <span aria-hidden="true">↗</span>
-                                                    </TransitionLink>
-                                                )}
+                                                <TransitionLink
+                                                    href={`/events/${slug}/edit`}
+                                                    className="industrial-link industrial-link-primary no-underline hover:no-underline whitespace-nowrap"
+                                                >
+                                                    ✏️ Modifica <span aria-hidden="true">↗</span>
+                                                </TransitionLink>
                                             </div>
                                         )}
                                     </div>

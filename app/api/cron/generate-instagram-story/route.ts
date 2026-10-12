@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export const maxDuration = 60;
 
@@ -318,7 +318,7 @@ export async function GET(request: NextRequest) {
     const latestPath = "stories/weekly-events-latest.jpg";
     const archivePath = `stories/archive/weekly-events-${toIsoDate(start)}_to_${toIsoDate(end)}.jpg`;
 
-    const latestUpload = await supabase.storage
+    const latestUpload = await getSupabaseClient().storage
       .from(bucket)
       .upload(latestPath, jpgBuffer, {
         contentType: "image/jpeg",
@@ -329,7 +329,7 @@ export async function GET(request: NextRequest) {
       throw latestUpload.error;
     }
 
-    const archiveUpload = await supabase.storage
+    const archiveUpload = await getSupabaseClient().storage
       .from(bucket)
       .upload(archivePath, jpgBuffer, {
         contentType: "image/jpeg",
@@ -343,9 +343,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const latestPublic = supabase.storage.from(bucket).getPublicUrl(latestPath)
+    const latestPublic = getSupabaseClient().storage.from(bucket).getPublicUrl(latestPath)
       .data.publicUrl;
-    const archivePublic = supabase.storage
+    const archivePublic = getSupabaseClient().storage
       .from(bucket)
       .getPublicUrl(archivePath).data.publicUrl;
 

@@ -3,20 +3,26 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_SECRET_KEY || '';
+let supabaseClient: ReturnType<typeof createClient> | undefined;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase environment variables');
-}
+export function getSupabaseClient() {
+  if (supabaseClient) return supabaseClient;
 
-// Create Supabase client with service role key for server-side operations
-export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_SECRET_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase environment variables');
   }
-});
+
+  // Create the server-side client only when a Storage operation is requested.
+  supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+  return supabaseClient;
+}
 
 /**
  * Optimize and compress an image for web use
@@ -82,7 +88,7 @@ export async function uploadImageToSupabase(
     const optimizedBuffer = await optimizeImage(fileBuffer);
 
     // Upload to Supabase Storage
-    const { error } = await supabase.storage
+    const { error } = await getSupabaseClient().storage
       .from(bucket)
       .upload(filename, optimizedBuffer, {
         contentType: 'image/jpeg',
@@ -95,7 +101,7 @@ export async function uploadImageToSupabase(
     }
 
     // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = getSupabaseClient().storage
       .from(bucket)
       .getPublicUrl(filename);
 
@@ -115,17 +121,17 @@ export async function uploadEventMediaToSupabase(file: File, eventId: number) {
     .slice(-120) || "attachment";
   const storagePath = `${eventId}/${randomUUID()}-${safeName}`;
   const bytes = Buffer.from(await file.arrayBuffer());
-  const { error } = await supabase.storage.from("events").upload(storagePath, bytes, {
+  const { error } = await getSupabaseClient().storage.from("events").upload(storagePath, bytes, {
     contentType: file.type,
     upsert: false,
   });
   if (error) throw error;
-  const { data } = supabase.storage.from("events").getPublicUrl(storagePath);
+  const { data } = getSupabaseClient().storage.from("events").getPublicUrl(storagePath);
   return { storagePath, url: data.publicUrl };
 }
 
 export async function deleteEventMediaFromSupabase(storagePath: string) {
-  const { error } = await supabase.storage.from("events").remove([storagePath]);
+  const { error } = await getSupabaseClient().storage.from("events").remove([storagePath]);
   if (error) throw error;
 }
 
@@ -143,7 +149,7 @@ export async function deleteImageFromSupabase(
     const urlParts = imageUrl.split('/');
     const filename = urlParts[urlParts.length - 1];
 
-    const { error } = await supabase.storage
+    const { error } = await getSupabaseClient().storage
       .from(bucket)
       .remove([filename]);
 

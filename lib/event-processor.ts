@@ -11,7 +11,7 @@ import { selectEventImage } from './event-image';
 import type { EventImageCandidate } from './event-image';
 
 const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: process.env.GROQ_API_SECRET_KEY,
 });
 
 type ProcessEventLinkOptions = {
@@ -88,9 +88,9 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
         throw new Error('Gli eventi di Facebook non possono essere scansionati, prova a fare uno screenshot');
     }
 
-    // Verifica che GROQ_API_KEY sia configurata
-    if (!process.env.GROQ_API_KEY) {
-        throw new Error('API non configurata correttamente. Aggiungi GROQ_API_KEY alle variabili d\'ambiente.');
+    // Verifica che GROQ_API_SECRET_KEY sia configurata
+    if (!process.env.GROQ_API_SECRET_KEY) {
+        throw new Error('API non configurata correttamente. Aggiungi GROQ_API_SECRET_KEY alle variabili d\'ambiente.');
     }
 
     // 1. Scrape della pagina con Puppeteer

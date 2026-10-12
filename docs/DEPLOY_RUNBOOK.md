@@ -19,18 +19,18 @@ Keep environment-specific values in platform secrets, never in repository files.
 
 From [.env.example](../.env.example) and runtime code:
 - DATABASE_URL
-- NEXTAUTH_SECRET
+- NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
-- GROQ_API_KEY
+- GROQ_API_SECRET_KEY
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SUPABASE_SERVICE_ROLE_SECRET_KEY
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
-- CRON_SECRET
+- CRON_SECRET_KEY
 
 If Instagram publishing is enabled:
 - INSTAGRAM_IG_USER_ID
-- INSTAGRAM_ACCESS_TOKEN
+- INSTAGRAM_ACCESS_TOKEN_SECRET_KEY
 - INSTAGRAM_GRAPH_API_VERSION (optional, default in code)
 - STORY_BUCKET (optional)
 
@@ -40,7 +40,7 @@ If Instagram publishing is enabled:
 2. Run lint and tests where applicable.
 3. Validate API changes against [API_REFERENCE.md](./API_REFERENCE.md).
 4. Confirm all required environment variables exist in target environment.
-5. If cron/auth changes were made, test protected endpoints with CRON_SECRET.
+5. If cron/auth changes were made, test protected endpoints with CRON_SECRET_KEY.
 
 ## 5) Build and deploy
 
@@ -98,7 +98,7 @@ Run smoke checks:
 ## 7) Cron operations
 
 Protected cron endpoints require:
-- Authorization: Bearer <CRON_SECRET>
+- Authorization: Bearer <CRON_SECRET_KEY>
 
 Endpoints:
 - GET /api/cron/scrape-visitpedemontana
@@ -109,7 +109,7 @@ Manual trigger example:
 
 ```bash
 curl -X GET "https://<your-domain>/api/cron/scrape-visitpedemontana" \
-  -H "Authorization: Bearer <CRON_SECRET>"
+  -H "Authorization: Bearer <CRON_SECRET_KEY>"
 ```
 
 Admin trigger example (target override):
@@ -138,7 +138,7 @@ Focus logs for:
 
 ## 9.1 OCR failures spike
 
-1. Validate GROQ_API_KEY and OCR provider availability.
+1. Validate GROQ_API_SECRET_KEY and OCR provider availability.
 2. Test POST /api/process-image with a known good image.
 3. Inspect logs for extraction branch used and fallback path.
 
@@ -175,8 +175,8 @@ Calendar preferences require an authenticated EventScanner account. Users connec
 1. Enable the Google Calendar API in Google Cloud.
 2. Create a Web application OAuth client and configure the consent screen. Add test users while the app is in testing; Google may require verification before public use of calendar scopes. Testing-mode refresh tokens can expire after seven days.
 3. Register the exact authorized redirect URI: `http://localhost:3000/api/account/google-calendar/callback` locally, and `https://<your-domain>/api/account/google-calendar/callback` in production.
-4. Configure server-only secrets: `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET_KEY`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, and `CRON_SECRET`. `NEXTAUTH_URL` must be the stable canonical application origin.
-5. Optionally set `GOOGLE_CALENDAR_TOKEN_SECRET` to a dedicated high-entropy encryption secret. Otherwise refresh-token encryption uses `NEXTAUTH_SECRET`. Rotating the encryption secret requires users to reconnect Google.
+4. Configure server-only secrets: `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET_KEY`, `NEXTAUTH_SECRET_KEY`, `NEXTAUTH_URL`, and `CRON_SECRET_KEY`. `NEXTAUTH_URL` must be the stable canonical application origin.
+5. Optionally set `GOOGLE_CALENDAR_TOKEN_SECRET_KEY` to a dedicated high-entropy encryption secret. Otherwise refresh-token encryption uses `NEXTAUTH_SECRET_KEY`. Rotating the encryption secret requires users to reconnect Google.
 6. Apply `20261012120000_add_google_calendar_sync`, `20261012130000_add_google_calendar_event_type`, and `20261012140000_add_google_calendar_target` before deploying the code, regenerate Prisma, and restart local development after generation. The earlier `calendarCategories` column remains ignored for migration-history compatibility; it is not used by the application. Migration commands must use a non-pooled connection, such as `POSTGRES_URL_NON_POOLING`; runtime Prisma prefers `POSTGRES_PRISMA_URL`. Do not use `db push` as a substitute for these additive migrations. Repair incomplete older migration directories separately before using the full migration-deploy workflow.
 
 The Google grant requests `openid`, `email`, `https://www.googleapis.com/auth/calendar.events.owned`, and `https://www.googleapis.com/auth/calendar.calendarlist.readonly`. Reconnect an existing Google account once to grant calendar-list access. OAuth uses state, PKCE, a short-lived HttpOnly cookie, and verified email. Only an encrypted refresh token is persisted; tokens never appear in account API responses or application error logs.
@@ -191,7 +191,7 @@ The Google grant requests `openid`, `email`, `https://www.googleapis.com/auth/ca
 - Database uniqueness and stable Google event IDs prevent duplicates during retries. Temporary errors use backoff and persistent pending records. Expired or revoked grants preserve pending deliveries until reconnection; explicit disconnection cancels them.
 - The Profile selector displays each owned Google calendar's actual name and color. Selecting a different calendar affects future or undelivered events; already created events are not moved.
 - Disconnecting Google cancels pending deliveries and removes stored credentials; already inserted Google events remain in the user's calendar. Remote revocation is attempted after disconnect.
-- `GET /api/cron/sync-google-calendar` requires `Authorization: Bearer <CRON_SECRET>` and refuses to run if the secret is missing. Admins can also use same-origin `POST /api/cron/sync-google-calendar` with their session.
+- `GET /api/cron/sync-google-calendar` requires `Authorization: Bearer <CRON_SECRET_KEY>` and refuses to run if the secret is missing. Admins can also use same-origin `POST /api/cron/sync-google-calendar` with their session.
 - The Vercel retry job runs daily at 04:30 UTC, preserving daily cron compatibility. For timely recovery and higher volume, schedule the protected endpoint every five minutes using a supported Vercel plan or an external scheduler. Each run is time-bounded; remaining deliveries stay queued.
 
 ### Verification

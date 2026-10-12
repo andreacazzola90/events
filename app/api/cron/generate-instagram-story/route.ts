@@ -186,7 +186,7 @@ async function publishInstagramStory(
   imageUrl: string,
 ): Promise<InstagramPublishResult> {
   const igUserId = getRequiredEnv("INSTAGRAM_IG_USER_ID");
-  const accessToken = getRequiredEnv("INSTAGRAM_ACCESS_TOKEN");
+  const accessToken = getRequiredEnv("INSTAGRAM_ACCESS_TOKEN_SECRET_KEY");
   const graphVersion = process.env.INSTAGRAM_GRAPH_API_VERSION || "v22.0";
   const graphBaseUrl = `https://graph.facebook.com/${graphVersion}`;
 
@@ -245,8 +245,8 @@ async function publishInstagramStory(
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
+    process.env.CRON_SECRET_KEY &&
+    authHeader !== `Bearer ${process.env.CRON_SECRET_KEY}`
   ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

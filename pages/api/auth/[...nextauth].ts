@@ -104,7 +104,7 @@ export const authOptions: any = {
       return session;
     }
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET_KEY,
 };
 
 export default (NextAuth as any)(authOptions);

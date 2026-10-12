@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
       });
 
       const headers: HeadersInit = {};
-      if (process.env.CRON_SECRET) {
-        headers["authorization"] = `Bearer ${process.env.CRON_SECRET}`;
+      if (process.env.CRON_SECRET_KEY) {
+        headers["authorization"] = `Bearer ${process.env.CRON_SECRET_KEY}`;
       }
 
       const targetPath =

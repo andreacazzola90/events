@@ -154,8 +154,8 @@ defaultCommandTimeout: 20000  // era 10000
 ### API non risponde
 **Soluzione**: Verifica `.env.local` abbia le API keys:
 - `OCR_SPACE_API_KEY`
-- `OPENAI_API_KEY`
-- `GROQ_API_KEY`
+- `OPENAI_API_SECRET_KEY`
+- `GROQ_API_SECRET_KEY`
 
 ### Server non raggiungibile
 **Soluzione**: Verifica che `npm run dev` sia in esecuzione

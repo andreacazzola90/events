@@ -88,7 +88,7 @@ sequenceDiagram
     participant SB as Supabase
     participant IG as Instagram Graph API
 
-    Scheduler->>API_S: GET with Bearer CRON_SECRET
+    Scheduler->>API_S: GET with Bearer CRON_SECRET_KEY
     API_S->>VP: Crawl event listing/pages
     VP-->>API_S: Candidate links
 
@@ -100,7 +100,7 @@ sequenceDiagram
         API_S->>DB: Insert non-duplicate events
     end
 
-    Scheduler->>API_I: GET with Bearer CRON_SECRET
+    Scheduler->>API_I: GET with Bearer CRON_SECRET_KEY
     API_I->>DB: Query events in weekly window
     DB-->>API_I: Event set
     API_I->>IMG: Build story image (SVG -> JPG)

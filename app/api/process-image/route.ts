@@ -10,7 +10,7 @@ import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extensio
 import { isWebSearchConfigured, webSearch } from '../../../lib/google-search';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_SECRET_KEY,
 });
 
 /** First URL printed on the poster (http(s)://, www. or bare domain with path), ignoring e-mail addresses. */
@@ -153,15 +153,15 @@ Rispondi in italiano. Sii preciso e completo.`,
     // Step 3: Use Groq AI to parse the extracted text into structured event data
     console.log('=== GROQ API CALL (IMAGE) ===');
     console.log('Environment check:');
-    console.log('- GROQ_API_KEY configured:', !!process.env.GROQ_API_KEY);
-    console.log('- GROQ_API_KEY length:', process.env.GROQ_API_KEY?.length || 0);
+    console.log('- GROQ_API_SECRET_KEY configured:', !!process.env.GROQ_API_SECRET_KEY);
+    console.log('- GROQ_API_SECRET_KEY length:', process.env.GROQ_API_SECRET_KEY?.length || 0);
     console.log('- Raw text length:', rawText.length);
     console.log('- Raw text preview:', rawText.slice(0, 200).replace(/\s+/g, ' '));
     console.log('- Platform:', process.env.VERCEL ? 'Vercel' : 'Local');
     
-    if (!process.env.GROQ_API_KEY) {
-      console.error('❌ GROQ_API_KEY non configurata!');
-      throw new Error('API non configurata correttamente - GROQ_API_KEY mancante');
+    if (!process.env.GROQ_API_SECRET_KEY) {
+      console.error('❌ GROQ_API_SECRET_KEY non configurata!');
+      throw new Error('API non configurata correttamente - GROQ_API_SECRET_KEY mancante');
     }
 
     // Determina se ci sono eventi multipli analizzando il testo in modo intelligente

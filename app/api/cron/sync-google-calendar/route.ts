@@ -17,7 +17,7 @@ async function sync() {
 }
 
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.CRON_SECRET_KEY;
   if (!secret) return NextResponse.json({ error: "Cron non configurato" }, { status: 503 });
   const expected = Buffer.from(`Bearer ${secret}`);
   const received = Buffer.from(request.headers.get("authorization") || "");

@@ -36,7 +36,7 @@ context: []
 | Evento senza ora | time vuoto/non valido | VEVENT all-day `DTSTART;VALUE=DATE:20261001`, `DTEND` giorno dopo | N/A |
 | Data non parsabile | date `"prossimo sabato"` | 422 "Data evento non valida" | toast errore |
 | Nessuna email calendario | POST invio | 400 | toast errore |
-| SMTP non configurato | `SMTP_PASS` assente | 503 "Invio email non configurato" | toast errore |
+| SMTP non configurato | `SMTP_PASS_SECRET_KEY` assente | 503 "Invio email non configurato" | toast errore |
 
 </frozen-after-approval>
 

@@ -14,6 +14,12 @@ import type { DbEvent } from "../../app/types/event";
 
 type EventListMode = "full" | "quick";
 type QuickDateFilter = "today" | "tomorrow" | "weekend" | "week";
+type FullDateFilter = "upcoming" | QuickDateFilter | "custom";
+type LocationSuggestion = {
+  label: string;
+  value: string;
+  source: "google" | "local";
+};
 
 // Funzione per pulire il testo da caratteri strani
 function cleanText(text: string): string {
@@ -33,96 +39,37 @@ function cleanText(text: string): string {
       .replace(/Ã¬/g, "ì")
       .replace(/Ã²/g, "ò")
       .replace(/Ã¹/g, "ù")
-      // Normalizza spazi multipli
       .replace(/\s+/g, " ")
       .trim()
   );
 }
 
 type Event = DbEvent;
-
 type PriceLabel = "gratis" | "pagamento" | "non definito";
 
-// Normalizza il prezzo in tre etichette: gratis / pagamento / non definito
 function getPriceLabel(rawPrice: string | null | undefined): PriceLabel {
   if (!rawPrice) return "non definito";
-
   const price = rawPrice.toLowerCase();
-
-  // Casi gratuiti espliciti
-  if (
-    price.includes("gratis") ||
-    price.includes("ingresso libero") ||
-    price.includes("ingresso gratuito") ||
-    price.includes("ingresso libero") ||
-    price.includes("free")
-  ) {
-    return "gratis";
-  }
-
-  // Il valore di default usato dall'estrazione quando non trova info
-  if (price.includes("non definito")) {
-    return "non definito";
-  }
-
-  // Se troviamo numeri/euro o riferimenti a biglietti/pagamento, consideriamo "pagamento"
-  if (
-    /\d/.test(price) ||
-    price.includes("€") ||
-    price.includes("euro") ||
-    price.includes("bigliett") ||
-    price.includes("prevendita") ||
-    price.includes("ticket") ||
-    price.includes("vivaticket") ||
-    price.includes("ticketone")
-  ) {
-    return "pagamento";
-  }
-
+  if (price.includes("gratis") || price.includes("ingresso libero") || price.includes("ingresso gratuito") || price.includes("free")) return "gratis";
+  if (price.includes("non definito")) return "non definito";
+  if (/\d/.test(price) || price.includes("€") || price.includes("euro") || price.includes("bigliett") || price.includes("prevendita") || price.includes("ticket") || price.includes("vivaticket") || price.includes("ticketone")) return "pagamento";
   return "non definito";
 }
 
 function getPriceBadgeClasses(label: PriceLabel): string {
   switch (label) {
-    case "gratis":
-      return "bg-black text-white";
-    case "pagamento":
-      return "bg-black/80 text-white";
-    case "non definito":
-    default:
-      return "bg-black/50 text-white";
+    case "gratis": return "bg-black text-white";
+    case "pagamento": return "bg-black/80 text-white";
+    default: return "bg-black/50 text-white";
   }
 }
 
-// Mappa categoria → classi colore del badge (bg + shadow)
 function getCategoryBadgeClasses(rawCategory: string): string {
   const cat = rawCategory.toLowerCase();
-
   switch (cat) {
-    case "musica":
-    case "music":
-      return "bg-black";
-    case "nightlife":
-      return "bg-black";
-    case "cultura":
-    case "culture":
-      return "bg-black";
-    case "cibo":
-    case "food":
-      return "bg-black";
-    case "sport":
-      return "bg-black";
-    case "famiglia":
-    case "family":
-      return "bg-black";
-    case "teatro":
-    case "theater":
-      return "bg-black";
-    case "festa":
-    case "party":
-      return "bg-black";
-    case "passeggiata":
-    case "walk":
+    case "musica": case "music": case "nightlife": case "cultura": case "culture":
+    case "cibo": case "food": case "sport": case "famiglia": case "family":
+    case "teatro": case "theater": case "festa": case "party": case "passeggiata": case "walk":
       return "bg-black";
     default:
       return "bg-black";
@@ -131,17 +78,13 @@ function getCategoryBadgeClasses(rawCategory: string): string {
 
 function parseEventDate(value: string): Date | null {
   if (!value) return null;
-
   if (value.includes("/")) {
-    const [day, month, year] = value
-      .split("/")
-      .map((part) => parseInt(part, 10));
+    const [day, month, year] = value.split("/").map(part => parseInt(part, 10));
     if (!day || !month || !year) return null;
     const parsed = new Date(year, month - 1, day);
     parsed.setHours(0, 0, 0, 0);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
-
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   parsed.setHours(0, 0, 0, 0);
@@ -209,13 +152,66 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   const [category, setCategory] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [onlyToday, setOnlyToday] = useState(false);
+  const [fullDateFilter, setFullDateFilter] = useState<FullDateFilter>("upcoming");
   const [locationFilter, setLocationFilter] = useState("");
   const [organizerFilter, setOrganizerFilter] = useState("");
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [quickDateFilter, setQuickDateFilter] =
     useState<QuickDateFilter>("today");
-  const [visibleCount, setVisibleCount] = useState(4);
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [googleLocationSuggestions, setGoogleLocationSuggestions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [locationSuggestionsLoading, setLocationSuggestionsLoading] = useState(false);
+  const [locationSuggestionsOpen, setLocationSuggestionsOpen] = useState(false);
+  const [activeLocationSuggestion, setActiveLocationSuggestion] = useState(-1);
+  const selectedLocationRef = useRef("");
+  const localLocationSuggestions = Array.from(
+    new Set(events.map((event) => event.location.trim()).filter(Boolean)),
+  ).sort((first, second) => first.localeCompare(second, "it"));
+  const locationOptions: LocationSuggestion[] = googleLocationSuggestions.length
+    ? googleLocationSuggestions.map((suggestion) => ({ ...suggestion, source: "google" }))
+    : localLocationSuggestions
+        .filter((location) =>
+          location.toLocaleLowerCase("it").includes(locationFilter.trim().toLocaleLowerCase("it")),
+        )
+        .slice(0, 6)
+        .map((location) => ({ label: location, value: location, source: "local" }));
+
+  useEffect(() => {
+    const input = locationFilter.trim();
+    if (input.length < 2 || input === selectedLocationRef.current) {
+      setGoogleLocationSuggestions([]);
+      setLocationSuggestionsLoading(false);
+      return;
+    }
+
+    setGoogleLocationSuggestions([]);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setLocationSuggestionsLoading(true);
+      try {
+        const response = await fetch(
+          `/api/places/autocomplete?input=${encodeURIComponent(input)}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error("Google Places unavailable");
+        const data = (await response.json()) as {
+          suggestions?: Array<{ label: string; value: string }>;
+        };
+        setGoogleLocationSuggestions(data.suggestions ?? []);
+      } catch {
+        if (!controller.signal.aborted) setGoogleLocationSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setLocationSuggestionsLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [locationFilter]);
 
   useEffect(() => {
     const grid = gridRef.current;
@@ -285,7 +281,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
 
   useEffect(() => {
     if (mode === "quick") {
-      setVisibleCount(4);
+      setVisibleCount(12);
     }
   }, [quickDateFilter, mode]);
 
@@ -338,16 +334,18 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
       filtered = filtered.filter((event) => event.category === category);
     }
 
-    if (onlyToday) {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      filtered = filtered.filter((event) => event.date === todayIso);
-    } else {
-      if (dateFrom) {
-        filtered = filtered.filter((event) => event.date >= dateFrom);
-      }
-      if (dateTo) {
-        filtered = filtered.filter((event) => event.date <= dateTo);
-      }
+    if (fullDateFilter !== "upcoming" && fullDateFilter !== "custom") {
+      const range = getQuickRange(fullDateFilter);
+      filtered = filtered.filter(event => {
+        const date = parseEventDate(event.date);
+        return date ? isDateInRange(date, range.start, range.end) : false;
+      });
+    }
+    if (dateFrom) {
+      filtered = filtered.filter((event) => event.date >= dateFrom);
+    }
+    if (dateTo) {
+      filtered = filtered.filter((event) => event.date <= dateTo);
     }
 
     if (locationFilter) {
@@ -384,7 +382,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     category,
     dateFrom,
     dateTo,
-    onlyToday,
+    fullDateFilter,
     locationFilter,
     organizerFilter,
     quickDateFilter,
@@ -392,6 +390,13 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   ]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const chooseLocationSuggestion = (suggestion: LocationSuggestion) => {
+    selectedLocationRef.current = suggestion.value;
+    setLocationFilter(suggestion.value);
+    setLocationSuggestionsOpen(false);
+    setActiveLocationSuggestion(-1);
+  };
 
   const handleFavoriteToggleLocal = (eventId: number, newValue: boolean) => {
     setFavoriteIds((prev) => {
@@ -447,123 +452,200 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
           </div>
         </div>
       ) : (
-        <>
-        <label className="mobile-event-search lg:hidden">
-          <AppIcon name="search" className="h-5 w-5 shrink-0 text-[var(--accent)]" />
-          <input
-            type="search"
-            placeholder="Cerca eventi"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Cerca eventi"
-          />
-        </label>
-        <div className="bg-white border border-black/10 overflow-hidden">
-          <button
-            onClick={() => setFiltersOpen(!filtersOpen)}
-            aria-expanded={filtersOpen}
-            aria-controls="event-filters-panel"
-            className="w-full lg:hidden flex items-center justify-between p-4 text-black font-bold border-b border-black/10"
-          >
-            <div className="flex items-center gap-3 uppercase tracking-[0.12em] text-xs">
-              <span>Filtra eventi</span>
+        <div className="space-y-3 border border-black/10 bg-white p-3 md:p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.4fr)_minmax(190px,0.8fr)_minmax(220px,1fr)]">
+            <label className="flex min-w-0 items-center gap-2 border border-black/20 px-3 focus-within:border-black">
+              <AppIcon name="search" className="h-5 w-5 shrink-0 text-[var(--accent)]" />
+              <input
+                type="search"
+                placeholder="Cerca eventi"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label="Cerca eventi"
+                className="min-w-0 w-full py-2.5 text-sm text-black placeholder-black/40 focus:outline-none"
+              />
+            </label>
+            <label className="sr-only" htmlFor="event-category-filter">Categoria</label>
+            <select
+              id="event-category-filter"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              aria-label="Categoria"
+              className="min-w-0 border border-black/20 bg-white px-3 py-2.5 text-sm text-black focus:border-black focus:outline-none"
+            >
+              <option value="">Tutte le categorie</option>
+              {STANDARD_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+              ))}
+            </select>
+            <label className="sr-only" htmlFor="event-location-filter">Luogo</label>
+            <div className="relative min-w-0">
+              <input
+                id="event-location-filter"
+                type="search"
+                placeholder="Luogo"
+                value={locationFilter}
+                onChange={(event) => {
+                  selectedLocationRef.current = "";
+                  setLocationFilter(event.target.value);
+                  setLocationSuggestionsOpen(true);
+                  setActiveLocationSuggestion(-1);
+                }}
+                onFocus={() => setLocationSuggestionsOpen(true)}
+                onBlur={() => setLocationSuggestionsOpen(false)}
+                onKeyDown={(event) => {
+                  if (!locationSuggestionsOpen || locationOptions.length === 0) return;
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setActiveLocationSuggestion((current) =>
+                      Math.min(current + 1, locationOptions.length - 1),
+                    );
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveLocationSuggestion((current) => Math.max(current - 1, 0));
+                  } else if (event.key === "Enter" && activeLocationSuggestion >= 0) {
+                    event.preventDefault();
+                    chooseLocationSuggestion(locationOptions[activeLocationSuggestion]);
+                  } else if (event.key === "Escape") {
+                    setLocationSuggestionsOpen(false);
+                  }
+                }}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={locationSuggestionsOpen && (locationOptions.length > 0 || locationSuggestionsLoading)}
+                aria-controls="event-location-options"
+                aria-activedescendant={activeLocationSuggestion >= 0 ? `event-location-option-${activeLocationSuggestion}` : undefined}
+                aria-label="Luogo"
+                className="w-full min-w-0 border border-black/20 bg-white px-3 py-2.5 text-sm text-black placeholder-black/40 focus:border-black focus:outline-none"
+              />
+              {locationSuggestionsOpen && (locationOptions.length > 0 || locationSuggestionsLoading) && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-black/20 bg-white shadow-lg">
+                  {locationOptions.length > 0 && (
+                    <ul id="event-location-options" role="listbox" aria-label="Suggerimenti luogo" className="max-h-60 overflow-y-auto py-1">
+                      {locationOptions.map((suggestion, index) => (
+                        <li key={`${suggestion.source}-${suggestion.value}`} role="presentation">
+                          <button
+                            id={`event-location-option-${index}`}
+                            type="button"
+                            role="option"
+                            aria-selected={activeLocationSuggestion === index}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onMouseEnter={() => setActiveLocationSuggestion(index)}
+                            onClick={() => chooseLocationSuggestion(suggestion)}
+                            className={`block w-full px-3 py-2 text-left text-sm ${activeLocationSuggestion === index ? "bg-black/5" : "bg-white hover:bg-black/5"}`}
+                          >
+                            <span className="block truncate text-black">{suggestion.value}</span>
+                            {suggestion.source === "google" && suggestion.label !== suggestion.value && (
+                              <span className="block truncate text-xs text-black/50">{suggestion.label}</span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {locationSuggestionsLoading && (
+                    <p className="px-3 py-2 text-xs text-black/50">Cerco su Google…</p>
+                  )}
+                  {googleLocationSuggestions.length > 0 && (
+                    <p className="border-t border-black/10 px-3 py-1.5 text-right text-[10px] text-black/50">Powered by Google</p>
+                  )}
+                </div>
+              )}
             </div>
-            <span
-              aria-hidden="true"
-              className={`transition-transform duration-300 text-sm ${filtersOpen ? "rotate-180" : ""}`}
-            >
-              ▼
-            </span>
-          </button>
+          </div>
 
-          <div
-            id="event-filters-panel"
-            className={`${filtersOpen ? "block" : "hidden"} lg:block p-4 lg:p-5`}
-          >
-            <form
-              className="flex flex-col lg:flex-row gap-4 items-center"
-              onSubmit={(e) => {
-                e.preventDefault();
-              }}
-            >
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-                <input
-                  type="text"
-                  placeholder="Cerca eventi..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Cerca eventi"
-                  className="hidden lg:block bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black"
-                />
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  aria-label="Filtra per categoria"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black appearance-none"
+          <div className="flex flex-col gap-3 border-t border-black/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap gap-2" role="group" aria-label="Periodo eventi">
+              {([
+                { value: "upcoming", label: "Prossimi" },
+                { value: "today", label: "Oggi" },
+                { value: "tomorrow", label: "Domani" },
+                { value: "weekend", label: "Weekend" },
+                { value: "week", label: "7 giorni" },
+              ] as const).map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={fullDateFilter === option.value}
+                  onClick={() => {
+                    setFullDateFilter(option.value);
+                    setDateFrom("");
+                    setDateTo("");
+                  }}
+                  className={`border px-3 py-2 text-xs font-bold transition-colors ${fullDateFilter === option.value ? "border-black bg-black text-white" : "border-black/20 bg-white text-black hover:border-black"}`}
                 >
-                  <option value="" className="bg-white text-black">
-                    Tutte le Categorie
-                  </option>
-                  {STANDARD_CATEGORIES.map((cat) => (
-                    <option
-                      key={cat}
-                      value={cat}
-                      className="bg-white text-black"
-                    >
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(open => !open)}
+                aria-expanded={filtersOpen}
+                aria-controls="advanced-event-filters"
+                className="whitespace-nowrap text-sm font-semibold text-black underline underline-offset-4"
+              >
+                {filtersOpen ? "Nascondi filtri" : "Altri filtri"}
+              </button>
+              {(search || category || locationFilter || organizerFilter || dateFrom || dateTo || fullDateFilter !== "upcoming") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setCategory("");
+                    setLocationFilter("");
+                    setOrganizerFilter("");
+                    setDateFrom("");
+                    setDateTo("");
+                    setFullDateFilter("upcoming");
+                  }}
+                  className="whitespace-nowrap text-sm font-semibold text-red-700 underline underline-offset-4"
+                >
+                  Azzera filtri
+                </button>
+              )}
+            </div>
+          </div>
+
+          {filtersOpen && (
+            <div id="advanced-event-filters" className="grid grid-cols-1 gap-3 border-t border-black/10 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="space-y-1 text-xs font-semibold text-black/70">
+                Dal
                 <input
                   type="date"
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  aria-label="Data di inizio"
+                  onChange={(event) => { setDateFrom(event.target.value); setFullDateFilter("custom"); }}
                   min={new Date().toISOString().slice(0, 10)}
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
-                  disabled={onlyToday}
+                  aria-label="Data di inizio"
+                  className="w-full border border-black/20 bg-white px-3 py-2.5 text-sm text-black focus:border-black focus:outline-none"
                 />
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-black/70">
+                Al
                 <input
                   type="date"
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  onChange={(event) => { setDateTo(event.target.value); setFullDateFilter("custom"); }}
+                  min={dateFrom || new Date().toISOString().slice(0, 10)}
                   aria-label="Data di fine"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black focus:outline-none focus:border-black"
-                  disabled={onlyToday}
+                  className="w-full border border-black/20 bg-white px-3 py-2.5 text-sm text-black focus:border-black focus:outline-none"
                 />
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-black/70">
+                Organizzatore
                 <input
-                  type="text"
-                  placeholder="Filtra per luogo..."
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  aria-label="Filtra per luogo"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
-                />
-                <input
-                  type="text"
-                  placeholder="Filtra per organizzatore..."
+                  type="search"
+                  placeholder="Nome organizzatore"
                   value={organizerFilter}
-                  onChange={(e) => setOrganizerFilter(e.target.value)}
-                  aria-label="Filtra per organizzatore"
-                  className="bg-white border border-black/20 px-3 py-2.5 text-sm text-black placeholder-black/40 focus:outline-none focus:border-black col-span-1"
+                  onChange={(event) => setOrganizerFilter(event.target.value)}
+                  aria-label="Organizzatore"
+                  className="w-full border border-black/20 bg-white px-3 py-2.5 text-sm text-black placeholder-black/40 focus:border-black focus:outline-none"
                 />
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
-                <label className="flex items-center gap-2 text-black/80 text-xs uppercase tracking-widest font-bold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={onlyToday}
-                    onChange={(e) => setOnlyToday(e.target.checked)}
-                    className="w-4 h-4 text-black border-black/20 rounded focus:ring-black focus:ring-2"
-                  />
-                  Solo oggi
-                </label>
-              </div>
-            </form>
-          </div>
+              </label>
+            </div>
+          )}
         </div>
-        </>
       )}
 
       {(() => {
@@ -696,7 +778,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
             {mode === "quick" && filteredEvents.length > visibleCount && (
               <div className="flex justify-center pt-2">
                 <button
-                  onClick={() => setVisibleCount((prev) => prev + 4)}
+                  onClick={() => setVisibleCount((prev) => prev + 12)}
                   className="inline-flex items-center h-10 px-5 border border-black text-black text-xs uppercase tracking-[0.12em] font-bold hover:bg-black hover:text-white transition-colors"
                 >
                   Mostra altri

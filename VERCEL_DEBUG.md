@@ -10,7 +10,7 @@ Vai su **Vercel Dashboard** → **Progetto** → **Settings** → **Environment 
 
 Verifica che sia configurata:
 ```
-GROQ_API_KEY = gsk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+GROQ_API_SECRET_KEY = gsk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
 (Usa la tua chiave API reale da `.env`)
@@ -31,20 +31,20 @@ Cerca questi log diagnostici:
 ```
 === GROQ API CALL ===
 Environment check:
-- GROQ_API_KEY configured: true/false  ← Deve essere TRUE
-- GROQ_API_KEY length: 64             ← Deve essere > 0
+- GROQ_API_SECRET_KEY configured: true/false  ← Deve essere TRUE
+- GROQ_API_SECRET_KEY length: 64             ← Deve essere > 0
 - Page text length: XXXX               ← Deve essere > 50
 - Platform: Vercel                     ← Conferma che gira su Vercel
 ```
 
 ### 3. Possibili cause del problema
 
-#### A. GROQ_API_KEY non configurata
-**Sintomo**: `GROQ_API_KEY configured: false`
+#### A. GROQ_API_SECRET_KEY non configurata
+**Sintomo**: `GROQ_API_SECRET_KEY configured: false`
 
 **Soluzione**:
 1. Vai su Vercel Dashboard → Settings → Environment Variables
-2. Aggiungi `GROQ_API_KEY` con il valore corretto
+2. Aggiungi `GROQ_API_SECRET_KEY` con il valore corretto
 3. Seleziona tutti gli environment (Production, Preview, Development)
 4. **REDEPLOY** il progetto
 
@@ -111,7 +111,7 @@ curl -X POST https://tuo-dominio.vercel.app/api/process-image \
 
 | Aspetto | Local | Vercel |
 |---------|-------|--------|
-| GROQ_API_KEY | Da `.env` | Da Dashboard Variables |
+| GROQ_API_SECRET_KEY | Da `.env` | Da Dashboard Variables |
 | Timeout | Illimitato | 10s (Free) / 60s (Pro) |
 | Puppeteer | ✅ Funziona | ❌ Non disponibile |
 | HTTP Scraping | ✅ Fallback | ✅ Metodo principale |
@@ -119,10 +119,10 @@ curl -X POST https://tuo-dominio.vercel.app/api/process-image \
 
 ### 6. Checklist completa
 
-- [ ] `GROQ_API_KEY` configurata su Vercel Dashboard
+- [ ] `GROQ_API_SECRET_KEY` configurata su Vercel Dashboard
 - [ ] Variabile impostata per tutti gli environment (Prod, Preview, Dev)
 - [ ] Redeploy fatto dopo aver aggiunto la variabile
-- [ ] Log mostrano `GROQ_API_KEY configured: true`
+- [ ] Log mostrano `GROQ_API_SECRET_KEY configured: true`
 - [ ] Log mostrano `Page text length: > 50`
 - [ ] Groq API risponde (response length > 0)
 - [ ] Response contiene JSON valido
@@ -134,8 +134,8 @@ curl -X POST https://tuo-dominio.vercel.app/api/process-image \
 **Successo**:
 ```
 === GROQ API CALL ===
-- GROQ_API_KEY configured: true
-- GROQ_API_KEY length: 64
+- GROQ_API_SECRET_KEY configured: true
+- GROQ_API_SECRET_KEY length: 64
 - Page text length: 2847
 - Page text preview: Concert Title Date: December 20 Time: 21:00...
 - Platform: Vercel
@@ -149,8 +149,8 @@ Response preview: {"title":"Concert Title","date":"2025-12-20"...
 **Errore**:
 ```
 === GROQ API CALL ===
-- GROQ_API_KEY configured: false  ← PROBLEMA!
-- GROQ_API_KEY length: 0          ← PROBLEMA!
+- GROQ_API_SECRET_KEY configured: false  ← PROBLEMA!
+- GROQ_API_SECRET_KEY length: 0          ← PROBLEMA!
 - Page text length: 0             ← PROBLEMA!
 ```
 

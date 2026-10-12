@@ -116,15 +116,15 @@ Base env reference: [.env.example](../.env.example).
 
 Core variables:
 - DATABASE_URL
-- NEXTAUTH_SECRET
+- NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
-- GROQ_API_KEY
-- OPENAI_API_KEY (present but not part of core flow here)
+- GROQ_API_SECRET_KEY
+- OPENAI_API_SECRET_KEY (present but not part of core flow here)
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SUPABASE_SERVICE_ROLE_SECRET_KEY
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
-- CRON_SECRET (for protected cron routes)
+- CRON_SECRET_KEY (for protected cron routes)
 - Instagram Graph vars (for story publishing)
 
 ## 7) BMAD installation in this repository

@@ -894,7 +894,7 @@ async function scrapeOneSource(
 export async function GET(request: NextRequest) {
   // Controllo del secret per il cron (stessa logica di scrape-visitschio)
   const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (process.env.CRON_SECRET_KEY && authHeader !== `Bearer ${process.env.CRON_SECRET_KEY}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

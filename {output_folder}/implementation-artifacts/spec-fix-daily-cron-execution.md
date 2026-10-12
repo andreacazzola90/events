@@ -17,7 +17,7 @@ context: []
 
 ## Boundaries & Constraints
 
-**Always:** Conservare la chiamata Vercel giornaliera esistente, il controllo CRON_SECRET, la deduplicazione e il comportamento dry-run. Le fonti sono globali e non devono essere attribuite artificialmente a un account. Gli eventi gia' salvati restano intatti. Il database conserva una sola riga per jobKey: non affermare di conoscere lo storico completo degli avvii giornalieri. Rispettare il limite serverless di 300 secondi e lasciare margine per la registrazione del risultato. Usare test deterministici con scraper e orologio simulati, senza consumare chiamate AI o scrivere eventi reali. Non esporre segreti nelle verifiche.
+**Always:** Conservare la chiamata Vercel giornaliera esistente, il controllo CRON_SECRET_KEY, la deduplicazione e il comportamento dry-run. Le fonti sono globali e non devono essere attribuite artificialmente a un account. Gli eventi gia' salvati restano intatti. Il database conserva una sola riga per jobKey: non affermare di conoscere lo storico completo degli avvii giornalieri. Rispettare il limite serverless di 300 secondi e lasciare margine per la registrazione del risultato. Usare test deterministici con scraper e orologio simulati, senza consumare chiamate AI o scrivere eventi reali. Non esporre segreti nelle verifiche.
 
 **Ask First:** Cambiare provider di scheduling, frequenza, schema del database o avviare un deployment. Richiedere conferma prima di esecuzioni live che importano eventi o pubblicano storie Instagram. Se non ci sono accessi a Vercel, dichiarare che la configurazione in produzione non e' verificata.
 

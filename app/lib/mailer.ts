@@ -12,7 +12,7 @@ export function getMailFrom() {
 // Returns null when no SMTP password is configured so callers can fall back
 // to a dev-only preview link instead of failing the request.
 export function createMailTransport() {
-  const pass = process.env.SMTP_PASS;
+  const pass = process.env.SMTP_PASS_SECRET_KEY;
   if (!pass) {
     return null;
   }

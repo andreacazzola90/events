@@ -394,7 +394,7 @@ export class FacebookAuth {
     console.log('🔄 Non-login access failed, trying authentication methods...');
 
     // Try cookies first (if available)
-    const cookieString = process.env.FACEBOOK_COOKIES;
+    const cookieString = process.env.FACEBOOK_COOKIES_SECRET_KEY;
     if (cookieString) {
       const cookies = this.parseCookiesFromString(cookieString);
       if (cookies.length > 0) {
@@ -407,7 +407,7 @@ export class FacebookAuth {
 
     // Fallback to credentials if cookies failed
     const email = process.env.FACEBOOK_EMAIL;
-    const password = process.env.FACEBOOK_PASSWORD;
+    const password = process.env.FACEBOOK_PASSWORD_SECRET_KEY;
     
     if (email && password) {
       console.log('🔄 Cookies failed, trying credentials...');

@@ -7,7 +7,7 @@ export interface SearchResult {
 }
 
 export function isWebSearchConfigured(): boolean {
-  return !!process.env.TAVILY_API_KEY || !!(process.env.GOOGLE_API_KEY && process.env.GOOGLE_CX);
+  return !!process.env.TAVILY_API_KEY || !!(process.env.GOOGLE_API_SECRET_KEY && process.env.GOOGLE_CX);
 }
 
 async function tavilySearch(query: string, apiKey: string): Promise<SearchResult[]> {
@@ -38,14 +38,14 @@ async function googleCustomSearch(query: string, apiKey: string, cx: string): Pr
 /** Web search via Tavily (preferred) or Google Custom Search. Returns [] when unconfigured or on failure. */
 export async function webSearch(query: string): Promise<SearchResult[]> {
   const tavilyKey = process.env.TAVILY_API_KEY;
-  const googleKey = process.env.GOOGLE_API_KEY;
+  const googleKey = process.env.GOOGLE_API_SECRET_KEY;
   const googleCx = process.env.GOOGLE_CX;
 
   try {
     console.log(`🔍 Web search for: "${query}"`);
     if (tavilyKey) return await tavilySearch(query, tavilyKey);
     if (googleKey && googleCx) return await googleCustomSearch(query, googleKey, googleCx);
-    console.warn('⚠️ No web search provider configured (TAVILY_API_KEY or GOOGLE_API_KEY+GOOGLE_CX). Skipping.');
+    console.warn('⚠️ No web search provider configured (TAVILY_API_KEY or GOOGLE_API_SECRET_KEY+GOOGLE_CX). Skipping.');
   } catch (error) {
     console.error('❌ Web search failed:', error instanceof Error ? error.message : error);
   }

@@ -16,7 +16,7 @@ export const GOOGLE_CALENDAR_COOKIE = process.env.NODE_ENV === "production"
 
 export function isGoogleCalendarConfigured(): boolean {
   return Boolean(process.env.GOOGLE_CALENDAR_CLIENT_ID && process.env.GOOGLE_CALENDAR_CLIENT_SECRET_KEY &&
-    process.env.NEXTAUTH_URL && (process.env.GOOGLE_CALENDAR_TOKEN_SECRET || process.env.NEXTAUTH_SECRET));
+    process.env.NEXTAUTH_URL && (process.env.GOOGLE_CALENDAR_TOKEN_SECRET_KEY || process.env.NEXTAUTH_SECRET_KEY));
 }
 
 export function getGoogleCalendarClient() {
@@ -30,7 +30,7 @@ export function getGoogleCalendarClient() {
 }
 
 function tokenKey() {
-  const secret = process.env.GOOGLE_CALENDAR_TOKEN_SECRET || process.env.NEXTAUTH_SECRET;
+  const secret = process.env.GOOGLE_CALENDAR_TOKEN_SECRET_KEY || process.env.NEXTAUTH_SECRET_KEY;
   if (!secret) throw new Error("Chiave calendario non configurata");
   return createHash("sha256").update(secret).digest();
 }

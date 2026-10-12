@@ -41,18 +41,18 @@ Questo copierà i cookies in formato JSON negli appunti.
 
 #### Opzione A: JSON Format (Raccomandato)
 ```bash
-FACEBOOK_COOKIES='[{"name":"c_user","value":"123456789","domain":".facebook.com","path":"/"},{"name":"xs","value":"your_xs_token","domain":".facebook.com","path":"/"}]'
+FACEBOOK_COOKIES_SECRET_KEY='[{"name":"c_user","value":"123456789","domain":".facebook.com","path":"/"},{"name":"xs","value":"your_xs_token","domain":".facebook.com","path":"/"}]'
 ```
 
 #### Opzione B: Browser Cookie Format
 ```bash
-FACEBOOK_COOKIES="c_user=123456789; xs=your_xs_token; datr=your_datr_token"
+FACEBOOK_COOKIES_SECRET_KEY="c_user=123456789; xs=your_xs_token; datr=your_datr_token"
 ```
 
 #### Opzione C: Credenziali (meno sicuro)
 ```bash
 FACEBOOK_EMAIL="your-email@example.com"
-FACEBOOK_PASSWORD="your-password"
+FACEBOOK_PASSWORD_SECRET_KEY="your-password"
 ```
 
 ## Importante

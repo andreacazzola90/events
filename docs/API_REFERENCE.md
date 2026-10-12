@@ -302,25 +302,25 @@ curl -X POST "http://localhost:3000/api/process-link" \
 ### GET /api/cron/scrape-visitpedemontana
 - File: [app/api/cron/scrape-visitpedemontana/route.ts](../app/api/cron/scrape-visitpedemontana/route.ts)
 - Purpose: scrape and ingest events from visitpedemontana source
-- Protected by CRON_SECRET bearer token when configured
+- Protected by CRON_SECRET_KEY bearer token when configured
 
 Example request:
 
 ```bash
 curl -X GET "http://localhost:3000/api/cron/scrape-visitpedemontana" \
-  -H "Authorization: Bearer <CRON_SECRET>"
+  -H "Authorization: Bearer <CRON_SECRET_KEY>"
 ```
 
 ### GET /api/cron/generate-instagram-story
 - File: [app/api/cron/generate-instagram-story/route.ts](../app/api/cron/generate-instagram-story/route.ts)
 - Purpose: build weekly story image and publish to Instagram Graph API
-- Protected by CRON_SECRET bearer token when configured
+- Protected by CRON_SECRET_KEY bearer token when configured
 
 Example request:
 
 ```bash
 curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
-  -H "Authorization: Bearer <CRON_SECRET>"
+  -H "Authorization: Bearer <CRON_SECRET_KEY>"
 ```
 
 ### POST /api/admin/run-cron/instagram-story
@@ -343,7 +343,7 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 
 - Extension-specific CORS is applied in extension login and events/image flows.
 - User/admin protection is handled by auth helpers in protected routes.
-- Cron routes rely on Authorization: Bearer <CRON_SECRET> when secret is configured.
+- Cron routes rely on Authorization: Bearer <CRON_SECRET_KEY> when secret is configured.
 
 ## 7) Calendar preferences and Google connection
 
@@ -385,7 +385,7 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 - Existing Google events are not deleted.
 
 ### GET /api/cron/sync-google-calendar
-- Requires `CRON_SECRET` bearer authorization; missing configuration returns 503, invalid authorization returns 401.
+- Requires `CRON_SECRET_KEY` bearer authorization; missing configuration returns 503, invalid authorization returns 401.
 - Drains eligible delivery records with concurrency leases and a bounded execution budget.
 - Returns `{ "delivered": 0, "skipped": 0, "retried": 0 }` counters.
 - Same-origin POST is also available to authenticated admins.

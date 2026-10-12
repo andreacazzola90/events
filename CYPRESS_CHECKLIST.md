@@ -25,8 +25,8 @@ cd cypress/fixtures
 ### 3. 🔑 Variabili d'Ambiente
 Verifica che `.env.local` contenga:
 - [ ] `OCR_SPACE_API_KEY` (per OCR)
-- [ ] `OPENAI_API_KEY` (per AI)
-- [ ] `GROQ_API_KEY` (opzionale, per AI alternativo)
+- [ ] `OPENAI_API_SECRET_KEY` (per AI)
+- [ ] `GROQ_API_SECRET_KEY` (opzionale, per AI alternativo)
 - [ ] `DATABASE_URL` (per Prisma)
 
 ### 4. 🗄️ Database

@@ -1,13 +1,35 @@
 
 'use client';
 
+import Cropper, { type Area, type Point } from 'react-easy-crop';
+import 'react-easy-crop/react-easy-crop.css';
 import { DuplicateMatch, EventData } from '../types/event';
 import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
 import SaveAnimation from './SaveAnimation';
 import { toast } from 'react-toastify';
+
+async function cropCoverToFile(imageSource: string, area: Area) {
+    const image = new window.Image();
+    image.crossOrigin = 'anonymous';
+    image.src = imageSource;
+    await image.decode();
+    const outputSize = getCropOutputSize(area.width, area.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = outputSize.width;
+    canvas.height = outputSize.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Impossibile ritagliare l’immagine');
+    context.drawImage(image, area.x, area.y, area.width, area.height, 0, 0, outputSize.width, outputSize.height);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(result => result ? resolve(result) : reject(new Error('Impossibile esportare l’immagine')), 'image/jpeg', 0.82);
+    });
+    if (blob.size > MAX_EVENT_MEDIA_BYTES) throw new Error('Il ritaglio supera 4 MiB');
+    return new File([blob], `cover-${Date.now()}.jpg`, { type: 'image/jpeg' });
+}
 
 interface EventDisplayProps {
     eventData: EventData;
@@ -33,9 +55,16 @@ const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d
 export default function EventDisplay({ eventData, onSave, duplicate }: EventDisplayProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
+    const [cropSource, setCropSource] = useState<string | null>(null);
+    const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
+    const cropPreviewUrls = useRef<string[]>([]);
+
+    useEffect(() => () => cropPreviewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
 
     const handleSaveApiError = (errorText: string): never => {
         let parsedError: any;
@@ -57,6 +86,27 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
     useEffect(() => {
         setImageUrl(eventData.imageUrl);
     }, [eventData.imageUrl]);
+
+    const handleOpenCropper = () => {
+        if (!imageUrl) return;
+        setCropSource(imageUrl);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setCroppedAreaPixels(null);
+    };
+
+    const handleApplyCrop = async () => {
+        if (!cropSource || !croppedAreaPixels) return;
+        try {
+            const croppedFile = await cropCoverToFile(cropSource, croppedAreaPixels);
+            const previewUrl = URL.createObjectURL(croppedFile);
+            cropPreviewUrls.current.push(previewUrl);
+            setImageUrl(previewUrl);
+            setCropSource(null);
+        } catch {
+            toast.error('Impossibile ritagliare l’immagine o il ritaglio supera il limite di 4 MiB.');
+        }
+    };
 
     const missingValue = <span className="text-[#b84b2d] italic font-medium">Da completare</span>;
 
@@ -279,7 +329,8 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                             <div className="event-image-placeholder w-full h-55 flex items-center justify-center text-[#5f5b56]">Nessuna immagine</div>
                         )}
                         {isEditing && (
-                            <label className="block p-4 border-t border-black/10 text-sm text-[#5f5b56]">
+                            <div className="block p-4 border-t border-black/10 text-sm text-[#5f5b56]">
+                                <label>
                                 Cambia immagine
                                 <input
                                     type="file"
@@ -289,11 +340,18 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                                         const file = e.target.files?.[0];
                                         if (file) {
                                             const url = URL.createObjectURL(file);
+                                            cropPreviewUrls.current.push(url);
                                             setImageUrl(url);
                                         }
                                     }}
                                 />
-                            </label>
+                                </label>
+                                {imageUrl && (
+                                    <button type="button" onClick={handleOpenCropper} className="mt-3 block text-sm font-semibold text-red-700 underline underline-offset-4">
+                                        Ritaglia e regola zoom
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </div>
 
@@ -413,6 +471,39 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                 status={saveAnimationStatus}
                 onComplete={() => setSaveAnimationStatus('hidden')}
             />
+            {cropSource && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="draft-cover-crop-title">
+                    <div className="w-full max-w-3xl space-y-4 bg-white p-4 sm:p-6">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 id="draft-cover-crop-title" className="mb-1 text-xl font-bold text-black">Ritaglia copertina</h2>
+                                <p className="mb-0 text-sm text-gray-500">Trascina l’immagine e regola lo zoom.</p>
+                            </div>
+                            <button type="button" onClick={() => setCropSource(null)} className="px-3 py-2 text-sm font-semibold text-gray-700 underline">Chiudi</button>
+                        </div>
+                        <div className="relative h-[min(60vh,560px)] w-full bg-black">
+                            <Cropper
+                                image={cropSource}
+                                crop={crop}
+                                zoom={zoom}
+                                aspect={16 / 9}
+                                onCropChange={setCrop}
+                                onZoomChange={setZoom}
+                                onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
+                            />
+                        </div>
+                        <label className="flex items-center gap-3 text-sm font-semibold text-black">
+                            Zoom
+                            <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={event => setZoom(Number(event.target.value))} className="flex-1 accent-red-700" />
+                            <span className="w-12 text-right tabular-nums">{zoom.toFixed(1)}×</span>
+                        </label>
+                        <div className="flex justify-end gap-3">
+                            <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>
+                            <button type="button" onClick={handleApplyCrop} disabled={!croppedAreaPixels} className="px-4 py-2 bg-red-700 text-sm font-semibold text-white disabled:opacity-50">Applica ritaglio</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

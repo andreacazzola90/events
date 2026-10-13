@@ -128,10 +128,12 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
     };
 
     const handleCameraClick = () => {
+        setShowSourcePicker(false);
         cameraInputRef.current?.click();
     };
 
     const handleGalleryClick = () => {
+        setShowSourcePicker(false);
         fileInputRef.current?.click();
     };
 
@@ -242,7 +244,10 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
 
             {/* Mobile Source Picker Modal */}
             {showSourcePicker && (
-                <div className="image-source-overlay fixed inset-0 flex items-end justify-center z-50 animate-fade-in">
+                <div
+                    className="image-source-overlay fixed inset-0 flex items-end justify-center z-50 animate-fade-in"
+                    onClick={event => event.stopPropagation()}
+                >
                     <div className="image-source-sheet bg-white w-full p-6 animate-slide-up">
                         <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6"></div>
 

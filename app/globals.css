@@ -509,8 +509,8 @@ button {
 }
 
 .editorial-container {
-  max-width: 1320px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
   padding: 0 clamp(1.25rem, 4vw, 4rem);
 }
 
@@ -1093,6 +1093,16 @@ button {
   gap: 1.25rem;
 }
 
+@media (min-width: 1280px) {
+  .event-list-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .event-list-grid .event-card-media {
+    width: 8rem;
+  }
+}
+
 .events-page .surface-panel {
   border: 0;
   background: transparent;
@@ -1111,13 +1121,17 @@ button {
 }
 
 @media (max-width: 639px) {
+  .events-page > .editorial-container {
+    padding-inline: 0.5rem;
+  }
+
   .event-list-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
   }
 
   .event-card-media {
-    height: 220px;
+    height: 7rem;
   }
 
   .event-card-body {

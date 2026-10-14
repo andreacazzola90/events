@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { gsap } from "gsap";
 import { generateUniqueSlug } from "../../lib/slug-utils";
+import { getEventStartTime } from "../../lib/event-display";
 import { TransitionLink } from "./TransitionLink";
 import { trackSearch } from "../lib/gtm";
 import { trackEvent } from "../lib/analytics";
@@ -653,8 +654,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
           mode === "quick"
             ? filteredEvents.slice(0, visibleCount)
             : filteredEvents;
-        const gridClasses =
-          "event-list-grid grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5";
+        const gridClasses = "event-list-grid grid gap-4 md:gap-5";
 
         return (
           <>
@@ -675,7 +675,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
                     className="event-card group flex items-stretch no-underline hover:no-underline bg-white transition-colors"
                   >
-                    <div className="event-card-body flex-1 min-w-0 p-4 md:p-5 space-y-3">
+                    <div className="event-card-body flex flex-1 min-w-0 flex-col gap-3 p-4 md:p-5">
                       <div className="space-y-2">
                         <h3 className="text-lg md:text-xl font-black text-black leading-tight line-clamp-2 transition-colors">
                           {cleanText(event.title)}
@@ -699,13 +699,11 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                               });
                             })()}
                           </span>
-                          {event.time &&
-                            event.time.trim().toLowerCase() !==
-                              "non trovato" && (
-                              <span className="text-black/40">
-                                • {event.time}
-                              </span>
-                            )}
+                          {getEventStartTime(event.time) && (
+                            <span className="text-black/40">
+                              • {getEventStartTime(event.time)}
+                            </span>
+                          )}
                         </div>
 
                         {event.location && (
@@ -724,7 +722,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                       </div>
 
                       {event.category && (
-                        <div className="pt-1">
+                        <div className="mt-auto pt-1">
                           <span
                             className={`inline-flex items-center px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
                           >

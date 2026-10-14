@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { Layers3, Menu, Plus, X } from "lucide-react";
 import { TransitionLink } from "./TransitionLink";
 import { AppIcon } from "./EventIcons";
+import SiteFeedbackWidget from "./SiteFeedbackWidget";
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -156,6 +157,7 @@ export default function Header() {
 
           <div className="hidden items-center gap-2 lg:flex">
             {renderInstallControl()}
+            <SiteFeedbackWidget />
             <TransitionLink
               href="/crea"
               className="industrial-link industrial-link-primary no-underline hover:no-underline"
@@ -165,6 +167,7 @@ export default function Header() {
           </div>
 
           <div className="relative flex items-center gap-2 lg:hidden" ref={mobileMenuRef}>
+            <SiteFeedbackWidget />
             <TransitionLink
               href="/crea"
               onClick={() => setIsMobileMenuOpen(false)}

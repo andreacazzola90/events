@@ -3,8 +3,7 @@ import Groq from 'groq-sdk';
 import type { EventData } from '../app/types/event';
 import { extractTextFromImage } from '../app/lib/ocr';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
-import { buildEventExtractionHints } from './event-hints';
-import { summarizePdfPages } from './pdf-text';
+import { extractPdfTitleCandidates, isNonEventPdfTitle, summarizePdfPages } from './pdf-text';
 
 export const MAX_EVENT_PDF_BYTES = 10 * 1024 * 1024;
 const MAX_PDF_PAGES = 50;
@@ -31,6 +30,7 @@ export async function processPdfEventDocument(
 
   const parser = new PDFParse({ data: pdfBytes, verbosity: 0 });
   let rawText = '';
+  let titleCandidates: string[] = [];
   let pageCount = 0;
   let previewImageDataUrl = '';
   let pdfTextSummarized = false;
@@ -44,9 +44,11 @@ export async function processPdfEventDocument(
       parser.getText({ first: MAX_PDF_PAGES }),
       parser.getScreenshot({ first: 3, desiredWidth: 1600, imageDataUrl: false }),
     ]);
-    const summarizedText = summarizePdfPages(textResult.pages.map(page => page.text || ''));
+    const pageTexts = textResult.pages.map(page => page.text || '');
+    const summarizedText = summarizePdfPages(pageTexts, 3000);
     pdfTextSummarized = summarizedText.summarized || pageCount > MAX_PDF_PAGES;
     rawText = summarizedText.text;
+    titleCandidates = extractPdfTitleCandidates(pageTexts).filter(title => !isNonEventPdfTitle(title));
 
     const firstPageImage = screenshotResult.pages[0]?.data;
     if (!firstPageImage?.length) throw new Error('Impossibile creare l’anteprima del PDF.');
@@ -75,8 +77,9 @@ export async function processPdfEventDocument(
           // Other pages can still provide usable text.
         }
       }
-      const summarizedOcrText = summarizePdfPages(recognizedPages);
+      const summarizedOcrText = summarizePdfPages(recognizedPages, 3000);
       rawText = summarizedOcrText.text;
+      titleCandidates = extractPdfTitleCandidates(recognizedPages).filter(title => !isNonEventPdfTitle(title));
       pdfTextSummarized = summarizedOcrText.summarized;
     }
   } finally {
@@ -88,7 +91,6 @@ export async function processPdfEventDocument(
   }
 
   const currentDate = new Date().toISOString().slice(0, 10);
-  const heuristicHints = buildEventExtractionHints(rawText);
   const groq = new Groq({ apiKey: process.env.GROQ_API_SECRET_KEY });
   const completion = await groq.chat.completions.create({
     model: 'openai/gpt-oss-20b',
@@ -99,30 +101,20 @@ export async function processPdfEventDocument(
       },
       {
         role: 'user',
-        content: `Estrai gli eventi da questo programma PDF. La data di riferimento è ${currentDate}.
+        content: `Crea un evento distinto per ogni titolo proprio nel seguente indice. Non raggruppare attività diverse della stessa giornata. Copia il titolo nel campo t. Usa il contesto pagina per assegnare data, ora, luogo e organizzatore; se un dato non è chiaro usa non trovato. La data di riferimento è ${currentDate}.
 
-REGOLE:
-- Restituisci {"events":[...]} anche quando trovi un solo evento.
-- Se il PDF descrive una rassegna o festival in date diverse, crea un evento distinto per ogni appuntamento.
-- Più sessioni o attività con lo stesso titolo e la stessa data fanno parte dello stesso evento.
-- Non inventare date, orari, prezzi, luoghi o organizzatori. Se non trovi un dato usa "non trovato".
-- Date in formato YYYY-MM-DD; ora in formato HH:MM.
-- Ogni evento deve avere title, description, date, time, location, organizer, category, price e rawText.
-- Mantieni rawText vuoto: il testo sorgente verrà associato dal sistema.
-- In description conserva i dettagli e i programmi utili dell’appuntamento.
-- Limita gli eventi a 50 e restituisci solo JSON valido.
+      Restituisci solo JSON compatto: {"events":[{"t":"titolo","d":"data YYYY-MM-DD o non trovato","h":"ora HH:MM o non trovato","l":"luogo o non trovato","o":"organizzatore o non trovato","c":"categoria o non trovato","p":"prezzo o non trovato","x":"descrizione breve"}]}.
 
-INDIZI:
-${heuristicHints}
+      TITOLI:
+      ${titleCandidates.map((title, index) => `${index + 1}. ${title}`).join('\n')}
 
-TESTO ESTRATTO DAL PDF:
-${rawText}
-`,
+      CONTESTO DELLE PAGINE:
+      ${rawText}`,
       },
     ],
-    response_format: { type: 'json_object' },
-    temperature: 0.1,
-    max_tokens: 1500,
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 5000,
     reasoning_effort: 'low',
   });
 
@@ -133,23 +125,23 @@ ${rawText}
 
   const parsed = JSON.parse(content.slice(first, last + 1)) as Record<string, unknown>;
   const eventList = Array.isArray(parsed.events) ? parsed.events : [parsed];
-  const events = eventList.slice(0, 50).flatMap((item): EventData[] => {
+  const events = eventList.slice(0, 100).flatMap((item): EventData[] => {
     if (!item || typeof item !== 'object') return [];
     const event = item as Record<string, unknown>;
-    const title = typeof event.title === 'string' ? event.title.trim().slice(0, 160) : '';
-    if (!title) return [];
+    const title = typeof (event.title ?? event.t) === 'string' ? String(event.title ?? event.t).trim().slice(0, 160) : '';
+    if (!title || isNonEventPdfTitle(title)) return [];
     const textValue = (value: unknown, fallback: string, max = 500) =>
       typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : fallback;
 
     return [{
       title,
-      description: textValue(event.description, 'non trovato', 5000),
-      date: textValue(event.date, 'non trovato', 40),
-      time: textValue(event.time, 'non trovato', 40),
-      location: textValue(event.location, 'non trovato', 300),
-      organizer: textValue(event.organizer, 'non trovato', 200),
-      category: textValue(event.category, 'non trovato', 100),
-      price: textValue(event.price, 'non definito, ma speriamo gratis', 100),
+      description: textValue(event.description ?? event.x, 'non trovato', 5000),
+      date: textValue(event.date ?? event.d, 'non trovato', 40),
+      time: textValue(event.time ?? event.h, 'non trovato', 40),
+      location: textValue(event.location ?? event.l, 'non trovato', 300),
+      organizer: textValue(event.organizer ?? event.o, 'non trovato', 200),
+      category: textValue(event.category ?? event.c, 'non trovato', 100),
+      price: textValue(event.price ?? event.p, 'non definito, ma speriamo gratis', 100),
       rawText,
       sourceUrl,
     }];

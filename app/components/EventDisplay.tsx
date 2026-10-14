@@ -36,6 +36,7 @@ interface EventDisplayProps {
     eventData: EventData;
     onSave?: (updatedData: EventData) => void;
     duplicate?: DuplicateMatch | null;
+    showPublishButton?: boolean;
 }
 
 const isMissing = (value?: string) => !value || !value.trim() || /^non trovato$/i.test(value.trim());
@@ -53,7 +54,7 @@ function formatDateLong(raw?: string): string {
 
 const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d1b] focus:outline-none focus:border-[#d65a38] transition-colors';
 
-export default function EventDisplay({ eventData, onSave, duplicate }: EventDisplayProps) {
+export default function EventDisplay({ eventData, onSave, duplicate, showPublishButton = true }: EventDisplayProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
@@ -536,7 +537,7 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                             >
                                 {isEditing ? 'Salva modifiche' : 'Modifica dettagli'}
                             </button>
-                            {!isEditing && (
+                            {!isEditing && showPublishButton && (
                                 <button
                                     type="button"
                                     onClick={handleAddEvent}

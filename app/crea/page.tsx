@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
+import { Send } from 'lucide-react';
 import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
@@ -58,6 +59,7 @@ export default function CreaEvento() {
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
     const [linkReceived, setLinkReceived] = useState(false);
+    const [isPublishingAll, setIsPublishingAll] = useState(false);
     const [duplicates, setDuplicates] = useState<(DuplicateMatch | null)[]>([]);
     const duplicateCheckId = useRef(0);
 
@@ -247,6 +249,23 @@ export default function CreaEvento() {
         } catch (error) {
             console.error('Error saving events:', error);
             throw error; // Re-throw to let the MultipleEventsEditor handle it
+        }
+    };
+
+    const handlePublishAllEvents = async () => {
+        const eventsToSave = events.filter((_, index) => !duplicates[index]);
+        if (!eventsToSave.length || isPublishingAll) return;
+
+        setIsPublishingAll(true);
+        setError(null);
+        try {
+            await handleSaveAll(eventsToSave);
+        } catch (publishError) {
+            const message = publishError instanceof Error ? publishError.message : 'Errore durante la pubblicazione degli eventi';
+            setError(message);
+            toast.error(message);
+        } finally {
+            setIsPublishingAll(false);
         }
     };
 
@@ -503,6 +522,20 @@ export default function CreaEvento() {
                             </div>
                         )}
 
+                        {events.length > 0 && (
+                            <div className="sticky top-16 z-30 flex justify-end border-b border-black/10 bg-[#f5f2ec]/95 py-3 backdrop-blur-sm">
+                                <button
+                                    type="button"
+                                    onClick={handlePublishAllEvents}
+                                    disabled={isPublishingAll || (duplicates.length === events.length && duplicates.every(Boolean))}
+                                    className="inline-flex min-h-11 items-center gap-2 bg-[#1d1d1b] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#d65a38] disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <Send className="h-4 w-4" aria-hidden="true" />
+                                    {isPublishingAll ? 'Pubblicazione…' : 'Pubblica tutti gli eventi'}
+                                </button>
+                            </div>
+                        )}
+
                         {/* Event Editing Interface */}
                         {events.length > 1 ? (
                             <MultipleEventsEditor
@@ -515,6 +548,7 @@ export default function CreaEvento() {
                             <EventDisplay
                                 eventData={events[0]}
                                 duplicate={duplicates[0]}
+                                showPublishButton={false}
                                 onSave={(updated) => {
                                     setEvents([updated]);
                                     checkDuplicates([updated]);

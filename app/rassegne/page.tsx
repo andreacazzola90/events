@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { Settings2 } from "lucide-react";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/admin-auth";
 
 export const metadata: Metadata = {
   title: "Rassegne ed eventi speciali | EventScanner",
@@ -10,18 +12,31 @@ export const metadata: Metadata = {
 export const revalidate = 60;
 
 export default async function EventSeriesIndexPage() {
-  const series = await prisma.eventSeries.findMany({
-    where: { isPublished: true },
-    include: { _count: { select: { events: true } } },
-    orderBy: { updatedAt: "desc" },
-  });
+  const [series, adminSession] = await Promise.all([
+    prisma.eventSeries.findMany({
+      where: { isPublished: true },
+      include: { _count: { select: { events: true } } },
+      orderBy: { updatedAt: "desc" },
+    }),
+    getAdminSession(),
+  ]);
 
   return (
     <main className="min-h-screen bg-[#f5f2ec] px-4 py-10 text-[#1d1d1b] md:px-8">
       <div className="mx-auto max-w-5xl">
-        <p className="mb-3 text-xs font-bold uppercase text-[#d65a38]">Alto Vicentino</p>
-        <h1 className="text-4xl font-black">Rassegne</h1>
-        <p className="mt-3 max-w-2xl text-base text-black/60">Festival e programmi raccolti in un unico calendario.</p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-3 text-xs font-bold uppercase text-[#d65a38]">Alto Vicentino</p>
+            <h1 className="text-4xl font-black">Rassegne</h1>
+            <p className="mt-3 max-w-2xl text-base text-black/60">Festival e programmi raccolti in un unico calendario.</p>
+          </div>
+          {adminSession?.user && (
+            <Link href="/admin/rassegne" className="inline-flex items-center gap-2 border border-black/20 px-4 py-2.5 text-sm font-bold text-[#1d1d1b] transition-colors hover:border-[#d65a38] hover:text-[#a33f24]">
+              <Settings2 className="h-4 w-4" aria-hidden="true" />
+              Gestisci rassegne
+            </Link>
+          )}
+        </div>
 
         {series.length ? (
           <ul className="mt-9 divide-y divide-black/10 border-y border-black/10 bg-white">

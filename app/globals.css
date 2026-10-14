@@ -1097,10 +1097,6 @@ button {
   .event-list-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-
-  .event-list-grid .event-card-media {
-    width: 8rem;
-  }
 }
 
 .events-page .surface-panel {

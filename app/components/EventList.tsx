@@ -721,18 +721,9 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                         )}
                       </div>
 
-                      {event.category && (
-                        <div className="mt-auto pt-1">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-1 text-[10px] uppercase tracking-[0.11em] font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
-                          >
-                            {event.category}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
-                    <div className="event-card-media relative overflow-hidden shrink-0 w-32 sm:w-44 lg:w-48 min-h-36">
+                    <div className="event-card-media relative overflow-hidden shrink-0">
                       <FavoriteButton
                         eventId={event.id}
                         initialIsFavorite={favoriteIds.has(event.id)}
@@ -747,7 +738,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                           width={400}
                           height={400}
                           className="event-card-image absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          sizes="(min-width: 640px) 192px, 128px"
+                          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 50vw"
                         />
                       ) : (
                         <div className="event-card-placeholder absolute inset-0 flex items-center justify-center">
@@ -757,16 +748,25 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                         </div>
                       )}
 
-                      {(() => {
-                        const label = getPriceLabel(event.price);
-                        return (
-                          <div
-                            className={`absolute bottom-2 right-2 z-10 px-2 py-1 text-[10px] uppercase tracking-[0.11em] font-bold ${getPriceBadgeClasses(label)}`}
+                      <div className="absolute bottom-2 inset-x-2 z-10 flex items-end justify-between gap-1 sm:gap-2">
+                        {event.category && (
+                          <span
+                            className={`min-w-0 break-words px-1.5 sm:px-2.5 py-1 text-[9px] sm:text-[10px] uppercase font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
                           >
-                            {label}
-                          </div>
-                        );
-                      })()}
+                            {event.category}
+                          </span>
+                        )}
+                        {(() => {
+                          const label = getPriceLabel(event.price);
+                          return (
+                            <div
+                              className={`ml-auto shrink-0 px-1.5 sm:px-2 py-1 text-[9px] sm:text-[10px] uppercase sm:tracking-[0.11em] font-bold ${getPriceBadgeClasses(label)}`}
+                            >
+                              {label}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </TransitionLink>
                 ))

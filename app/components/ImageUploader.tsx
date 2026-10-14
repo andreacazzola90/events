@@ -21,9 +21,10 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
 
     const processFile = async (file: File) => {
         if (file.size > 10 * 1024 * 1024) { // 10MB limit
-            onError('File size must be less than 10MB');
+            onError('La locandina deve pesare meno di 10 MB.');
             return;
         }
+        const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 
         // Mostra subito l'animazione di ricezione, poi passa allo stato di elaborazione
         setShowReceived(true);
@@ -31,11 +32,11 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
         setTimeout(() => setShowReceived(false), 1800);
 
         try {
-            const response = await fetch('/api/process-image', {
+            const response = await fetch(isPdf ? '/api/process-pdf' : '/api/process-image', {
                 method: 'POST',
                 body: (() => {
                     const formData = new FormData();
-                    formData.append('image', file);
+                    formData.append(isPdf ? 'document' : 'image', file);
                     return formData;
                 })(),
             });
@@ -54,7 +55,9 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                 throw new Error(data.error);
             }
 
-            const imageUrl = URL.createObjectURL(file);
+            const imageUrl = isPdf
+                ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
+                : URL.createObjectURL(file);
 
             // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
@@ -108,7 +111,8 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: {
-            'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp']
+            'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp'],
+            'application/pdf': ['.pdf'],
         },
         maxFiles: 1,
         noClick: true, // Disable click to show custom picker
@@ -205,7 +209,7 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,application/pdf,.pdf"
                     onChange={handleFileChange}
                     className="hidden"
                 />
@@ -232,7 +236,7 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                                     : "Aggiungi una locandina"}
                             </p>
                             <p className="image-upload-hint text-sm text-gray-500">
-                                Scatta una foto o scegli un’immagine · max 10 MB
+                                Scatta una foto o scegli un’immagine o PDF · max 10 MB
                             </p>
                             <p className="image-upload-hint text-sm text-gray-500 hidden md:block">
                                 Oppure incolla un’immagine con Ctrl/⌘ + V

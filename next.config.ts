@@ -47,7 +47,7 @@ const nextConfig = {
   turbopack: {},
   allowedDevOrigins: ["127.0.0.1"],
   compress: true,
-  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer", "tesseract.js", "sharp"],
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer", "tesseract.js", "sharp", "pdf-parse", "pdfjs-dist"],
   ...imagesConfig,
   async headers() {
     return [

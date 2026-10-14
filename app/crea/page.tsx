@@ -141,6 +141,9 @@ export default function CreaEvento() {
         setDebugInfo(debug);
         setProcessingSharedImage(false);
         setError(null);
+        if (debug?.pdfTextTruncated) {
+            toast.warning('Il PDF è lungo: l’AI ha analizzato solo una parte del testo. Controlla gli appuntamenti prima di salvare.');
+        }
         checkDuplicates(eventsWithImage);
     };
 
@@ -282,7 +285,14 @@ export default function CreaEvento() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondi - ottimizzato
 
-            const response = await fetch('/api/process-link', {
+            const isPdfLink = (() => {
+                try {
+                    return new URL(linkUrl).pathname.toLowerCase().endsWith('.pdf');
+                } catch {
+                    return false;
+                }
+            })();
+            const response = await fetch(isPdfLink ? '/api/process-pdf' : '/api/process-link', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: linkUrl }),
@@ -300,12 +310,22 @@ export default function CreaEvento() {
             const data = await response.json();
 
             if (data.events && data.events.length > 0) {
+                const pdfPreviewUrl = data.previewImageDataUrl
+                    ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
+                    : null;
                 // Normalizza i campi estratti
-                const normalized = data.events.map((ev: EventData) => normalizeEventFields(ev));
+                const normalized = data.events.map((ev: EventData) => normalizeEventFields({
+                    ...ev,
+                    imageUrl: ev.imageUrl || pdfPreviewUrl || undefined,
+                    sourceUrl: ev.sourceUrl || (isPdfLink ? linkUrl : ev.sourceUrl),
+                }));
                 setEvents(normalized);
-                setImageUrl(data.imageUrl || null);
+                setImageUrl(pdfPreviewUrl || data.imageUrl || null);
                 // Ora anche il flusso link ha debug (groq + google)
                 setDebugInfo(data.debug || null);
+                if (data.debug?.pdfTextTruncated) {
+                    toast.warning('Il PDF è lungo: l’AI ha analizzato solo una parte del testo. Controlla gli appuntamenti prima di salvare.');
+                }
                 setLinkUrl('');
                 checkDuplicates(normalized);
             } else {

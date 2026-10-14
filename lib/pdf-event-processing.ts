@@ -4,7 +4,7 @@ import type { EventData } from '../app/types/event';
 import { extractTextFromImage } from '../app/lib/ocr';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
 import { buildEventExtractionHints } from './event-hints';
-import { limitPdfPromptText } from './pdf-text';
+import { summarizePdfPages } from './pdf-text';
 
 export const MAX_EVENT_PDF_BYTES = 10 * 1024 * 1024;
 const MAX_PDF_PAGES = 50;
@@ -12,7 +12,7 @@ const MAX_PDF_PAGES = 50;
 export interface ProcessedPdfEventDocument {
   events: EventData[];
   previewImageDataUrl: string;
-  debug: { pdfPages: number; textLength: number; pdfTextTruncated: boolean };
+  debug: { pdfPages: number; textLength: number; pdfTextSummarized: boolean };
 }
 
 export async function processPdfEventDocument(
@@ -33,7 +33,7 @@ export async function processPdfEventDocument(
   let rawText = '';
   let pageCount = 0;
   let previewImageDataUrl = '';
-  let pdfTextTruncated = false;
+  let pdfTextSummarized = false;
 
   try {
     const info = await parser.getInfo();
@@ -44,9 +44,9 @@ export async function processPdfEventDocument(
       parser.getText({ first: MAX_PDF_PAGES }),
       parser.getScreenshot({ first: 3, desiredWidth: 1600, imageDataUrl: false }),
     ]);
-    const limitedText = limitPdfPromptText(textResult.text);
-    pdfTextTruncated = limitedText.truncated;
-    rawText = limitedText.text;
+    const summarizedText = summarizePdfPages(textResult.pages.map(page => page.text || ''));
+    pdfTextSummarized = summarizedText.summarized || pageCount > MAX_PDF_PAGES;
+    rawText = summarizedText.text;
 
     const firstPageImage = screenshotResult.pages[0]?.data;
     if (!firstPageImage?.length) throw new Error('Impossibile creare l’anteprima del PDF.');
@@ -75,9 +75,9 @@ export async function processPdfEventDocument(
           // Other pages can still provide usable text.
         }
       }
-      const limitedOcrText = limitPdfPromptText(recognizedPages.join('\n\n'));
-      rawText = limitedOcrText.text;
-      pdfTextTruncated = limitedOcrText.truncated;
+      const summarizedOcrText = summarizePdfPages(recognizedPages);
+      rawText = summarizedOcrText.text;
+      pdfTextSummarized = summarizedOcrText.summarized;
     }
   } finally {
     await parser.destroy();
@@ -160,6 +160,6 @@ ${rawText}
   return {
     events,
     previewImageDataUrl,
-    debug: { pdfPages: pageCount, textLength: rawText.length, pdfTextTruncated },
+    debug: { pdfPages: pageCount, textLength: rawText.length, pdfTextSummarized },
   };
 }

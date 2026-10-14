@@ -18,8 +18,8 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
     const saveLabel = saving
         ? 'Salvataggio...'
         : newEvents.length === events.length
-            ? 'Aggiungi tutti gli eventi'
-            : `Aggiungi ${newEvents.length} eventi nuovi`;
+            ? 'Pubblica tutti gli eventi'
+            : `Pubblica ${newEvents.length} eventi nuovi`;
 
     const handleEventChange = (index: number, updated: EventData) => {
         const next = events.map((ev, i) => (i === index ? updated : ev));
@@ -75,7 +75,7 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
                     disabled={saving || newEvents.length === 0}
                     className="px-6 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary text-white transition-all disabled:opacity-60"
                 >
-                    {saving ? 'Salvataggio...' : 'Aggiungi tutti gli eventi'}
+                    {saveLabel}
                 </button>
                 {onCancel && (
                     <button

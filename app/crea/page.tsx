@@ -10,7 +10,6 @@ import { DuplicateMatch, EventData } from '../types/event';
 import EventDisplay from '../components/EventDisplay';
 import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
-import DebugInfoDisplay from '../components/DebugInfoDisplay';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
 
@@ -59,7 +58,6 @@ export default function CreaEvento() {
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
     const [linkReceived, setLinkReceived] = useState(false);
-    const [debugInfo, setDebugInfo] = useState<any>(null);
     const [duplicates, setDuplicates] = useState<(DuplicateMatch | null)[]>([]);
     const duplicateCheckId = useRef(0);
 
@@ -93,7 +91,6 @@ export default function CreaEvento() {
     const resetEvents = () => {
         setEvents([]);
         setImageUrl(null);
-        setDebugInfo(null);
         setDuplicates([]);
     };
 
@@ -138,11 +135,10 @@ export default function CreaEvento() {
         console.log(`[handleNewEvents] Processati ${eventsWithImage.length} eventi`);
         setEvents(eventsWithImage);
         setImageUrl(newImageUrl);
-        setDebugInfo(debug);
         setProcessingSharedImage(false);
         setError(null);
-        if (debug?.pdfTextTruncated) {
-            toast.warning('Il PDF è lungo: l’AI ha analizzato solo una parte del testo. Controlla gli appuntamenti prima di salvare.');
+        if (debug?.pdfTextSummarized) {
+            toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
         }
         checkDuplicates(eventsWithImage);
     };
@@ -321,10 +317,8 @@ export default function CreaEvento() {
                 }));
                 setEvents(normalized);
                 setImageUrl(pdfPreviewUrl || data.imageUrl || null);
-                // Ora anche il flusso link ha debug (groq + google)
-                setDebugInfo(data.debug || null);
-                if (data.debug?.pdfTextTruncated) {
-                    toast.warning('Il PDF è lungo: l’AI ha analizzato solo una parte del testo. Controlla gli appuntamenti prima di salvare.');
+                if (data.debug?.pdfTextSummarized) {
+                    toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
                 }
                 setLinkUrl('');
                 checkDuplicates(normalized);
@@ -506,13 +500,6 @@ export default function CreaEvento() {
                                         <p className="text-[#5f5b56] leading-relaxed mb-0">{error}</p>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-
-                        {/* Debug Info Display */}
-                        {events.length > 0 && debugInfo && (
-                            <div className="animate-fadeInUp">
-                                <DebugInfoDisplay debugInfo={debugInfo} />
                             </div>
                         )}
 

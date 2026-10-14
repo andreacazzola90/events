@@ -9,6 +9,7 @@ import { STANDARD_CATEGORIES } from '../../lib/constants';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
+import { MAX_AI_INSTRUCTIONS_LENGTH } from '../../lib/ai-instructions';
 import SaveAnimation from './SaveAnimation';
 import { toast } from 'react-toastify';
 
@@ -61,6 +62,10 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
+    const [aiInstructions, setAiInstructions] = useState('');
+    const [isReprocessing, setIsReprocessing] = useState(false);
+    const [reprocessMessage, setReprocessMessage] = useState('');
+    const [reprocessError, setReprocessError] = useState('');
     const formRef = useRef<HTMLFormElement>(null);
     const cropPreviewUrls = useRef<string[]>([]);
 
@@ -156,28 +161,82 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
         </div>
     );
 
-    const handleSave = async () => {
-        if (!formRef.current) return;
+    const getEditedEvent = (): EventData | null => {
+        if (!formRef.current) return null;
         const form = formRef.current;
-        const updated: EventData = {
+        const readValue = (name: string) =>
+            (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | null)?.value || '';
+
+        return {
             ...eventData,
-            title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
-            date: (form.elements.namedItem('date') as HTMLInputElement)?.value || '',
-            time: (form.elements.namedItem('time') as HTMLInputElement)?.value || '',
-            location: (form.elements.namedItem('location') as HTMLInputElement)?.value || '',
-            category: (form.elements.namedItem('category') as HTMLInputElement)?.value || '',
-            organizer: (form.elements.namedItem('organizer') as HTMLInputElement)?.value || '',
-            price: (form.elements.namedItem('price') as HTMLInputElement)?.value || '',
-            description: (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '',
+            title: readValue('title'),
+            date: readValue('date'),
+            time: readValue('time'),
+            location: readValue('location'),
+            category: readValue('category'),
+            organizer: readValue('organizer'),
+            price: readValue('price'),
+            description: readValue('description'),
             imageUrl: imageUrl,
-            sourceUrl: (form.elements.namedItem('sourceUrl') as HTMLInputElement)?.value || eventData.sourceUrl,
-            rawText: eventData.rawText
+            sourceUrl: readValue('sourceUrl') || eventData.sourceUrl,
+            rawText: eventData.rawText,
         };
+    };
+
+    const handleSave = async () => {
+        const updated = getEditedEvent();
+        if (!updated) return;
 
         if (onSave) {
             // Chiama la callback del padre (usato in modalità editing)
             onSave(updated);
             setIsEditing(false);
+        }
+    };
+
+    const handleReprocessWithAi = async () => {
+        const currentEvent = getEditedEvent();
+        if (!currentEvent || !onSave || !aiInstructions.trim()) return;
+        const submittedInstructions = aiInstructions;
+
+        setIsReprocessing(true);
+        setReprocessError('');
+        setReprocessMessage('');
+        try {
+            const response = await fetch('/api/ai/reprocess-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event: currentEvent, aiInstructions }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.event) {
+                throw new Error(payload.error || 'Impossibile rielaborare l’evento.');
+            }
+
+            const latestEvent = getEditedEvent();
+            if (
+                !latestEvent ||
+                JSON.stringify(latestEvent) !== JSON.stringify(currentEvent) ||
+                aiInstructions !== submittedInstructions
+            ) {
+                setReprocessError('La bozza o le istruzioni sono cambiate durante la rielaborazione. Riprova per applicare il nuovo testo.');
+                return;
+            }
+
+            const updatedEvent = payload.event as EventData;
+            const form = formRef.current;
+            const fields = ['title', 'date', 'time', 'location', 'category', 'organizer', 'price', 'description', 'sourceUrl'] as const;
+            fields.forEach((field) => {
+                const input = form?.elements.namedItem(field) as HTMLInputElement | HTMLTextAreaElement | null;
+                if (input) input.value = updatedEvent[field] || '';
+            });
+            setImageUrl(updatedEvent.imageUrl);
+            onSave(updatedEvent);
+            setReprocessMessage('Bozza aggiornata dall’AI. Controlla i campi e salva le modifiche.');
+        } catch (error) {
+            setReprocessError(error instanceof Error ? error.message : 'Impossibile rielaborare l’evento.');
+        } finally {
+            setIsReprocessing(false);
         }
     };
 
@@ -435,6 +494,33 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                             )}
                         </div>
 
+                        {isEditing && onSave && (
+                            <section className="space-y-3 border-t border-black/10 pt-5">
+                                <label className="block text-sm font-semibold text-[#1d1d1b]">
+                                    Istruzioni per l’intelligenza artificiale
+                                    <textarea
+                                        value={aiInstructions}
+                                        onChange={(event) => setAiInstructions(event.target.value)}
+                                        maxLength={MAX_AI_INSTRUCTIONS_LENGTH}
+                                        rows={3}
+                                        placeholder="Es. È una rassegna: separa le date e usa il nome dello spettacolo nel titolo."
+                                        className={`${inputClass} mt-2 resize-y text-sm font-normal`}
+                                    />
+                                </label>
+                                <p className="mb-0 text-right text-xs text-[#5f5b56]">{aiInstructions.length}/{MAX_AI_INSTRUCTIONS_LENGTH}</p>
+                                <button
+                                    type="button"
+                                    onClick={handleReprocessWithAi}
+                                    disabled={isReprocessing || !aiInstructions.trim()}
+                                    className="inline-flex items-center gap-2 border border-[#1d1d1b] px-4 py-2 text-sm font-bold text-[#1d1d1b] transition-colors hover:bg-[#1d1d1b] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {isReprocessing ? 'Rielaborazione…' : 'Rielabora con AI'}
+                                </button>
+                                {reprocessMessage && <p role="status" className="mb-0 text-sm text-green-800">{reprocessMessage}</p>}
+                                {reprocessError && <p role="alert" className="mb-0 text-sm text-red-700">{reprocessError}</p>}
+                            </section>
+                        )}
+
                         <div className="event-actions flex flex-col-reverse sm:flex-row gap-3 pt-4 border-t border-black/10">
                             <button
                                 type="button"
@@ -445,7 +531,7 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                                         setIsEditing(true);
                                     }
                                 }}
-                                disabled={isSaving}
+                                disabled={isSaving || isReprocessing}
                                 className="event-edit-save-button btn btn-outline disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isEditing ? 'Salva modifiche' : 'Modifica dettagli'}
@@ -454,7 +540,7 @@ export default function EventDisplay({ eventData, onSave, duplicate }: EventDisp
                                 <button
                                     type="button"
                                     onClick={handleAddEvent}
-                                    disabled={isSaving || !!duplicate}
+                                    disabled={isSaving || isReprocessing || !!duplicate}
                                     title={duplicate ? 'Questo evento esiste già' : undefined}
                                     className="event-add-button btn btn-primary sm:ml-auto disabled:opacity-50 disabled:cursor-not-allowed"
                                 >

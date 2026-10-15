@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
+import { Heart } from 'lucide-react';
 
 interface FavoriteButtonProps {
     eventId: number;
@@ -94,12 +95,15 @@ export default function FavoriteButton({ eventId, initialIsFavorite, onToggle }:
             onClick={toggleFavorite}
             type="button"
             aria-label={isFavorite ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}
-            className="absolute top-3 left-3 z-10 rounded-full bg-black/50 hover:bg-black/70 text-white w-9 h-9 flex items-center justify-center shadow-md border border-white/30 backdrop-blur-sm"
+            aria-pressed={isFavorite}
+            className="absolute top-3 right-3 z-10 bg-transparent text-black flex items-center justify-center"
             disabled={loading}
         >
-            <span className={`text-lg transition-transform duration-150 ${loading ? 'opacity-50' : ''}`}>
-                {isFavorite ? '❤️' : '🤍'}
-            </span>
+            <Heart
+                className={`h-5 w-5 transition-transform duration-150 ${loading ? 'opacity-50' : ''}`}
+                fill={isFavorite ? 'currentColor' : 'none'}
+                aria-hidden="true"
+            />
         </button>
     );
 }

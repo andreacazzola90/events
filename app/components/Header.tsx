@@ -174,7 +174,7 @@ export default function Header() {
               aria-current={isActive("/crea") ? "page" : undefined}
               aria-label="Crea evento"
               title="Crea evento"
-              className="inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b] no-underline transition-colors hover:bg-[#1d1d1b] hover:text-white hover:no-underline"
+              className="header-icon-control inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b] no-underline transition-colors hover:no-underline"
             >
               <Plus className="h-5 w-5" aria-hidden="true" />
             </TransitionLink>
@@ -184,7 +184,7 @@ export default function Header() {
               aria-label={isMobileMenuOpen ? "Chiudi menu" : "Apri menu"}
               aria-expanded={isMobileMenuOpen}
               aria-controls="mobile-navigation-menu"
-              className="flex h-11 w-11 items-center justify-center border border-black/15 bg-white text-[#1d1d1b] transition-colors hover:border-[#d65a38] hover:text-[#a33f24]"
+              className="header-icon-control flex h-11 w-11 items-center justify-center border border-black/15 bg-white text-[#1d1d1b] transition-colors"
             >
               {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>

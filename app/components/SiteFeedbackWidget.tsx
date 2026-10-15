@@ -150,7 +150,7 @@ export default function SiteFeedbackWidget() {
         aria-controls={panelId}
         aria-label={isOpen ? 'Chiudi segnalazioni' : 'Invia una segnalazione'}
         title={isOpen ? 'Chiudi segnalazioni' : 'Invia una segnalazione'}
-        className="inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#171717] transition-colors hover:bg-[#171717] hover:text-white"
+        className="header-icon-control inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#171717] transition-colors"
       >
         {isOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <MessageSquareText className="h-5 w-5" aria-hidden="true" />}
       </button>

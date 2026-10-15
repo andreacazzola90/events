@@ -566,6 +566,13 @@ button {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+.header-icon-control:hover,
+.header-icon-control:focus-visible {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: #ffffff !important;
+}
+
 .desktop-nav-link {
   transition: color 0.2s ease, transform 0.2s ease;
 }

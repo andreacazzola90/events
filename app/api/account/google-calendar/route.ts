@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Collegamento Google Calendar non ancora configurato" }, { status: 503 });
     }
     try {
-      const client = getGoogleCalendarClient();
+      const client = getGoogleCalendarClient(request.nextUrl.origin);
       const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
       const state = randomBytes(32).toString("hex");
       const response = NextResponse.json({ url: client.generateAuthUrl({

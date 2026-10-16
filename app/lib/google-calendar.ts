@@ -19,12 +19,12 @@ export function isGoogleCalendarConfigured(): boolean {
     process.env.NEXTAUTH_URL && (process.env.GOOGLE_CALENDAR_TOKEN_SECRET_KEY || process.env.NEXTAUTH_SECRET_KEY));
 }
 
-export function getGoogleCalendarClient() {
+export function getGoogleCalendarClient(origin?: string) {
   if (!isGoogleCalendarConfigured()) throw new Error("Google Calendar non configurato");
   return new OAuth2Client({
     clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET_KEY,
-    redirectUri: new URL("/api/account/google-calendar/callback", process.env.NEXTAUTH_URL).toString(),
+    redirectUri: new URL("/api/account/google-calendar/callback", origin || process.env.NEXTAUTH_URL).toString(),
     transporterOptions: { timeout: 10_000, retry: false },
   });
 }

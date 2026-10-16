@@ -9,7 +9,7 @@ import {
 export async function GET(request: NextRequest) {
   return withAuth(async userId => {
     const finish = (status: string) => {
-      const response = NextResponse.redirect(new URL(`/account?googleCalendar=${status}`, process.env.NEXTAUTH_URL || request.nextUrl.origin));
+      const response = NextResponse.redirect(new URL(`/account?googleCalendar=${status}`, request.nextUrl.origin));
       response.cookies.set(GOOGLE_CALENDAR_COOKIE, "", {
         path: "/", maxAge: 0, httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
       });
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       if (request.nextUrl.searchParams.has("error")) return finish("denied");
       const code = request.nextUrl.searchParams.get("code");
       if (!code) return finish("denied");
-      const client = getGoogleCalendarClient();
+      const client = getGoogleCalendarClient(request.nextUrl.origin);
       const { tokens } = await client.getToken({ code, codeVerifier: saved.codeVerifier });
       const grantedScopes = tokens.scope?.split(" ") || [];
       if (!grantedScopes.includes(GOOGLE_CALENDAR_SCOPE) || !grantedScopes.includes(GOOGLE_CALENDAR_LIST_SCOPE)) {

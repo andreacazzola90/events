@@ -1,8 +1,8 @@
 
 'use client';
 
-import Cropper, { type Area, type Point } from 'react-easy-crop';
-import 'react-easy-crop/react-easy-crop.css';
+import { type Area } from 'react-easy-crop';
+import EventImageCropper from './EventImageCropper';
 import { DuplicateMatch, EventData } from '../types/event';
 import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
@@ -58,8 +58,6 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
-    const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
-    const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
@@ -96,8 +94,6 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     const handleOpenCropper = () => {
         if (!imageUrl) return;
         setCropSource(imageUrl);
-        setCrop({ x: 0, y: 0 });
-        setZoom(1);
         setCroppedAreaPixels(null);
     };
 
@@ -408,7 +404,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                 </label>
                                 {imageUrl && (
                                     <button type="button" onClick={handleOpenCropper} className="mt-3 block text-sm font-semibold text-red-700 underline underline-offset-4">
-                                        Ritaglia e regola zoom
+                                        Ritaglia immagine
                                     </button>
                                 )}
                             </div>
@@ -560,30 +556,17 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             />
             {cropSource && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="draft-cover-crop-title">
-                    <div className="w-full max-w-3xl space-y-4 bg-white p-4 sm:p-6">
+                    <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl space-y-4 overflow-y-auto bg-white p-4 sm:p-6">
                         <div className="flex items-start justify-between gap-4">
                             <div>
                                 <h2 id="draft-cover-crop-title" className="mb-1 text-xl font-bold text-black">Ritaglia copertina</h2>
-                                <p className="mb-0 text-sm text-gray-500">Trascina l’immagine e regola lo zoom.</p>
                             </div>
                             <button type="button" onClick={() => setCropSource(null)} className="px-3 py-2 text-sm font-semibold text-gray-700 underline">Chiudi</button>
                         </div>
-                        <div className="relative h-[min(60vh,560px)] w-full bg-black">
-                            <Cropper
-                                image={cropSource}
-                                crop={crop}
-                                zoom={zoom}
-                                aspect={16 / 9}
-                                onCropChange={setCrop}
-                                onZoomChange={setZoom}
-                                onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
-                            />
-                        </div>
-                        <label className="flex items-center gap-3 text-sm font-semibold text-black">
-                            Zoom
-                            <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={event => setZoom(Number(event.target.value))} className="flex-1 accent-red-700" />
-                            <span className="w-12 text-right tabular-nums">{zoom.toFixed(1)}×</span>
-                        </label>
+                        <EventImageCropper
+                            image={cropSource}
+                            onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
+                        />
                         <div className="flex justify-end gap-3">
                             <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>
                             <button type="button" onClick={handleApplyCrop} disabled={!croppedAreaPixels} className="px-4 py-2 bg-red-700 text-sm font-semibold text-white disabled:opacity-50">Applica ritaglio</button>

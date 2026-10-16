@@ -1230,6 +1230,22 @@ button {
   box-shadow: inset 0 3px 0 var(--accent);
 }
 
+.calendar-day.is-past {
+  border-color: rgba(29, 29, 27, 0.06);
+  background: #f1eee7;
+  color: #9a9892;
+  cursor: not-allowed;
+}
+
+.calendar-day.is-past .calendar-day-number {
+  color: #9a9892;
+  cursor: not-allowed;
+}
+
+.calendar-day.is-outside-month:not(.is-past) {
+  background: #f4f3f0;
+}
+
 .calendar-day-number { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; margin-bottom: 0.3rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
 .calendar-day-mobile-date { display: none; }
 .calendar-day.is-today .calendar-day-number { background: var(--accent); color: #fff; }

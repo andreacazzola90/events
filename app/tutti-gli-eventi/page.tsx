@@ -137,9 +137,6 @@ export default function TuttiGliEventiPage() {
 
   const today = calendarToday();
   const days = calendarDays(anchorDate, view);
-  const visibleDays = view === "month" && anchorDate.slice(0, 7) === today.slice(0, 7)
-    ? days.map(date => date && date < today ? null : date)
-    : days;
   const openDay = (date: string) => {
     focusDayRef.current = true;
     setAnchorDate(date);
@@ -187,24 +184,26 @@ export default function TuttiGliEventiPage() {
                   {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map(day => <div key={day} role="columnheader">{day}</div>)}
                 </div>
                 <div className="calendar-days">
-                  {Array.from({ length: visibleDays.length / 7 }, (_, row) => (
+                  {Array.from({ length: days.length / 7 }, (_, row) => (
                     <div key={row} role="row" className="calendar-month-row">
-                      {visibleDays.slice(row * 7, row * 7 + 7).map((date, index) => {
+                      {days.slice(row * 7, row * 7 + 7).map((date, index) => {
                         if (!date) return <div key={`empty-${index}`} role="cell" className="calendar-empty-day" aria-label="Fuori mese" />;
                         const dayEvents = eventsByDate.get(date) || [];
+                        const isPast = date < today;
+                        const isOutsideMonth = date.slice(0, 7) !== anchorDate.slice(0, 7);
                         return (
                           <div key={date} role="cell" data-date={date}
                             aria-label={`${calendarDateLabel(date)}, ${dayEvents.length} eventi`}
-                            className={`calendar-day ${dayEvents.length ? "has-events" : ""} ${date === today ? "is-today" : ""}`}
-                            onClick={event => { if (!(event.target as Element).closest("a,button")) openDay(date); }}>
-                            <button type="button" className="calendar-day-number" aria-label={`Apri ${calendarDateLabel(date)}`} onClick={() => openDay(date)}>
+                            className={`calendar-day ${dayEvents.length && !isPast ? "has-events" : ""} ${date === today ? "is-today" : ""} ${isPast ? "is-past" : ""} ${isOutsideMonth ? "is-outside-month" : ""}`}
+                            onClick={event => { if (!isPast && !(event.target as Element).closest("a,button")) openDay(date); }}>
+                            <button type="button" className="calendar-day-number" aria-label={`Apri ${calendarDateLabel(date)}`} onClick={() => openDay(date)} disabled={isPast}>
                               <span className="calendar-day-desktop-number">{Number(date.slice(-2))}</span>
                               <time className="calendar-day-mobile-date" dateTime={date}>{calendarDateLabel(date, { weekday: "short", day: "numeric", month: "short" })}</time>
                             </button>
                             <ul className="calendar-event-list">
-                              {dayEvents.slice(0, 3).map(event => <li key={event.id}><CalendarEventLink event={event} compact /></li>)}
+                              {!isPast && dayEvents.slice(0, 3).map(event => <li key={event.id}><CalendarEventLink event={event} compact /></li>)}
                             </ul>
-                            {dayEvents.length > 3 && <button type="button" className="calendar-more-events"
+                            {!isPast && dayEvents.length > 3 && <button type="button" className="calendar-more-events"
                               aria-haspopup="dialog" aria-label={`+${dayEvents.length - 3} ${dayEvents.length - 3 === 1 ? "evento" : "eventi"}`}
                               onClick={() => setPreviewDate(date)}>
                               +{dayEvents.length - 3}<span className="calendar-more-label"> {dayEvents.length - 3 === 1 ? "evento" : "eventi"}</span>

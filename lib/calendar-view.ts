@@ -11,13 +11,14 @@ export function calendarDays(anchor: string, view: CalendarView): (string | null
   const date = DateTime.fromISO(anchor, { zone: CALENDAR_ZONE });
   if (!date.isValid) return [];
   if (view === "month") {
-    const first = date.startOf("month");
-    const offset = first.weekday - 1;
-    const count = Math.ceil((offset + first.daysInMonth!) / 7) * 7;
-    return Array.from({ length: count }, (_, index) => {
-      const day = index - offset + 1;
-      return day > 0 && day <= first.daysInMonth! ? first.set({ day }).toISODate()! : null;
-    });
+    const today = DateTime.now().setZone(CALENDAR_ZONE).startOf("day");
+    const monthStart = date.startOf("month");
+    const first = date.hasSame(today, "month")
+      ? today.startOf("week")
+      : monthStart.startOf("week");
+    const daysToMonthEnd = Math.floor(monthStart.endOf("month").diff(first, "days").days) + 1;
+    const count = Math.ceil(daysToMonthEnd / 7) * 7;
+    return Array.from({ length: count }, (_, index) => first.plus({ days: index }).toISODate()!);
   }
   const first = view === "week" ? date.startOf("week") : date;
   const count = view === "week" ? 7 : view === "threeDays" ? 3 : 1;

@@ -87,22 +87,17 @@ export async function POST(request: NextRequest) {
       try {
         console.log('🔭 Starting vision model analysis...');
         const visionApiKey = process.env.OPENAI_API_SECRET_KEY;
-        const visionClient = visionApiKey
-          ? new OpenAI({ apiKey: visionApiKey, timeout: 15_000, maxRetries: 0 })
-          : groq;
-        const visionCompletion = await visionClient.chat.completions.create({
-          model: visionApiKey ? 'gpt-4o-mini' : 'meta-llama/llama-4-scout-17b-16e-instruct',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'image_url',
-                  image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
-                },
-                {
-                  type: 'text',
-                  text: `Sei un assistente esperto nell'analisi di volantini e poster di eventi.
+        const messages = [
+          {
+            role: 'user' as const,
+            content: [
+              {
+                type: 'image_url',
+                image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
+              },
+              {
+                type: 'text',
+                text: `Sei un assistente esperto nell'analisi di volantini e poster di eventi.
 Analizza questa immagine e fornisci:
 1. TRASCRIZIONE: Trascrivi TUTTO il testo visibile riga per riga, nell'ordine in cui appare
 2. STRUTTURA VISIVA: Descrivi il layout (sezioni, elementi separatori, gerarchia visiva)
@@ -110,14 +105,23 @@ Analizza questa immagine e fornisci:
 4. RITAGLIO LOCANDINA: Individua il rettangolo dell'intera locandina o immagine dell'evento, includendo tutti i suoi testi, loghi e margini interni. Escludi interfacce social, barre del telefono/browser, commenti, didascalie esterne e sfondi. Non ritagliare solo la fotografia decorativa all'interno del poster. Se l'immagine e gia una locandina intera, usa l'intera immagine. Se non e possibile identificare una sola locandina con sicurezza, usa null.
 Termina con una singola riga nel formato esatto POSTER_BOUNDS: {"x":0.1,"y":0.2,"width":0.8,"height":0.6,"confidence":0.95}, con coordinate normalizzate tra 0 e 1 rispetto all'immagine originale. Usa POSTER_BOUNDS: null se incerto.
 Rispondi in italiano. Sii preciso e completo.`,
-                },
-              ] as any,
-            },
-          ],
-          temperature: 0.1,
-          max_tokens: 2000,
-        });
-        const visionText = visionCompletion.choices[0]?.message?.content || '';
+              },
+            ] as any,
+          },
+        ];
+        const visionText = visionApiKey
+          ? (await new OpenAI({ apiKey: visionApiKey, timeout: 15_000, maxRetries: 0 }).chat.completions.create({
+              model: 'gpt-4o-mini',
+              messages,
+              temperature: 0.1,
+              max_tokens: 2000,
+            })).choices[0]?.message?.content || ''
+          : (await groq.chat.completions.create({
+              model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+              messages,
+              temperature: 0.1,
+              max_tokens: 2000,
+            })).choices[0]?.message?.content || '';
         console.log(`✅ Vision model analysis complete (${visionText.length} chars)`);
         return visionText;
       } catch (e) {

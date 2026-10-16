@@ -17,7 +17,9 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
     const newEvents = events.filter((_, i) => !duplicates[i]);
     const saveLabel = saving
         ? 'Salvataggio...'
-        : newEvents.length === events.length
+        : events.length === 1
+            ? 'Pubblica'
+            : newEvents.length === events.length
             ? 'Pubblica tutti gli eventi'
             : `Pubblica ${newEvents.length} eventi nuovi`;
 
@@ -43,17 +45,17 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
         <div className="space-y-8">
             {events.map((event, idx) => (
                 <div key={idx} className="border rounded-lg p-4 bg-white shadow">
-                    <EventDisplay eventData={event} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} />
+                    <EventDisplay eventData={event} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} showPublishButton={!saving} />
                 </div>
             ))}
             {error && <div className="text-red-500 font-semibold">{error}</div>}
 
             {/* Pulsanti in basso */}
-            <div className="flex gap-4 mt-6">
+            <div className="mt-6 flex items-center gap-2">
                 <button
                     onClick={handleSaveAll}
                     disabled={saving || newEvents.length === 0}
-                    className="px-6 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary text-white transition-all disabled:opacity-60"
+                    className="min-w-0 flex-1 rounded-full bg-linear-to-r from-primary via-accent to-secondary px-3 py-2 text-center text-sm font-bold text-white shadow-button transition-all disabled:opacity-60 sm:flex-none sm:px-6"
                 >
                     {saveLabel}
                 </button>
@@ -61,9 +63,10 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="px-6 py-2 rounded-full font-bold shadow-button bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all"
+                        disabled={saving}
+                        className="shrink-0 rounded-full px-2 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-sm"
                     >
-                        Annulla
+                        Torna indietro
                     </button>
                 )}
             </div>

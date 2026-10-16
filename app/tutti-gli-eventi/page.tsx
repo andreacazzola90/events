@@ -135,8 +135,11 @@ export default function TuttiGliEventiPage() {
     return grouped;
   }, [events]);
 
-  const days = calendarDays(anchorDate, view);
   const today = calendarToday();
+  const days = calendarDays(anchorDate, view);
+  const visibleDays = view === "month" && anchorDate.slice(0, 7) === today.slice(0, 7)
+    ? days.map(date => date && date < today ? null : date)
+    : days;
   const openDay = (date: string) => {
     focusDayRef.current = true;
     setAnchorDate(date);
@@ -184,9 +187,9 @@ export default function TuttiGliEventiPage() {
                   {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map(day => <div key={day} role="columnheader">{day}</div>)}
                 </div>
                 <div className="calendar-days">
-                  {Array.from({ length: days.length / 7 }, (_, row) => (
+                  {Array.from({ length: visibleDays.length / 7 }, (_, row) => (
                     <div key={row} role="row" className="calendar-month-row">
-                      {days.slice(row * 7, row * 7 + 7).map((date, index) => {
+                      {visibleDays.slice(row * 7, row * 7 + 7).map((date, index) => {
                         if (!date) return <div key={`empty-${index}`} role="cell" className="calendar-empty-day" aria-label="Fuori mese" />;
                         const dayEvents = eventsByDate.get(date) || [];
                         return (

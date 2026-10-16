@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { Send } from 'lucide-react';
+import { CalendarDays, CheckCircle2, CircleAlert, Clock3, Loader2, MapPin, Send } from 'lucide-react';
 import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
@@ -50,9 +50,13 @@ function normalizeEventFields(event: EventData): EventData {
     return { ...event, date, time, location };
 }
 
+type OptimisticEventStatus = 'pending' | 'created' | 'duplicate';
+type OptimisticEvent = { event: EventData; status: OptimisticEventStatus };
+
 export default function CreaEvento() {
     const router = useRouter();
     const [events, setEvents] = useState<EventData[]>([]);
+    const [optimisticEvents, setOptimisticEvents] = useState<OptimisticEvent[] | null>(null);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -93,9 +97,11 @@ export default function CreaEvento() {
 
     const resetEvents = () => {
         setEvents([]);
+        setOptimisticEvents(null);
         setImageUrl(null);
         setOriginalImageUrl(null);
         setDuplicates([]);
+        setError(null);
     };
 
     useEffect(() => {
@@ -154,11 +160,20 @@ export default function CreaEvento() {
 
 
     const handleSaveAll = async (eventsToSave: EventData[]) => {
+        if (eventsToSave.length === 0) return;
+
+        setError(null);
+        setOptimisticEvents(eventsToSave.map(event => ({ event: { ...event }, status: 'pending' })));
+        const updateOptimisticStatus = (eventIndex: number, status: OptimisticEventStatus) => {
+            setOptimisticEvents(current => current?.map((item, index) =>
+                index === eventIndex ? { ...item, status } : item
+            ) ?? null);
+        };
         try {
             let successfulSaves = 0;
             let firstSavedSlug: string | null = null;
 
-            for (const eventData of eventsToSave) {
+            for (const [eventIndex, eventData] of eventsToSave.entries()) {
                 // Se c'è un'immagine blob, carica con FormData
                 if (eventData.imageUrl && eventData.imageUrl.startsWith('blob:')) {
                     const response = await fetch(eventData.imageUrl);
@@ -178,11 +193,12 @@ export default function CreaEvento() {
                             if (saveResponse.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
                                 message = body?.message || 'Questo evento è già stato creato.';
                                 toast.info(message);
+                                updateOptimisticStatus(eventIndex, 'duplicate');
                                 console.warn('[Crea] Duplicate event skipped in batch save:', message);
                                 continue;
                             }
-                            if (body?.message || body?.error) {
-                                message = body.message || body.error;
+                            if (body?.message || body?.details || body?.error) {
+                                message = body.message || body.details || body.error;
                             }
                         } catch {
                             // ignore JSON parse errors, use default message
@@ -193,6 +209,7 @@ export default function CreaEvento() {
                     // Track event creation
                     const savedEvent = await saveResponse.json();
                     successfulSaves += 1;
+                    updateOptimisticStatus(eventIndex, 'created');
                     if (!firstSavedSlug && savedEvent?.slug) {
                         firstSavedSlug = savedEvent.slug;
                     }
@@ -214,11 +231,12 @@ export default function CreaEvento() {
                             if (response.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
                                 message = body?.message || 'Questo evento è già stato creato.';
                                 toast.info(message);
+                                updateOptimisticStatus(eventIndex, 'duplicate');
                                 console.warn('[Crea] Duplicate event skipped in batch save (JSON):', message);
                                 continue;
                             }
-                            if (body?.message || body?.error) {
-                                message = body.message || body.error;
+                            if (body?.message || body?.details || body?.error) {
+                                message = body.message || body.details || body.error;
                             }
                         } catch {
                             // ignore JSON parse errors, use default message
@@ -229,6 +247,7 @@ export default function CreaEvento() {
                     // Track event creation
                     const savedEvent = await response.json();
                     successfulSaves += 1;
+                    updateOptimisticStatus(eventIndex, 'created');
                     if (!firstSavedSlug && savedEvent?.slug) {
                         firstSavedSlug = savedEvent.slug;
                     }
@@ -236,7 +255,13 @@ export default function CreaEvento() {
                     trackEvent('event_create', 'Events', eventData.title);
                 }
             }
-            console.log(`Successfully saved ${eventsToSave.length} events`);
+            if (successfulSaves === 0) {
+                throw new Error('Nessun nuovo evento è stato creato: gli eventi risultano già presenti.');
+            }
+            console.log(`Successfully saved ${successfulSaves} events`);
+            if (successfulSaves > 0) {
+                toast.success(successfulSaves === 1 ? 'Evento creato' : `${successfulSaves} eventi creati`);
+            }
 
             // Clear service worker cache
             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -255,6 +280,7 @@ export default function CreaEvento() {
             }
         } catch (error) {
             console.error('Error saving events:', error);
+            setOptimisticEvents(null);
             throw error; // Re-throw to let the MultipleEventsEditor handle it
         }
     };
@@ -529,16 +555,65 @@ export default function CreaEvento() {
                             </div>
                         )}
 
-                        {events.length > 0 && (
-                            <div className="sticky top-16 z-30 flex justify-end border-b border-black/10 bg-[#f5f2ec]/95 py-3 backdrop-blur-sm">
+                        {optimisticEvents && (
+                            <section aria-label="Eventi in pubblicazione" className="mb-6 space-y-3" aria-live="polite">
+                                {optimisticEvents.map(({ event, status }, index) => (
+                                    <article
+                                        key={`${event.title}-${event.date}-${index}`}
+                                        className="rounded-md border border-[#d65a38]/30 bg-white p-4 shadow-sm"
+                                    >
+                                        <div className={`flex items-center gap-2 text-sm font-semibold ${status === 'created' ? 'text-green-700' : 'text-[#8f3823]'}`}>
+                                            {status === 'created'
+                                                ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                                                : status === 'duplicate'
+                                                    ? <CircleAlert className="h-4 w-4" aria-hidden="true" />
+                                                    : <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                                            <span>{status === 'created' ? 'Evento creato' : status === 'duplicate' ? 'Evento già presente' : 'Pubblicazione in corso'}</span>
+                                        </div>
+                                        <h2 className="mt-2 text-lg font-bold text-[#1d1d1b]">{event.title}</h2>
+                                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-[#5f5b56]">
+                                            {event.date && event.date !== 'non trovato' && (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                                                    {event.date}
+                                                </span>
+                                            )}
+                                            {event.time && event.time !== 'non trovato' && (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <Clock3 className="h-4 w-4" aria-hidden="true" />
+                                                    {event.time}
+                                                </span>
+                                            )}
+                                            {event.location && event.location !== 'non trovato' && (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <MapPin className="h-4 w-4" aria-hidden="true" />
+                                                    {event.location}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </article>
+                                ))}
+                            </section>
+                        )}
+
+                        {events.length === 1 && (
+                            <div className="sticky top-16 z-30 flex items-center justify-between gap-2 border-b border-black/10 bg-[#f5f2ec]/95 py-3 backdrop-blur-sm">
+                                <button
+                                    type="button"
+                                    onClick={resetEvents}
+                                    disabled={isPublishingAll}
+                                    className="shrink-0 rounded-full px-2 py-1.5 text-xs font-medium text-black/60 transition-colors hover:bg-black/5 hover:text-black disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
+                                >
+                                    Torna indietro
+                                </button>
                                 <button
                                     type="button"
                                     onClick={handlePublishAllEvents}
                                     disabled={isPublishingAll || (duplicates.length === events.length && duplicates.every(Boolean))}
-                                    className="inline-flex min-h-11 items-center gap-2 bg-[#1d1d1b] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#d65a38] disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 bg-[#1d1d1b] px-2 py-3 text-xs font-bold text-white transition-colors hover:bg-[#d65a38] disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-5 sm:text-sm"
                                 >
                                     <Send className="h-4 w-4" aria-hidden="true" />
-                                    {isPublishingAll ? 'Pubblicazione…' : 'Pubblica tutti gli eventi'}
+                                    {isPublishingAll ? 'Pubblicazione…' : events.length === 1 ? 'Pubblica' : 'Pubblica tutti gli eventi'}
                                 </button>
                             </div>
                         )}
@@ -550,6 +625,7 @@ export default function CreaEvento() {
                                 duplicates={duplicates}
                                 onEventsChange={checkDuplicates}
                                 onSaveAll={handleSaveAll}
+                                onCancel={resetEvents}
                             />
                         ) : events.length === 1 ? (
                             <EventDisplay

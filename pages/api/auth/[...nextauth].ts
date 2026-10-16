@@ -83,13 +83,27 @@ export const authOptions: any = {
     error: '/auth/error',
   },
   callbacks: {
-    async jwt({ token, user }: any) {
+    async jwt({ token, user, trigger }: any) {
       if (user) {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
         token.role = user.role;
         token.type = user.type || user.role || 'user';
+      }
+      if (trigger === 'update' && token.id) {
+        const userId = Number(token.id);
+        if (Number.isInteger(userId)) {
+          try {
+            const currentUser = await prisma.user.findUnique({
+              where: { id: userId },
+              select: { name: true },
+            });
+            if (currentUser) token.name = currentUser.name;
+          } catch (error) {
+            console.error('[NextAuth] Failed to refresh the session name:', error);
+          }
+        }
       }
       return token;
     },

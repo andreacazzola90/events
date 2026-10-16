@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Link2, LoaderCircle, Unlink } from "lucide-react";
+import { Check, Link2, LoaderCircle, Pencil, Unlink, X } from "lucide-react";
 import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { groupEventsByScanOriginAndDate } from "../../lib/event-scan-groups";
@@ -23,11 +23,16 @@ type AccountTab =
   | "admin";
 
 export default function AccountPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update: updateSession } = useSession();
   const router = useRouter();
   const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
   const [favoriteEvents, setFavoriteEvents] = useState<UserEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileName, setProfileName] = useState("");
+  const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [instagramStoryResult, setInstagramStoryResult] = useState<any | null>(
     null,
   );
@@ -59,6 +64,35 @@ export default function AccountPage() {
   const [googleCalendarBusy, setGoogleCalendarBusy] = useState(false);
   const [savingGoogleCalendar, setSavingGoogleCalendar] = useState(false);
   const [calendarSettingsLoaded, setCalendarSettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const sessionName = session.user?.name || "";
+    setProfileLoaded(false);
+    setProfileName(sessionName);
+    setProfileNameDraft(sessionName);
+    fetch("/api/account/profile")
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Impossibile caricare il profilo");
+        return payload;
+      })
+      .then((profile) => {
+        if (cancelled) return;
+        setProfileName(profile.name || "");
+        setProfileNameDraft(profile.name || "");
+        setProfileLoaded(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setProfileLoaded(true);
+        toast.error(error instanceof Error ? error.message : "Impossibile caricare il profilo");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -215,6 +249,30 @@ export default function AccountPage() {
   const handleLogout = async () => {
     await signOut({ redirect: false });
     router.push("/");
+  };
+
+  const handleSaveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingProfile(true);
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: profileNameDraft }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Impossibile aggiornare il profilo");
+
+      setProfileName(payload.name || "");
+      setProfileNameDraft(payload.name || "");
+      setEditingProfile(false);
+      await updateSession();
+      toast.success("Profilo aggiornato");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Problema di connessione, riprova.");
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const isAdmin =
@@ -591,17 +649,55 @@ export default function AccountPage() {
                   Il tuo <span className="site-brand-accent">profilo.</span>
                 </h1>
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
-                      <span className="text-xl">👤</span>
+                  {editingProfile ? (
+                    <form onSubmit={handleSaveProfile} className="max-w-xl space-y-3">
+                      <label className="block text-sm font-medium text-gray-300" htmlFor="profile-name">
+                        Nome
+                        <input
+                          id="profile-name"
+                          name="profileName"
+                          type="text"
+                          autoComplete="name"
+                          maxLength={100}
+                          required
+                          value={profileNameDraft}
+                          onChange={(event) => setProfileNameDraft(event.target.value)}
+                          disabled={savingProfile}
+                          className="account-input mt-1 w-full border px-3 py-2 text-base"
+                        />
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="submit" disabled={savingProfile} className="btn btn-primary inline-flex items-center gap-2 disabled:opacity-50">
+                          <Check size={16} aria-hidden="true" />
+                          {savingProfile ? "Salvataggio..." : "Salva profilo"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingProfile}
+                          onClick={() => {
+                            setProfileNameDraft(profileName);
+                            setEditingProfile(false);
+                          }}
+                          className="btn btn-outline inline-flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <X size={16} aria-hidden="true" />
+                          Annulla
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
+                        <span className="text-xl">👤</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 text-sm">Nome</span>
+                        <p className="text-white font-semibold text-lg mb-0">
+                          {profileName || "Non disponibile"}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-gray-400 text-sm">Nome</span>
-                      <p className="text-white font-semibold text-lg mb-0">
-                        {session.user?.name || "Non disponibile"}
-                      </p>
-                    </div>
-                  </div>
+                  )}
                   <div className="flex items-center gap-3">
                     <div className="account-profile-icon w-10 h-10 flex items-center justify-center">
                       <span className="text-xl">📧</span>
@@ -646,6 +742,20 @@ export default function AccountPage() {
                 >
                   ✨ Crea evento
                 </button>
+                {!editingProfile && (
+                  <button
+                    type="button"
+                    disabled={!profileLoaded}
+                    onClick={() => {
+                      setProfileNameDraft(profileName);
+                      setEditingProfile(true);
+                    }}
+                    className="btn btn-outline inline-flex items-center justify-center gap-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Pencil size={16} aria-hidden="true" />
+                    Modifica profilo
+                  </button>
+                )}
                 <button
                   onClick={handleLogout}
                   className="btn btn-outline btn-secondary btn-lg inline-flex items-center gap-3 font-bold text-lg"

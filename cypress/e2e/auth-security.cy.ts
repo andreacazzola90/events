@@ -200,6 +200,85 @@ describe('Auth Security - Login', () => {
   });
 });
 
+describe('Auth Security - Profile editing', () => {
+  const email = `cypress.profile.test+${Date.now()}@example.com`;
+  const password = 'SuperSegreta123';
+
+  before(() => {
+    cy.task('db:seedUser', { email, password });
+  });
+
+  after(() => {
+    cy.task('db:deleteUser', email);
+  });
+
+  beforeEach(() => {
+    cy.login(email, password);
+  });
+
+  it('updates the signed-in user name and ignores email changes', () => {
+    cy.request({
+      method: 'PUT',
+      url: '/api/account/profile',
+      body: { name: 'Nome aggiornato', email: 'altro.utente@example.com' },
+    }).then((response) => {
+      expect(response.status).to.eq(200);
+      expect(response.body.name).to.eq('Nome aggiornato');
+      expect(response.body.email).to.eq(email);
+    });
+
+    cy.request('/api/account/profile').then((response) => {
+      expect(response.body.name).to.eq('Nome aggiornato');
+      expect(response.body.email).to.eq(email);
+    });
+  });
+
+  it('rejects an empty profile name', () => {
+    cy.request({
+      method: 'PUT',
+      url: '/api/account/profile',
+      body: { name: '   ' },
+      failOnStatusCode: false,
+    }).then((response) => {
+      expect(response.status).to.eq(400);
+    });
+  });
+
+  it('allows editing the name from /me without making the email editable', () => {
+    cy.visit('/me');
+    cy.get('.account-profile-card').invoke('text').then((text) => {
+      const createIndex = text.indexOf('Crea evento');
+      const editIndex = text.indexOf('Modifica profilo');
+      const logoutIndex = text.indexOf('Esci');
+      expect(createIndex).to.be.greaterThan(-1);
+      expect(editIndex).to.be.greaterThan(createIndex);
+      expect(logoutIndex).to.be.greaterThan(editIndex);
+    });
+    cy.contains('button', 'Modifica profilo').should('be.enabled').click();
+    cy.get('input[name="profileName"]').clear().type('Nome modificato dalla schermata');
+    cy.get('input[name="profileEmail"]').should('not.exist');
+    cy.contains('button', 'Salva profilo').click();
+
+    cy.contains('Nome modificato dalla schermata').should('be.visible');
+    cy.contains(email).should('be.visible');
+    cy.request('/api/auth/session')
+      .its('body.user.name')
+      .should('eq', 'Nome modificato dalla schermata');
+  });
+
+  it('requires an authenticated session to update a profile', () => {
+    cy.clearCookies();
+    cy.request({
+      method: 'PUT',
+      url: '/api/account/profile',
+      body: { name: 'Nome non autorizzato' },
+      failOnStatusCode: false,
+    }).then((response) => {
+      expect(response.status).to.eq(401);
+    });
+  });
+});
+
 describe('Auth Security - Password recovery', () => {
   it('returns the same generic message for existing and non-existing accounts', () => {
     cy.visit('/auth?mode=forgot', { failOnStatusCode: false });

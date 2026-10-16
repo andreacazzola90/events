@@ -6,6 +6,7 @@ import EventImageCropper from './EventImageCropper';
 import { DuplicateMatch, EventData } from '../types/event';
 import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
+import EventCategoryIcon from './EventCategoryIcon';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
@@ -425,7 +426,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                 </label>
                             ) : !isMissing(eventData.category) && (
                                 <span className="event-category inline-flex items-center gap-1.5 bg-[#f4d9d3] text-[#8f3823] px-3 py-1 text-xs font-bold uppercase tracking-wider">
-                                    <TagIcon className="w-3.5 h-3.5" />
+                                    <EventCategoryIcon category={eventData.category} className="w-3.5 h-3.5" />
                                     {eventData.category}
                                 </span>
                             )}

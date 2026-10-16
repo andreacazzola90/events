@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import {
   MapContainer,
   TileLayer,
@@ -14,6 +22,11 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DbEvent } from "../../app/types/event";
 import { AppIcon } from "./EventIcons";
+import EventCategoryIcon from "./EventCategoryIcon";
+import { STANDARD_CATEGORIES } from "../../lib/constants";
+import { parseEventDate } from "../../lib/calendar-ics";
+import { calendarToday } from "../../lib/calendar-view";
+import { generateUniqueSlug } from "../../lib/slug-utils";
 
 // Fix for default marker icons in Leaflet with Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -62,6 +75,33 @@ const isValidLatLngTuple = (
 };
 
 const DEFAULT_MAP_CENTER: [number, number] = [45.7175, 11.3593];
+type MapDateFilter = "upcoming" | "today" | "tomorrow" | "weekend" | "week" | "custom";
+
+function toDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getDateRange(filter: Exclude<MapDateFilter, "upcoming" | "custom">, today: string) {
+  const start = new Date(`${today}T12:00:00`);
+  if (filter === "tomorrow") start.setDate(start.getDate() + 1);
+  if (filter === "week") {
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return { start: toDateKey(start), end: toDateKey(end) };
+  }
+  if (filter === "weekend") {
+    if (start.getDay() !== 0 && start.getDay() !== 6) {
+      start.setDate(start.getDate() + (6 - start.getDay()));
+    }
+    const end = new Date(start);
+    if (start.getDay() === 6) end.setDate(end.getDate() + 1);
+    return { start: toDateKey(start), end: toDateKey(end) };
+  }
+  return { start: toDateKey(start), end: toDateKey(start) };
+}
 
 // Component to control map view
 function MapController({
@@ -155,6 +195,13 @@ export default function EventMap() {
   const [mapZoom, setMapZoom] = useState(14);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [isEventListOpen, setIsEventListOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState<MapDateFilter>("upcoming");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [organizerFilter, setOrganizerFilter] = useState("");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   // Geographic filter state
   const [filterCity, setFilterCity] = useState("");
@@ -247,28 +294,43 @@ export default function EventMap() {
     return R * c;
   }
 
-  function filterEventsByDistance() {
-    if (!userLocation || maxDistance === null) {
-      // No filter active, show all events
-      setEvents(allEvents);
-      return;
-    }
-
+  function filterEvents() {
+    const today = calendarToday();
+    const needle = searchQuery.trim().toLocaleLowerCase("it");
     const filtered = allEvents.filter((event) => {
       const coords: [unknown, unknown] = [event.lat, event.lng];
-      if (!isValidLatLngTuple(coords)) return false;
-      const distance = calculateDistance(
-        userLocation.lat,
-        userLocation.lng,
-        coords[0],
-        coords[1],
-      );
-      return distance <= maxDistance;
+      if (userLocation && maxDistance !== null) {
+        if (!isValidLatLngTuple(coords)) return false;
+        const distance = calculateDistance(
+          userLocation.lat,
+          userLocation.lng,
+          coords[0],
+          coords[1],
+        );
+        if (distance > maxDistance) return false;
+      }
+
+      const searchableText = [event.title, event.description, event.location]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("it");
+      if (needle && !searchableText.includes(needle)) return false;
+      if (categoryFilter && event.category !== categoryFilter) return false;
+      if (organizerFilter && !(event.organizer || "").toLocaleLowerCase("it").includes(organizerFilter.toLocaleLowerCase("it"))) return false;
+
+      const date = parseEventDate(event.date);
+      if (!date) return false;
+      const eventDate = `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+      if (dateFilter === "upcoming" && eventDate < today) return false;
+      if (dateFilter !== "upcoming" && dateFilter !== "custom") {
+        const range = getDateRange(dateFilter, today);
+        if (eventDate < range.start || eventDate > range.end) return false;
+      }
+      if (dateFrom && eventDate < dateFrom) return false;
+      if (dateTo && eventDate > dateTo) return false;
+      return true;
     });
 
-    console.log(
-      `[EventMap] Filtered ${filtered.length}/${allEvents.length} events within ${maxDistance}km`,
-    );
     setEvents(filtered);
   }
 
@@ -278,8 +340,8 @@ export default function EventMap() {
 
   // Filter events when location or distance changes
   useEffect(() => {
-    filterEventsByDistance();
-  }, [allEvents, userLocation, maxDistance]);
+    filterEvents();
+  }, [allEvents, userLocation, maxDistance, searchQuery, categoryFilter, dateFilter, dateFrom, dateTo, organizerFilter]);
 
   // Disable Leaflet keyboard handling for input fields
   useEffect(() => {
@@ -374,11 +436,20 @@ export default function EventMap() {
     setUserLocation(null);
     setMaxDistance(null);
     setFilterCity("");
-    setEvents(allEvents);
 
     // Reset map center to Schio
     setMapCenter(DEFAULT_MAP_CENTER);
     setMapZoom(14);
+  };
+
+  const handleClearSearchFilters = () => {
+    setSearchQuery("");
+    setCategoryFilter("");
+    setDateFilter("upcoming");
+    setDateFrom("");
+    setDateTo("");
+    setOrganizerFilter("");
+    handleClearFilter();
   };
 
   // Cache in-memory per la geocodifica
@@ -463,6 +534,7 @@ export default function EventMap() {
       setMapCenter(coords);
       setMapZoom(16);
       setSelectedEventId(event.id);
+      setIsEventListOpen(false);
     }
   };
 
@@ -487,7 +559,7 @@ export default function EventMap() {
     );
   }
 
-  if (events.length === 0) {
+  if (allEvents.length === 0) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-[#f5f2ec]">
         <div className="text-center">
@@ -548,7 +620,7 @@ export default function EventMap() {
                       />
                     )}
                     <h3 className="font-bold text-lg mb-1">
-                      <Link href={`/events/${event.id}`} className="hover:text-[#d65a38]">
+                      <Link href={`/events/${generateUniqueSlug(event.title, event.id)}`} className="hover:text-[#d65a38]">
                         {event.title}
                       </Link>
                     </h3>
@@ -573,7 +645,7 @@ export default function EventMap() {
                       </p>
                     </div>
                     <a
-                      href={`/events/${event.id}`}
+                      href={`/events/${generateUniqueSlug(event.title, event.id)}`}
                       className="mt-3 block text-center bg-[#1d1d1b] text-white px-4 py-2 rounded-none hover:bg-[#d65a38] transition-colors"
                     >
                       Vedi Dettagli
@@ -586,7 +658,7 @@ export default function EventMap() {
         </MapContainer>
       </div>
 
-      <div className={`event-map-legend absolute bottom-3 left-3 right-3 z-[500] flex flex-col overflow-hidden bg-[#fffdf9]/95 shadow-[0_20px_50px_rgba(29,29,27,0.08)] backdrop-blur-xl ${isEventListOpen ? "h-[72dvh]" : "h-auto"} sm:bottom-6 sm:left-6 sm:right-auto sm:top-6 sm:w-[420px]`}>
+      <div className={`event-map-legend ${isEventListOpen ? "is-open h-[72dvh]" : "is-closed h-auto"} absolute bottom-3 left-3 right-3 z-[500] flex flex-col overflow-hidden bg-[#fffdf9]/95 shadow-[0_20px_50px_rgba(29,29,27,0.08)] backdrop-blur-xl sm:bottom-6 sm:left-6 sm:right-auto sm:top-6 sm:w-[360px]`}>
         <div className="sticky top-0 z-20 shrink-0 space-y-4 border-b border-black/10 bg-white p-4 sm:p-5">
           <div className="flex items-center justify-between">
             <div>
@@ -624,6 +696,113 @@ export default function EventMap() {
           </div>
 
           <div className={`${isEventListOpen ? "block" : "hidden"} space-y-3 sm:block`}>
+            <label className="flex items-center gap-2 border border-black/10 bg-white px-3">
+              <Search className="h-4 w-4 shrink-0 text-[#d65a38]" aria-hidden="true" />
+              <input
+                type="search"
+                placeholder="Cerca eventi per titolo, descrizione o luogo"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                aria-label="Cerca eventi per titolo, descrizione o luogo"
+                className="min-w-0 flex-1 py-2.5 text-sm text-[#1d1d1b] placeholder:text-[#7a756f] focus:outline-none"
+              />
+            </label>
+
+            <label className="flex items-center gap-2 border border-black/10 bg-white px-3">
+              <EventCategoryIcon category={categoryFilter} className="h-4 w-4 shrink-0 text-[#d65a38]" />
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                aria-label="Filtra per categoria"
+                className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-[#1d1d1b] focus:outline-none"
+              >
+                <option value="">Tutte le categorie</option>
+                {STANDARD_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{category.charAt(0).toUpperCase() + category.slice(1)}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex gap-1 overflow-x-auto pb-1" role="group" aria-label="Periodo eventi">
+              {([
+                { value: "upcoming", label: "Prossimi" },
+                { value: "today", label: "Oggi" },
+                { value: "tomorrow", label: "Domani" },
+                { value: "weekend", label: "Weekend" },
+                { value: "week", label: "7 giorni" },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={dateFilter === option.value}
+                  onClick={() => {
+                    setDateFilter(option.value);
+                    setDateFrom("");
+                    setDateTo("");
+                  }}
+                  className={`shrink-0 px-2.5 py-1.5 text-[10px] font-bold transition-colors ${dateFilter === option.value ? "bg-[#1d1d1b] text-white" : "bg-[#f1eee7] text-[#1d1d1b] hover:bg-[#e8e4db]"}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setAdvancedFiltersOpen((open) => !open)}
+                aria-expanded={advancedFiltersOpen}
+                aria-controls="map-advanced-filters"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1d1d1b] underline underline-offset-4"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                {advancedFiltersOpen ? "Nascondi filtri" : "Altri filtri"}
+              </button>
+              {(searchQuery || categoryFilter || dateFrom || dateTo || organizerFilter || dateFilter !== "upcoming" || userLocation) && (
+                <button type="button" onClick={handleClearSearchFilters} className="text-xs font-semibold text-[#8f3823] underline underline-offset-4">
+                  Azzera filtri
+                </button>
+              )}
+            </div>
+
+            {advancedFiltersOpen && (
+              <div id="map-advanced-filters" className="grid grid-cols-2 gap-2">
+                <label className="space-y-1 text-[10px] font-semibold text-[#5f5b56]">
+                  Dal
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    min={calendarToday()}
+                    onChange={(event) => { setDateFrom(event.target.value); setDateFilter("custom"); }}
+                    aria-label="Data di inizio"
+                    className="w-full border border-black/10 bg-white px-2 py-2 text-xs text-[#1d1d1b]"
+                  />
+                </label>
+                <label className="space-y-1 text-[10px] font-semibold text-[#5f5b56]">
+                  Al
+                  <input
+                    type="date"
+                    value={dateTo}
+                    min={dateFrom || calendarToday()}
+                    onChange={(event) => { setDateTo(event.target.value); setDateFilter("custom"); }}
+                    aria-label="Data di fine"
+                    className="w-full border border-black/10 bg-white px-2 py-2 text-xs text-[#1d1d1b]"
+                  />
+                </label>
+                <label className="col-span-2 space-y-1 text-[10px] font-semibold text-[#5f5b56]">
+                  Organizzatore
+                  <input
+                    type="search"
+                    placeholder="Nome organizzatore"
+                    value={organizerFilter}
+                    onChange={(event) => setOrganizerFilter(event.target.value)}
+                    aria-label="Organizzatore"
+                    className="w-full border border-black/10 bg-white px-2 py-2 text-xs text-[#1d1d1b] placeholder:text-[#7a756f]"
+                  />
+                </label>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={handleUseMyLocation}
@@ -682,55 +861,60 @@ export default function EventMap() {
           </div>
         </div>
         <div id="map-event-list" className={`${isEventListOpen ? "flex" : "hidden"} min-h-0 flex-1 flex-col divide-y divide-black/10 overflow-y-auto custom-scrollbar sm:flex`}>
-          {events.map((event) => (
-            <div
+          {events.length === 0 ? (
+            <p className="p-4 text-sm text-[#5f5b56]" role="status">Nessun evento trovato con questi filtri.</p>
+          ) : events.map((event) => (
+            <article
               key={event.id}
-              onClick={() => handleEventClick(event)}
-              className={`p-5 cursor-pointer transition-all duration-300 hover:bg-[#faf5f1] group relative ${selectedEventId === event.id ? "bg-[#faf5f1]" : ""}`}
+              data-event-id={event.id}
+              className={`map-event-card flex items-center gap-2 px-2.5 py-2 transition-colors ${selectedEventId === event.id ? "bg-[#faf5f1]" : "hover:bg-[#faf5f1]"}`}
             >
-              {selectedEventId === event.id && (
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#d65a38]"></div>
-              )}
-              <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => handleEventClick(event)}
+                aria-pressed={selectedEventId === event.id}
+                aria-label={`Centra sulla mappa: ${event.title}`}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
                 {event.imageUrl ? (
-                  <div className="relative shrink-0">
-                    <Image
-                      src={event.imageUrl}
-                      alt={event.title}
-                      width={80}
-                      height={80}
-                      className="w-20 h-20 object-cover shadow-lg group-hover:scale-105 transition-transform duration-500"
-                      sizes="80px"
-                    />
-                  </div>
+                  <Image
+                    src={event.imageUrl}
+                    alt=""
+                    width={48}
+                    height={48}
+                    className="h-12 w-12 shrink-0 object-cover"
+                    sizes="48px"
+                  />
                 ) : (
-                  <div className="w-20 h-20 bg-[#f1eee7] flex items-center justify-center text-3xl border border-black/10 shrink-0">
-                    📅
-                  </div>
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-[#f1eee7] text-[#d65a38]">
+                    <CalendarDays className="h-5 w-5" aria-hidden="true" />
+                  </span>
                 )}
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <h3 className="font-bold text-[#1d1d1b] leading-tight group-hover:text-[#d65a38] transition-colors line-clamp-2 text-base">
-                    <Link
-                      href={`/events/${event.id}`}
-                      onClick={(clickEvent) => clickEvent.stopPropagation()}
-                      className="hover:text-[#d65a38]"
-                    >
-                      {event.title}
-                    </Link>
-                  </h3>
-                  <div className="mt-2 space-y-1.5 text-[#5f5b56]">
-                    <p className="text-[11px] font-bold text-[#d65a38] flex items-center gap-2">
-                      <span className="bg-[#f5e7e2] p-1 text-[10px]">📅</span>{" "}
+                <span className="min-w-0 flex-1">
+                  <span className="block line-clamp-1 text-sm font-bold leading-tight text-[#1d1d1b]">{event.title}</span>
+                  <span className="mt-1 flex min-w-0 items-center gap-2 text-[10px] text-[#5f5b56]">
+                    <span className="inline-flex shrink-0 items-center gap-1">
+                      <CalendarDays className="h-3 w-3 text-[#d65a38]" aria-hidden="true" />
                       {formatDate(event.date)}
-                    </p>
-                    <p className="text-[11px] font-medium truncate flex items-center gap-2">
-                      <span className="bg-[#f1eee7] p-1 text-[10px]">📍</span>{" "}
-                      {event.location}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+                    </span>
+                    {event.time && <span className="inline-flex shrink-0 items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{event.time}</span>}
+                    <span className="min-w-0 truncate">{event.location}</span>
+                  </span>
+                  <span className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase text-[#8f3823]">
+                    <EventCategoryIcon category={event.category} className="h-3 w-3" />
+                    {event.category}
+                  </span>
+                </span>
+              </button>
+              <Link
+                href={`/events/${generateUniqueSlug(event.title, event.id)}`}
+                aria-label={`Apri dettagli: ${event.title}`}
+                title="Apri dettagli evento"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center bg-[#1d1d1b] text-white transition-colors hover:bg-[#d65a38]"
+              >
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </article>
           ))}
         </div>
       </div>

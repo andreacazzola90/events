@@ -11,16 +11,12 @@ import { trackEvent } from "../lib/analytics";
 import { STANDARD_CATEGORIES } from "../../lib/constants";
 import FavoriteButton from "./FavoriteButton";
 import { AppIcon, CalendarIcon, MapPinIcon } from "./EventIcons";
+import EventCategoryIcon from "./EventCategoryIcon";
 import type { DbEvent } from "../../app/types/event";
 
 type EventListMode = "full" | "quick";
 type QuickDateFilter = "today" | "tomorrow" | "weekend" | "week";
 type FullDateFilter = "upcoming" | QuickDateFilter | "custom";
-type LocationSuggestion = {
-  label: string;
-  value: string;
-  source: "google" | "local";
-};
 
 // Funzione per pulire il testo da caratteri strani
 function cleanText(text: string): string {
@@ -154,66 +150,11 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [fullDateFilter, setFullDateFilter] = useState<FullDateFilter>("upcoming");
-  const [locationFilter, setLocationFilter] = useState("");
   const [organizerFilter, setOrganizerFilter] = useState("");
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [quickDateFilter, setQuickDateFilter] =
     useState<QuickDateFilter>("today");
   const [visibleCount, setVisibleCount] = useState(12);
-  const [googleLocationSuggestions, setGoogleLocationSuggestions] = useState<
-    Array<{ label: string; value: string }>
-  >([]);
-  const [locationSuggestionsLoading, setLocationSuggestionsLoading] = useState(false);
-  const [locationSuggestionsOpen, setLocationSuggestionsOpen] = useState(false);
-  const [activeLocationSuggestion, setActiveLocationSuggestion] = useState(-1);
-  const selectedLocationRef = useRef("");
-  const localLocationSuggestions = Array.from(
-    new Set(events.map((event) => event.location.trim()).filter(Boolean)),
-  ).sort((first, second) => first.localeCompare(second, "it"));
-  const locationOptions: LocationSuggestion[] = googleLocationSuggestions.length
-    ? googleLocationSuggestions.map((suggestion) => ({ ...suggestion, source: "google" }))
-    : localLocationSuggestions
-        .filter((location) =>
-          location.toLocaleLowerCase("it").includes(locationFilter.trim().toLocaleLowerCase("it")),
-        )
-        .slice(0, 6)
-        .map((location) => ({ label: location, value: location, source: "local" }));
-
-  useEffect(() => {
-    const input = locationFilter.trim();
-    if (input.length < 2 || input === selectedLocationRef.current) {
-      setGoogleLocationSuggestions([]);
-      setLocationSuggestionsLoading(false);
-      return;
-    }
-
-    setGoogleLocationSuggestions([]);
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      setLocationSuggestionsLoading(true);
-      try {
-        const response = await fetch(
-          `/api/places/autocomplete?input=${encodeURIComponent(input)}`,
-          { signal: controller.signal },
-        );
-        if (!response.ok) throw new Error("Google Places unavailable");
-        const data = (await response.json()) as {
-          suggestions?: Array<{ label: string; value: string }>;
-        };
-        setGoogleLocationSuggestions(data.suggestions ?? []);
-      } catch {
-        if (!controller.signal.aborted) setGoogleLocationSuggestions([]);
-      } finally {
-        if (!controller.signal.aborted) setLocationSuggestionsLoading(false);
-      }
-    }, 300);
-
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [locationFilter]);
-
   useEffect(() => {
     const grid = gridRef.current;
     if (loading || !grid || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -323,7 +264,8 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
       filtered = filtered.filter(
         (event) =>
           event.title.toLowerCase().includes(search.toLowerCase()) ||
-          event.description.toLowerCase().includes(search.toLowerCase()),
+          event.description.toLowerCase().includes(search.toLowerCase()) ||
+          (event.location || "").toLowerCase().includes(search.toLowerCase()),
       );
 
       // Track search
@@ -347,13 +289,6 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     }
     if (dateTo) {
       filtered = filtered.filter((event) => event.date <= dateTo);
-    }
-
-    if (locationFilter) {
-      const needle = locationFilter.toLowerCase();
-      filtered = filtered.filter((event) =>
-        (event.location || "").toLowerCase().includes(needle),
-      );
     }
 
     if (organizerFilter) {
@@ -384,20 +319,12 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     dateFrom,
     dateTo,
     fullDateFilter,
-    locationFilter,
     organizerFilter,
     quickDateFilter,
     mode,
   ]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
-
-  const chooseLocationSuggestion = (suggestion: LocationSuggestion) => {
-    selectedLocationRef.current = suggestion.value;
-    setLocationFilter(suggestion.value);
-    setLocationSuggestionsOpen(false);
-    setActiveLocationSuggestion(-1);
-  };
 
   const handleFavoriteToggleLocal = (eventId: number, newValue: boolean) => {
     setFavoriteIds((prev) => {
@@ -454,12 +381,12 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
         </div>
       ) : (
         <div className="space-y-3 border border-black/10 bg-white p-3 md:p-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.4fr)_minmax(190px,0.8fr)_minmax(220px,1fr)]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(190px,0.8fr)]">
             <label className="flex min-w-0 items-center gap-2 border border-black/20 px-3 focus-within:border-black">
               <AppIcon name="search" className="h-5 w-5 shrink-0 text-[var(--accent)]" />
               <input
                 type="search"
-                placeholder="Cerca eventi"
+                placeholder="Cerca eventi per titolo, descrizione o luogo"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 aria-label="Cerca eventi"
@@ -467,92 +394,21 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
               />
             </label>
             <label className="sr-only" htmlFor="event-category-filter">Categoria</label>
-            <select
-              id="event-category-filter"
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              aria-label="Categoria"
-              className="min-w-0 border border-black/20 bg-white px-3 py-2.5 text-sm text-black focus:border-black focus:outline-none"
-            >
-              <option value="">Tutte le categorie</option>
-              {STANDARD_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
-              ))}
-            </select>
-            <label className="sr-only" htmlFor="event-location-filter">Luogo</label>
-            <div className="relative min-w-0">
-              <input
-                id="event-location-filter"
-                type="search"
-                placeholder="Luogo"
-                value={locationFilter}
-                onChange={(event) => {
-                  selectedLocationRef.current = "";
-                  setLocationFilter(event.target.value);
-                  setLocationSuggestionsOpen(true);
-                  setActiveLocationSuggestion(-1);
-                }}
-                onFocus={() => setLocationSuggestionsOpen(true)}
-                onBlur={() => setLocationSuggestionsOpen(false)}
-                onKeyDown={(event) => {
-                  if (!locationSuggestionsOpen || locationOptions.length === 0) return;
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setActiveLocationSuggestion((current) =>
-                      Math.min(current + 1, locationOptions.length - 1),
-                    );
-                  } else if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setActiveLocationSuggestion((current) => Math.max(current - 1, 0));
-                  } else if (event.key === "Enter" && activeLocationSuggestion >= 0) {
-                    event.preventDefault();
-                    chooseLocationSuggestion(locationOptions[activeLocationSuggestion]);
-                  } else if (event.key === "Escape") {
-                    setLocationSuggestionsOpen(false);
-                  }
-                }}
-                role="combobox"
-                aria-autocomplete="list"
-                aria-expanded={locationSuggestionsOpen && (locationOptions.length > 0 || locationSuggestionsLoading)}
-                aria-controls="event-location-options"
-                aria-activedescendant={activeLocationSuggestion >= 0 ? `event-location-option-${activeLocationSuggestion}` : undefined}
-                aria-label="Luogo"
-                className="w-full min-w-0 border border-black/20 bg-white px-3 py-2.5 text-sm text-black placeholder-black/40 focus:border-black focus:outline-none"
-              />
-              {locationSuggestionsOpen && (locationOptions.length > 0 || locationSuggestionsLoading) && (
-                <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-black/20 bg-white shadow-lg">
-                  {locationOptions.length > 0 && (
-                    <ul id="event-location-options" role="listbox" aria-label="Suggerimenti luogo" className="max-h-60 overflow-y-auto py-1">
-                      {locationOptions.map((suggestion, index) => (
-                        <li key={`${suggestion.source}-${suggestion.value}`} role="presentation">
-                          <button
-                            id={`event-location-option-${index}`}
-                            type="button"
-                            role="option"
-                            aria-selected={activeLocationSuggestion === index}
-                            onMouseDown={(event) => event.preventDefault()}
-                            onMouseEnter={() => setActiveLocationSuggestion(index)}
-                            onClick={() => chooseLocationSuggestion(suggestion)}
-                            className={`block w-full px-3 py-2 text-left text-sm ${activeLocationSuggestion === index ? "bg-black/5" : "bg-white hover:bg-black/5"}`}
-                          >
-                            <span className="block truncate text-black">{suggestion.value}</span>
-                            {suggestion.source === "google" && suggestion.label !== suggestion.value && (
-                              <span className="block truncate text-xs text-black/50">{suggestion.label}</span>
-                            )}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {locationSuggestionsLoading && (
-                    <p className="px-3 py-2 text-xs text-black/50">Cerco su Google…</p>
-                  )}
-                  {googleLocationSuggestions.length > 0 && (
-                    <p className="border-t border-black/10 px-3 py-1.5 text-right text-[10px] text-black/50">Powered by Google</p>
-                  )}
-                </div>
-              )}
-            </div>
+            <label className="flex min-w-0 items-center gap-2 border border-black/20 bg-white px-3 focus-within:border-black">
+              <EventCategoryIcon category={category} className="h-4 w-4 shrink-0 text-black/60" />
+              <select
+                id="event-category-filter"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                aria-label="Categoria"
+                className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-black focus:outline-none"
+              >
+                <option value="">Tutte le categorie</option>
+                {STANDARD_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="flex flex-col gap-3 border-t border-black/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -589,13 +445,12 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
               >
                 {filtersOpen ? "Nascondi filtri" : "Altri filtri"}
               </button>
-              {(search || category || locationFilter || organizerFilter || dateFrom || dateTo || fullDateFilter !== "upcoming") && (
+              {(search || category || organizerFilter || dateFrom || dateTo || fullDateFilter !== "upcoming") && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearch("");
                     setCategory("");
-                    setLocationFilter("");
                     setOrganizerFilter("");
                     setDateFrom("");
                     setDateTo("");
@@ -751,8 +606,9 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
                       <div className="absolute bottom-2 inset-x-2 z-10 flex items-end justify-between gap-1 sm:gap-2">
                         {event.category && (
                           <span
-                            className={`min-w-0 break-words px-1.5 sm:px-2.5 py-1 text-[9px] sm:text-[10px] uppercase font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
+                            className={`inline-flex min-w-0 items-center gap-1 break-words px-1.5 sm:px-2.5 py-1 text-[9px] sm:text-[10px] uppercase font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
                           >
+                            <EventCategoryIcon category={event.category} className="h-3 w-3 shrink-0" />
                             {event.category}
                           </span>
                         )}

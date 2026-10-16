@@ -20,7 +20,7 @@ describe("Calendar views and day previews", () => {
 
   it("switches between month, week, three days and day while preserving the date", () => {
     cy.get(".calendar-view-switch").contains("button", "Mese").should("have.attr", "aria-pressed", "true");
-    cy.get(".calendar-day[data-date]").should("have.length", 31);
+    cy.get(".calendar-day[data-date]").should("have.length", 20);
     cy.get(".calendar-days").should(days => expect(getComputedStyle(days[0]).gridTemplateColumns.split(" ")).to.have.length(7));
     cy.get(".calendar-view-switch").contains("button", "Settimana").click();
     cy.get(".calendar-period-day").should("have.length", 7).first().should("have.attr", "data-date", "2026-10-12");
@@ -95,8 +95,8 @@ describe("Calendar views and day previews", () => {
         cy.get(".calendar-event-title").first().should("be.visible");
         if (label === "Mese") {
           cy.get(".calendar-days").should(days => expect(getComputedStyle(days[0]).gridTemplateColumns.split(" ")).to.have.length(1));
-          cy.get(".calendar-day[data-date]").should("have.length", 31);
-          cy.get(".calendar-day-mobile-date").first().should("be.visible").and("contain", "1 ott");
+          cy.get(".calendar-day[data-date]").should("have.length", 20);
+          cy.get(".calendar-day-mobile-date").first().should("be.visible").and("contain", "12 ott");
           cy.get(".calendar-weekdays").should("not.be.visible");
           cy.get(".calendar-empty-day").each(day => cy.wrap(day).should("not.be.visible"));
         }

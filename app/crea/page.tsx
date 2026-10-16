@@ -54,6 +54,7 @@ export default function CreaEvento() {
     const router = useRouter();
     const [events, setEvents] = useState<EventData[]>([]);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [processingSharedImage, setProcessingSharedImage] = useState(false);
     const [linkUrl, setLinkUrl] = useState('');
@@ -93,6 +94,7 @@ export default function CreaEvento() {
     const resetEvents = () => {
         setEvents([]);
         setImageUrl(null);
+        setOriginalImageUrl(null);
         setDuplicates([]);
     };
 
@@ -105,6 +107,10 @@ export default function CreaEvento() {
         };
     }, [imageUrl]);
 
+    useEffect(() => () => {
+        if (originalImageUrl) URL.revokeObjectURL(originalImageUrl);
+    }, [originalImageUrl]);
+
     const handleNewEvents = (newEventsOrSingle: EventData | EventData[], newImageUrl: string, debug?: any) => {
         // Cleanup previous image URL if it exists
         if (imageUrl) {
@@ -113,6 +119,7 @@ export default function CreaEvento() {
 
         // Converti in array se è un singolo evento
         const newEvents = Array.isArray(newEventsOrSingle) ? newEventsOrSingle : [newEventsOrSingle];
+        setOriginalImageUrl(newEvents[0]?.originalImageUrl || null);
 
         // Normalizza e aggiungi imageUrl
         let eventsWithImage = newEvents.map(ev => normalizeEventFields({

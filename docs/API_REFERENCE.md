@@ -251,6 +251,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - File: [app/api/process-image/route.ts](../app/api/process-image/route.ts)
 - Purpose: OCR + AI extraction from flyer image
 - Output: one or multiple normalized events
+- Optional output: `previewImageDataUrl`, a JPEG data URL cropped to the detected full flyer, excluding surrounding screenshot UI. Returned only for confident, valid bounds. The creation screen uses it as the cover and retains the original upload for unrestricted manual recropping during review. Vision failures leave the original cover unchanged.
 
 Example request:
 

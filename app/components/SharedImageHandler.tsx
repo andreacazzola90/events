@@ -53,9 +53,6 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
 
                     console.log('[PWA] Processing shared image:', file.name);
 
-                    // Process the shared image
-                    const imageUrl = URL.createObjectURL(file);
-
                     // Trigger image processing
                     const formData = new FormData();
                     formData.append('image', file);
@@ -71,10 +68,14 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
                     }
 
                     const data = await response.json();
+                    const imageUrl = data.previewImageDataUrl
+                        ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
+                        : URL.createObjectURL(file);
+                    const originalImageUrl = data.previewImageDataUrl ? URL.createObjectURL(file) : undefined;
                     if (data.events && Array.isArray(data.events)) {
-                        onProcessed(data.events, imageUrl, data.debug);
+                        onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl })), imageUrl, data.debug);
                     } else {
-                        onProcessed(data, imageUrl, data.debug);
+                        onProcessed({ ...data, originalImageUrl }, imageUrl, data.debug);
                     }
                 } catch (err) {
                     console.error('[PWA] Error handling shared data:', err);

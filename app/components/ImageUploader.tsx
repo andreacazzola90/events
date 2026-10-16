@@ -55,18 +55,19 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                 throw new Error(data.error);
             }
 
-            const imageUrl = isPdf
+            const imageUrl = data.previewImageDataUrl
                 ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
                 : URL.createObjectURL(file);
+            const originalImageUrl = !isPdf && data.previewImageDataUrl ? URL.createObjectURL(file) : undefined;
 
             // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
                 console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
-                onProcessed(data.events, imageUrl, data.debug);
+                onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl })), imageUrl, data.debug);
             } else {
                 // Fallback for old structure or single event
                 console.log('[ImageUploader] ✅ Ricevuto evento singolo/vecchio formato');
-                onProcessed(data, imageUrl, data.debug);
+                onProcessed({ ...data, originalImageUrl }, imageUrl, data.debug);
             }
         } catch (error) {
             const errorMessage = error instanceof Error

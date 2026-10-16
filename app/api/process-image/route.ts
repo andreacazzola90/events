@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractTextFromImageSimple } from '../../lib/ocr-simple';
 import { extractTextFromImage } from '../../lib/ocr';
 import Groq from 'groq-sdk';
+import OpenAI from 'openai';
+import { cropPosterPreview } from '../../../lib/poster-crop';
 import { compressImage } from '../../lib/image-utils';
 import { groupEventsByDate } from '../../../lib/event-utils';
 import { buildEventExtractionHints } from '../../../lib/event-hints';
@@ -84,12 +86,12 @@ export async function POST(request: NextRequest) {
     const analyzeWithVision = async (): Promise<string> => {
       try {
         console.log('🔭 Starting vision model analysis...');
-        // No vision-capable model is currently available on this Groq API key
-        // (verified against GET /openai/v1/models); this call will 404 until
-        // a vision model is added back or another provider is used. Failure
-        // is caught below and the pipeline falls back to OCR-only text.
-        const visionCompletion = await groq.chat.completions.create({
-          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        const visionApiKey = process.env.OPENAI_API_SECRET_KEY;
+        const visionClient = visionApiKey
+          ? new OpenAI({ apiKey: visionApiKey, timeout: 15_000, maxRetries: 0 })
+          : groq;
+        const visionCompletion = await visionClient.chat.completions.create({
+          model: visionApiKey ? 'gpt-4o-mini' : 'meta-llama/llama-4-scout-17b-16e-instruct',
           messages: [
             {
               role: 'user',
@@ -105,6 +107,8 @@ Analizza questa immagine e fornisci:
 1. TRASCRIZIONE: Trascrivi TUTTO il testo visibile riga per riga, nell'ordine in cui appare
 2. STRUTTURA VISIVA: Descrivi il layout (sezioni, elementi separatori, gerarchia visiva)
 3. DETTAGLI ESTRATTI: Elenca esplicitamente titolo evento, data/e, orario/i, luogo, prezzo, organizzatore
+4. RITAGLIO LOCANDINA: Individua il rettangolo dell'intera locandina o immagine dell'evento, includendo tutti i suoi testi, loghi e margini interni. Escludi interfacce social, barre del telefono/browser, commenti, didascalie esterne e sfondi. Non ritagliare solo la fotografia decorativa all'interno del poster. Se l'immagine e gia una locandina intera, usa l'intera immagine. Se non e possibile identificare una sola locandina con sicurezza, usa null.
+Termina con una singola riga nel formato esatto POSTER_BOUNDS: {"x":0.1,"y":0.2,"width":0.8,"height":0.6,"confidence":0.95}, con coordinate normalizzate tra 0 e 1 rispetto all'immagine originale. Usa POSTER_BOUNDS: null se incerto.
 Rispondi in italiano. Sii preciso e completo.`,
                 },
               ] as any,
@@ -125,6 +129,7 @@ Rispondi in italiano. Sii preciso e completo.`,
     // Esegui OCR e vision model in parallelo
     console.log('🔄 Running OCR and vision model in parallel...');
     const [ocrText, visionText] = await Promise.all([runOcrPipeline(), analyzeWithVision()]);
+    const previewImageDataUrl = await cropPosterPreview(file, visionText);
     console.log(`📊 OCR: ${ocrText.length} chars | Vision: ${visionText.length} chars`);
 
     // Combina i risultati
@@ -763,6 +768,7 @@ REGOLE:
       // Construct final response with debug info
       const response = {
         events: finalEvents,
+        previewImageDataUrl,
         debug: {
           ocrRaw: rawText,
           groqRaw: groqRawData,

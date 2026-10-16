@@ -141,6 +141,7 @@ Focus logs for:
 1. Validate GROQ_API_SECRET_KEY and OCR provider availability.
 2. Test POST /api/process-image with a known good image.
 3. Inspect logs for extraction branch used and fallback path.
+4. Automatic flyer cropping requires a working vision provider. Set `OPENAI_API_SECRET_KEY` to use `gpt-4o-mini`; without it, the existing Groq vision model is attempted. If vision is unavailable or bounds are uncertain, image creation continues through OCR without automatic cropping. Verify a screenshot with surrounding UI and confirm that manual cropping during draft review reopens the original upload.
 
 ## 9.2 Scraper failures
 

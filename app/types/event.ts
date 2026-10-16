@@ -32,6 +32,7 @@ export interface EventData {
   price: string;
   rawText: string;
   imageUrl?: string;
+  originalImageUrl?: string;
   sourceUrl?: string;
   origin?: string;
 }

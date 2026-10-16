@@ -67,6 +67,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     const [reprocessError, setReprocessError] = useState('');
     const formRef = useRef<HTMLFormElement>(null);
     const cropPreviewUrls = useRef<string[]>([]);
+    const originalCropSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
 
     useEffect(() => () => cropPreviewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
 
@@ -89,11 +90,12 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
 
     useEffect(() => {
         setImageUrl(eventData.imageUrl);
-    }, [eventData.imageUrl]);
+        originalCropSource.current = eventData.originalImageUrl || eventData.imageUrl;
+    }, [eventData.imageUrl, eventData.originalImageUrl]);
 
     const handleOpenCropper = () => {
         if (!imageUrl) return;
-        setCropSource(imageUrl);
+        setCropSource(originalCropSource.current || imageUrl);
         setCroppedAreaPixels(null);
     };
 
@@ -175,6 +177,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             price: readValue('price'),
             description: readValue('description'),
             imageUrl: imageUrl,
+            originalImageUrl: originalCropSource.current,
             sourceUrl: readValue('sourceUrl') || eventData.sourceUrl,
             rawText: eventData.rawText,
         };
@@ -220,7 +223,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                 return;
             }
 
-            const updatedEvent = payload.event as EventData;
+            const updatedEvent = { ...payload.event, originalImageUrl: currentEvent.originalImageUrl } as EventData;
             const form = formRef.current;
             const fields = ['title', 'date', 'time', 'location', 'category', 'organizer', 'price', 'description', 'sourceUrl'] as const;
             fields.forEach((field) => {
@@ -397,6 +400,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                         if (file) {
                                             const url = URL.createObjectURL(file);
                                             cropPreviewUrls.current.push(url);
+                                            originalCropSource.current = url;
                                             setImageUrl(url);
                                         }
                                     }}

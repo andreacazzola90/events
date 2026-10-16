@@ -36,7 +36,7 @@ The platform includes:
 
 1. User uploads an image from [app/crea/page.tsx](../app/crea/page.tsx).
 2. Frontend calls POST /api/process-image.
-3. OCR extracts text.
+3. OCR extracts text. In parallel, visual analysis identifies the full flyer inside the uploaded image; confident bounds produce an automatically cropped cover. The original remains available for free manual cropping during draft review, including after AI text reprocessing.
 4. Groq parses text into one or multiple events.
 5. Frontend confirms/edits data.
 6. Frontend saves via POST /api/events (JSON or multipart).
@@ -119,7 +119,7 @@ Core variables:
 - NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
 - GROQ_API_SECRET_KEY
-- OPENAI_API_SECRET_KEY (present but not part of core flow here)
+- OPENAI_API_SECRET_KEY (optional: enables `gpt-4o-mini` visual extraction and automatic flyer cropping; otherwise the pipeline attempts Groq vision and preserves the original if vision is unavailable or uncertain)
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_SECRET_KEY
 - NEXT_PUBLIC_SUPABASE_URL

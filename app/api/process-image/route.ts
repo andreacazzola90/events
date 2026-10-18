@@ -11,6 +11,7 @@ import { buildEventExtractionHints } from '../../../lib/event-hints';
 import type { EventData } from '../../types/event';
 import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extension-cors';
 import { isWebSearchConfigured, webSearch } from '../../../lib/google-search';
+import type { ScanAgentReport } from '../../../lib/event-scan-agents';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -499,6 +500,7 @@ REGOLE:
       // Capture Groq Raw Data (before verification)
       const groqRawData = JSON.parse(JSON.stringify(eventData));
       let googleRawData = null;
+      let verificationReports: ScanAgentReport[] | null = null;
       const urlFromImage = extractUrlFromText(ocrText || rawText);
       if (urlFromImage) console.log('🔗 URL found on the image:', urlFromImage);
 
@@ -508,93 +510,42 @@ REGOLE:
       if (isWebSearchConfigured()) {
         console.log('🌍 Starting web search verification...');
 
-        // Helper function to verify a single event
-        const verifyEvent = async (event: any) => {
-          try {
-            const query = [event.title, event.location, event.date]
-              .filter((part: unknown) => typeof part === 'string' && part && part !== 'non trovato')
-              .join(' ');
-            const searchResults = await webSearch(query);
-
-            if (searchResults.length > 0) {
-              console.log(`✅ Found ${searchResults.length} search results for "${event.title}"`);
-              
-              const verificationPrompt = `
-              Sei un esperto fact-checker di eventi.
-              
-              DATI ESTRATTI DALL'IMMAGINE:
-              ${JSON.stringify(event, null, 2)}
-              
-              RISULTATI RICERCA WEB (FONTI ESTERNE):
-              ${JSON.stringify(searchResults, null, 2)}
-              
-              COMPITO:
-              Verifica, correggi e ARRICCHISCI i dati dell'evento usando le fonti esterne.
-              
-              REGOLE:
-              1. Se i risultati di ricerca confermano i dati, MANTIENILI.
-              2. Se i risultati forniscono dettagli mancanti o "non trovato" (es. indirizzo completo, orario preciso, prezzo, organizzatore), AGGIUNGILI.
-              3. Se i risultati CONTRADDICONO i dati (es. data sbagliata, luogo diverso), CORREGGI i dati usando la fonte più affidabile (es. ticketone, sito ufficiale, facebook page).
-              4. Se i risultati non riguardano QUESTO evento (stesso titolo e stessa data), MANTIENI i dati originali e non aggiungere nulla.
-              5. Se le fonti contengono informazioni utili in più (programma, artisti/ospiti, prenotazione, biglietti, come arrivare), aggiungile in fondo alla "description" come lista puntata, senza inventare nulla.
-              6. La CATEGORIA deve rimanere una di: musica, nightlife, cultura, cibo, sport, famiglia, teatro, festa, passeggiata, altro (o la categoria originale).
-              7. ${urlFromImage ? `Nel campo "sourceUrl" usa ESATTAMENTE questo link stampato sulla locandina: ${urlFromImage}` : 'Estrai il link più pertinente all\'evento (es. pagina ufficiale, TicketOne, evento Facebook) dai risultati di ricerca e inseriscilo nel campo "sourceUrl".'}
-              
-              Rispondi SOLO con il JSON dell'evento con gli stessi campi (title, description, date, time, location, organizer, category, price, sourceUrl), senza markdown.
-              `;
-
-              const verificationCompletion = await groq.chat.completions.create({
-                messages: [
-                  { role: 'system', content: 'Sei un assistente AI che verifica dati di eventi. Rispondi SEMPRE con un oggetto JSON valido.' },
-                  { role: 'user', content: verificationPrompt }
-                ],
-                model: 'openai/gpt-oss-20b',
-                response_format: { type: 'json_object' },
-                temperature: 0.1,
-                max_tokens: 2000,
-                reasoning_effort: 'low',
-              });
-
-              const verifiedJsonStr = verificationCompletion.choices[0]?.message?.content || '';
-              const first = verifiedJsonStr.indexOf('{');
-              const last = verifiedJsonStr.lastIndexOf('}');
-              
-              if (first !== -1 && last !== -1) {
-                try {
-                  const verifiedEvent = { ...event, ...JSON.parse(verifiedJsonStr.slice(first, last + 1)) };
-                  console.log('✨ Event verified and updated:', verifiedEvent.title);
-                  return { verifiedEvent, searchResults };
-                } catch (pError) {
-                  console.warn('⚠️ Failed to parse verification JSON:', pError);
-                  console.log('Raw verification response:', verifiedJsonStr);
-                }
-              }
-            } else {
-              console.log('⚠️ No search results found, skipping verification.');
-            }
-          } catch (err) {
-            console.error('❌ Verification failed for event:', event.title, err);
-          }
-          return { verifiedEvent: event, searchResults: [] }; // Return original if verification fails
-        };
-
-        // Verify all events
-        if (eventData && 'events' in eventData && Array.isArray(eventData.events)) {
-          console.log(`🔍 Verifying ${eventData.events.length} events...`);
-          const verificationResults = await Promise.all(eventData.events.map(verifyEvent));
-          eventData.events = verificationResults.map((r: { verifiedEvent: EventData; searchResults: unknown[] }) => r.verifiedEvent);
-          googleRawData = verificationResults.map((r: { verifiedEvent: EventData; searchResults: unknown[] }) => ({
+        const { verifyScannedEvents } = await import('../../../lib/event-scan-agents');
+        const multiple = eventData && 'events' in eventData && Array.isArray(eventData.events) ? eventData : null;
+        const candidates: EventData[] = multiple ? multiple.events : eventData ? [eventData as EventData] : [];
+        const verificationResults = await verifyScannedEvents(candidates, {
+          search: (query, signal) => webSearch(query, { signal }),
+          complete: async (messages, signal) => {
+            const result = await groq.chat.completions.create({
+              messages,
+              model: 'openai/gpt-oss-20b',
+              response_format: { type: 'json_object' },
+              temperature: 0.1,
+              max_tokens: 2000,
+              reasoning_effort: 'low',
+            }, { signal, timeout: 10_000, maxRetries: 0 });
+            if (result.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete scan agent response');
+            return result.choices[0]?.message?.content || '';
+          },
+        });
+        verificationReports = verificationResults.map(result => result.agent);
+        if (multiple) {
+          multiple.events = verificationResults.map(result => result.verifiedEvent);
+          googleRawData = verificationResults.map(r => ({
             event: r.verifiedEvent.title,
             searchResults: r.searchResults,
-            verifiedData: r.verifiedEvent
+            verifiedData: r.verifiedEvent,
+            matchedSourceUrl: r.matchedSourceUrl,
+            agent: r.agent,
           }));
-        } else if (eventData) {
-          console.log('🔍 Verifying single event...');
-          const result = await verifyEvent(eventData as EventData);
+        } else if (verificationResults[0]) {
+          const result = verificationResults[0];
           eventData = result.verifiedEvent;
           googleRawData = {
             searchResults: result.searchResults,
-            verifiedData: result.verifiedEvent
+            verifiedData: result.verifiedEvent,
+            matchedSourceUrl: result.matchedSourceUrl,
+            agent: result.agent,
           };
         }
         
@@ -616,6 +567,7 @@ REGOLE:
         if (!value) return value;
         const trimmed = value.trim();
         if (!trimmed) return undefined;
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
 
         // Evita di toccare path puramente relativi (es. "/evento/123")
         if (trimmed.startsWith('/') && !/^\/\//.test(trimmed)) {
@@ -663,53 +615,17 @@ REGOLE:
             const current = event.sourceUrl?.trim();
             const isRelative = current ? !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current) : false;
             if (current && !isRelative) return { ...event, sourceUrl: normalizeUrl(current) };
-            const firstResult: any = googleRawData[index]?.searchResults?.[0];
-            const link = firstResult?.link as string | undefined;
+            const link = googleRawData[index]?.matchedSourceUrl;
             return link ? { ...event, sourceUrl: normalizeUrl(link) } : event;
           });
         } else if (googleRawData.searchResults) {
-          const firstResult: any = googleRawData.searchResults[0];
-          const link = firstResult?.link as string | undefined;
+          const link = googleRawData.matchedSourceUrl;
           const current = finalEvents[0]?.sourceUrl?.trim();
           const isRelative = current ? !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current) : false;
           if (link && finalEvents[0] && (!current || isRelative)) {
             finalEvents[0] = { ...finalEvents[0], sourceUrl: normalizeUrl(link) };
           } else if (current) {
             finalEvents[0] = { ...finalEvents[0], sourceUrl: normalizeUrl(current) };
-          }
-        }
-      }
-
-      // Fallback aggiuntivo: se dopo la verifica Google alcuni eventi non hanno ancora un URL affidabile,
-      // prova una nuova ricerca usando il testo del JSON (titolo/organizzatore/luogo/descrizione)
-      if (!urlFromImage && isWebSearchConfigured()) {
-        const eventsNeedingUrl = finalEvents.filter(event => {
-          const current = event.sourceUrl?.trim();
-          if (!current) return true;
-          const isRelative = !/^([a-z][a-z0-9+.-]*:)?\/\//i.test(current) && !/^www\./i.test(current);
-          return isRelative;
-        });
-
-        if (eventsNeedingUrl.length > 0) {
-          console.log('🌍 Additional URL search for events without sourceUrl...');
-
-          for (const event of eventsNeedingUrl) {
-            try {
-              const descSnippet = (event.description || '').replace(/\s+/g, ' ').slice(0, 160);
-              const parts = [event.title, event.organizer, event.location, descSnippet].filter(Boolean) as string[];
-              const query = parts.join(' ');
-              if (!query || query.trim().length < 5) continue;
-
-              const results = await webSearch(query);
-              if (results.length > 0) {
-                // Scegli il risultato più probabile (al momento il primo è sufficiente)
-                const best = results[0];
-                event.sourceUrl = normalizeUrl(best.link) || event.sourceUrl;
-                console.log('🔗 Added sourceUrl from secondary search for event:', event.title, '→', best.link);
-              }
-            } catch (e) {
-              console.warn('⚠️ Secondary URL search failed for event:', event.title, e);
-            }
           }
         }
       }
@@ -756,7 +672,10 @@ REGOLE:
         debug: {
           ocrRaw: rawText,
           groqRaw: groqRawData,
-          googleRaw: googleRawData
+          googleRaw: googleRawData,
+          scanAgents: {
+            verification: verificationReports || { status: 'skipped', reason: 'not-configured' },
+          },
         }
       };
 

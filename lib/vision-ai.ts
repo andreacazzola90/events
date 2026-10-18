@@ -58,11 +58,11 @@ function isSafetyRejection(error: unknown): boolean {
 }
 
 export function createEventImageAnalyzer() {
-  const deadline = Date.now() + 20_000;
   const providers = getVisionProviders();
   const unavailable = new Set<string>();
 
   return async (imageUrl: string, prompt: string): Promise<string> => {
+    const deadline = Date.now() + 20_000;
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{
       role: 'user',
       content: [

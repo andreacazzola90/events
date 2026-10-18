@@ -9,6 +9,8 @@ import { buildEventExtractionHints } from './event-hints';
 import { isWebSearchConfigured, webSearch } from './google-search';
 import { selectEventImage } from './event-image';
 import type { EventImageCandidate } from './event-image';
+import { completeMissingEventFields, verifyScannedEvents, SCAN_AGENT_VERSION } from './event-scan-agents';
+import type { ScanAgentCompletion, ScanAgentReport } from './event-scan-agents';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -692,112 +694,46 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
     // Group by date: same-day "incontri" stay in one event, different days → multiple events
     events = groupEventsByDate(events);
 
-    // Enrichment logic (step 1: riempire campi mancanti dal testo)
+    const completeScanAgent: ScanAgentCompletion = async (messages, signal) => {
+        const result = await groq.chat.completions.create({
+            messages,
+            model: 'openai/gpt-oss-20b',
+            response_format: { type: 'json_object' },
+            temperature: 0.1,
+            max_tokens: 2000,
+            reasoning_effort: 'low',
+        }, { signal, timeout: 10_000, maxRetries: 0 });
+        if (result.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete scan agent response');
+        return result.choices[0]?.message?.content || '';
+    };
+    const completionReports: ScanAgentReport[] = [];
+    const completionDeadline = AbortSignal.timeout(12_000);
     for (let i = 0; i < events.length; i++) {
-        const event = events[i];
-        const missing = [];
-        if (!event.date) missing.push('data');
-        if (!event.time) missing.push('orario');
-        if (!event.location) missing.push('luogo');
-        
-        if (missing.length > 0) {
-            const enrichmentPrompt = `Analizza nuovamente il testo e cerca SOLO le info mancanti (${missing.join(', ')}) per l'evento: ${event.title}. 
-            Testo: ${combinedText.slice(0, 2000)}. 
-            Data rif: ${currentDate}. 
-            Rispondi SOLO JSON.`;
-            
-            try {
-                const enrichComp = await groq.chat.completions.create({
-                    messages: [{ role: 'user', content: enrichmentPrompt }],
-                    model: 'openai/gpt-oss-20b',
-                    response_format: { type: 'json_object' },
-                    temperature: 0.1,
-                    max_tokens: 2000,
-                    reasoning_effort: 'low',
-                });
-                const enrichData = JSON.parse(enrichComp.choices[0]?.message?.content || '{}');
-                if (enrichData.date) event.date = enrichData.date;
-                if (enrichData.time) event.time = enrichData.time;
-                if (enrichData.location) event.location = enrichData.location;
-                if (enrichData.price) event.price = enrichData.price;
-                if (enrichData.organizer) event.organizer = enrichData.organizer;
-            } catch {}
-        }
+        const result = await completeMissingEventFields(events[i], combinedText, completeScanAgent, completionDeadline);
+        events[i] = result.event;
+        completionReports.push(result.agent);
     }
 
     // Capture Groq raw (pre-verifica Google)
     const groqRawData = JSON.parse(JSON.stringify(events));
     let googleRawData: any = null;
+    let verificationReports: ScanAgentReport[] = [];
 
     // Enrichment logic (step 2: verifica Google, se configurata)
     if (isWebSearchConfigured()) {
         console.log('🌍 [processEventLink] Starting Google Search Verification...');
 
-        const verifyEvent = async (event: EventData) => {
-            try {
-                const query = `${event.title} ${event.location} ${event.date} event`;
-                const searchResults = await webSearch(query);
-
-                if (searchResults.length === 0) {
-                    console.log('⚠️ No search results found, skipping verification for', event.title);
-                    return { verifiedEvent: event, searchResults: [] };
-                }
-
-                const verificationPrompt = `
-                Sei un esperto fact-checker di eventi.
-                
-                DATI ESTRATTI DALLA PAGINA/IMMAGINE:
-                ${JSON.stringify(event, null, 2)}
-                
-                RISULTATI RICERCA GOOGLE (FONTI ESTERNE):
-                ${JSON.stringify(searchResults, null, 2)}
-                
-                COMPITO:
-                Verifica e correggi i dati dell'evento usando le fonti esterne.
-                
-                REGOLE:
-                1. Se i risultati di ricerca confermano i dati, MANTIENILI.
-                2. Se i risultati forniscono dettagli mancanti (es. indirizzo completo, orario preciso, prezzo), AGGIUNGILI.
-                3. Se i risultati CONTRADDICONO i dati (es. data sbagliata, luogo diverso), CORREGGI i dati usando la fonte più affidabile.
-                4. Se i risultati non c'entrano nulla, MANTIENI i dati originali.
-                5. Estrai il link più pertinente all'evento (es. pagina ufficiale) e inseriscilo nel campo "sourceUrl".
-                
-                Rispondi SOLO con l'oggetto JSON corretto dell'evento (senza markdown).`;
-
-                const verificationCompletion = await groq.chat.completions.create({
-                    messages: [
-                        { role: 'system', content: 'Sei un assistente AI che verifica dati di eventi. Rispondi SEMPRE con un oggetto JSON valido.' },
-                        { role: 'user', content: verificationPrompt }
-                    ],
-                    model: 'openai/gpt-oss-20b',
-                    response_format: { type: 'json_object' },
-                    temperature: 0.1,
-                    max_tokens: 2000,
-                    reasoning_effort: 'low',
-                });
-
-                const verifiedJsonStr = verificationCompletion.choices[0]?.message?.content || '';
-                const firstBrace = verifiedJsonStr.indexOf('{');
-                const lastBrace = verifiedJsonStr.lastIndexOf('}');
-
-                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                    const verifiedEvent = JSON.parse(verifiedJsonStr.slice(firstBrace, lastBrace + 1));
-                    console.log('✨ [processEventLink] Event verified and updated:', verifiedEvent.title);
-                    return { verifiedEvent, searchResults };
-                }
-            } catch (err) {
-                console.error('❌ [processEventLink] Verification failed for event:', event.title, err);
-            }
-
-            return { verifiedEvent: event, searchResults: [] };
-        };
-
-        const verificationResults = await Promise.all(events.map(verifyEvent));
+        const verificationResults = await verifyScannedEvents(events, {
+            complete: completeScanAgent,
+            search: (query, signal) => webSearch(query, { signal }),
+        });
         events = verificationResults.map(r => r.verifiedEvent);
+        verificationReports = verificationResults.map(r => r.agent);
         googleRawData = verificationResults.map(r => ({
             event: r.verifiedEvent.title,
             searchResults: r.searchResults,
             verifiedData: r.verifiedEvent,
+            agent: r.agent,
         }));
         console.log('✅ [processEventLink] Google Verification Complete');
     } else {
@@ -861,6 +797,13 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
             ocrRaw: combinedText,
             groqRaw: groqRawData,
             googleRaw: googleRawData,
+            scanAgents: {
+                version: SCAN_AGENT_VERSION,
+                completion: completionReports,
+                verification: isWebSearchConfigured()
+                    ? verificationReports
+                    : { status: 'skipped', reason: 'not-configured' },
+            },
         },
     };
 }

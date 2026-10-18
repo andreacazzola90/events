@@ -64,18 +64,23 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
 
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
+                        if ((response.status === 422 && errorData.code === 'POSTER_PRIVACY_REVIEW_REQUIRED') ||
+                            (response.status === 503 && errorData.code === 'VISION_SERVICE_UNAVAILABLE')) {
+                            onError?.(errorData.error || 'Ritaglia solo la locandina e riprova.');
+                            return;
+                        }
                         throw new Error(errorData?.error || 'Errore durante la scansione dell\'immagine condivisa.');
                     }
 
                     const data = await response.json();
-                    const imageUrl = data.previewImageDataUrl
-                        ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
-                        : URL.createObjectURL(file);
-                    const originalImageUrl = data.previewImageDataUrl ? URL.createObjectURL(file) : undefined;
+                    if (!data.previewImageDataUrl) {
+                        throw new Error('Locandina non verificata. Ritaglia solo l\'immagine dell\'evento e riprova.');
+                    }
+                    const imageUrl = URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob());
                     if (data.events && Array.isArray(data.events)) {
-                        onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl })), imageUrl, data.debug);
+                        onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl: undefined })), imageUrl, data.debug);
                     } else {
-                        onProcessed({ ...data, originalImageUrl }, imageUrl, data.debug);
+                        onProcessed({ ...data, originalImageUrl: undefined }, imageUrl, data.debug);
                     }
                 } catch (err) {
                     console.error('[PWA] Error handling shared data:', err);

@@ -44,6 +44,12 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const errorMessage = errorData.error || 'Impossibile elaborare l\'immagine';
+                if ((response.status === 422 && errorData.code === 'POSTER_PRIVACY_REVIEW_REQUIRED') ||
+                    (response.status === 503 && errorData.code === 'VISION_SERVICE_UNAVAILABLE')) {
+                    toast.warn(errorMessage);
+                    onError(errorMessage);
+                    return;
+                }
                 throw new Error(errorMessage);
             }
 
@@ -55,19 +61,21 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                 throw new Error(data.error);
             }
 
+            if (!isPdf && !data.previewImageDataUrl) {
+                throw new Error('Locandina non verificata. Ritaglia solo l\'immagine dell\'evento e riprova.');
+            }
             const imageUrl = data.previewImageDataUrl
                 ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
                 : URL.createObjectURL(file);
-            const originalImageUrl = !isPdf && data.previewImageDataUrl ? URL.createObjectURL(file) : undefined;
 
             // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
                 console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
-                onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl })), imageUrl, data.debug);
+                onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl: undefined })), imageUrl, data.debug);
             } else {
                 // Fallback for old structure or single event
                 console.log('[ImageUploader] ✅ Ricevuto evento singolo/vecchio formato');
-                onProcessed({ ...data, originalImageUrl }, imageUrl, data.debug);
+                onProcessed({ ...data, originalImageUrl: undefined }, imageUrl, data.debug);
             }
         } catch (error) {
             const errorMessage = error instanceof Error

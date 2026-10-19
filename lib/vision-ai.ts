@@ -10,7 +10,7 @@ export class VisionServiceUnavailableError extends Error {
 }
 
 function getVisionProviders() {
-  const order = [...new Set((process.env.AI_VISION_PROVIDERS ?? 'groq,gemini,openrouter')
+  const order = [...new Set((process.env.AI_VISION_PROVIDERS ?? 'gemini,groq,openrouter')
     .split(',').map(value => value.trim()).filter(Boolean))];
   const settings = {
     groq: {
@@ -60,9 +60,9 @@ function isSafetyRejection(error: unknown): boolean {
 export function createEventImageAnalyzer() {
   const providers = getVisionProviders();
   const unavailable = new Set<string>();
+  const deadline = Date.now() + 35_000;
 
   return async (imageUrl: string, prompt: string): Promise<string> => {
-    const deadline = Date.now() + 20_000;
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{
       role: 'user',
       content: [
@@ -79,7 +79,7 @@ export function createEventImageAnalyzer() {
         const client = new OpenAI({
           apiKey: provider.apiKey,
           baseURL: provider.baseURL,
-          timeout: Math.min(7_000, remaining),
+          timeout: Math.min(9_000, remaining),
           maxRetries: 0,
         });
         const completion = await client.chat.completions.create({
@@ -87,17 +87,28 @@ export function createEventImageAnalyzer() {
           messages,
           temperature: 0.1,
           max_tokens: 2000,
+          ...(provider.name === 'gemini' ? { reasoning_effort: 'low' as const } : {}),
         });
         if ('error' in completion && completion.error) throw completion.error;
         const choice = completion.choices?.[0];
         if (choice && 'error' in choice && choice.error) throw choice.error;
         if (deadline <= Date.now()) throw new VisionServiceUnavailableError();
+        if (choice?.finish_reason === 'length') {
+          unavailable.add(provider.name);
+          console.warn('[vision-ai] Provider response was truncated:', provider.name);
+          continue;
+        }
         if (choice?.finish_reason !== 'stop' || choice.message?.refusal) return '';
         return typeof choice.message?.content === 'string' ? choice.message.content : '';
       } catch (error) {
         if (isSafetyRejection(error)) return '';
         unavailable.add(provider.name);
-        console.warn('[vision-ai] Provider unavailable:', provider.name);
+        const detail = error && typeof error === 'object' ? error as { status?: unknown; code?: unknown } : {};
+        console.warn('[vision-ai] Provider unavailable:', provider.name, {
+          status: detail.status ?? null,
+          code: detail.code ?? null,
+          message: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+        });
       }
     }
 

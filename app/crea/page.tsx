@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { CalendarDays, CheckCircle2, CircleAlert, Clock3, Loader2, MapPin, Send } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle2, CircleAlert, Clock3, Loader2, MapPin, Send } from 'lucide-react';
 import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
@@ -463,17 +463,6 @@ export default function CreaEvento() {
                                 }
                         </p>
 
-                            {events.length > 0 && (
-                                <button
-                                    onClick={() => {
-                                        resetEvents();
-                                        setError(null);
-                                    }}
-                                    className="industrial-link industrial-link-outline"
-                                >
-                                    <span aria-hidden="true">←</span> Crea un altro evento
-                                </button>
-                            )}
                     </div>
                 </section>
 
@@ -597,14 +586,18 @@ export default function CreaEvento() {
                         )}
 
                         {events.length === 1 && (
-                            <div className="sticky top-16 z-30 flex items-center justify-between gap-2 border-b border-black/10 bg-[#f5f2ec]/95 py-3 backdrop-blur-sm">
+                            <div className="sticky top-16 z-30 flex items-center justify-between gap-2 border-b border-black/10 bg-[var(--background)] py-3">
                                 <button
                                     type="button"
-                                    onClick={resetEvents}
+                                    onClick={() => {
+                                        resetEvents();
+                                        setError(null);
+                                    }}
                                     disabled={isPublishingAll}
-                                    className="shrink-0 rounded-full px-2 py-1.5 text-xs font-medium text-black/60 transition-colors hover:bg-black/5 hover:text-black disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
+                                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 border border-[#1d1d1b] px-3 py-2 text-xs font-bold text-[#1d1d1b] transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
                                 >
-                                    Torna indietro
+                                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                                    Crea un altro evento
                                 </button>
                                 <button
                                     type="button"

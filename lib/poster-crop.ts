@@ -21,7 +21,7 @@ export function parsePosterBounds(analysis: string): PosterBounds | null {
   try {
     const bounds = JSON.parse(line.slice(line.indexOf(":") + 1)) as PosterBounds | null;
     if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height, bounds.confidence].every(Number.isFinite)) return null;
-    if (bounds.confidence < 0.9 || bounds.confidence > 1 || bounds.x < 0 || bounds.y < 0 ||
+    if (bounds.confidence < 0.8 || bounds.confidence > 1 || bounds.x < 0 || bounds.y < 0 ||
       bounds.width <= 0 || bounds.height <= 0 || bounds.x + bounds.width > 1 || bounds.y + bounds.height > 1 ||
       bounds.width * bounds.height < 0.12) return null;
     return bounds;

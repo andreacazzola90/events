@@ -22,6 +22,7 @@ From [.env.example](../.env.example) and runtime code:
 - NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
 - GROQ_API_SECRET_KEY
+- NVIDIA_API_SECRET_KEY (recommended; first vision provider in the default order)
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_SECRET_KEY
 - NEXT_PUBLIC_SUPABASE_URL
@@ -141,7 +142,7 @@ Focus logs for:
 1. Validate GROQ_API_SECRET_KEY and OCR provider availability.
 2. Test POST /api/process-image with a known good image.
 3. Inspect logs for extraction branch used and fallback path.
-4. Automatic flyer cropping requires a working vision provider. Set `OPENAI_API_SECRET_KEY` to use `gpt-4o-mini`; without it, the existing Groq vision model is attempted. If vision is unavailable or bounds are uncertain, image creation continues through OCR without automatic cropping. Verify a screenshot with surrounding UI and confirm that manual cropping during draft review reopens the original upload.
+4. Flyer cropping defaults to NVIDIA Vision followed by Groq. Gemini and OpenRouter are excluded from the default order after returning HTTP 429 in the latest live check; they can be explicitly re-enabled with `AI_VISION_PROVIDERS` after verifying their quota. Service failures and truncated output can fall through, but completed privacy rejections cannot. Partial output is never accepted. If no provider completes or bounds are uncertain, the API does not approve an unverified screenshot. Verify with a synthetic screenshot containing social UI and confirm that the crop excludes it while preserving the full flyer.
 
 ## 9.2 Scraper failures
 

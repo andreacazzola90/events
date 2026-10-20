@@ -119,7 +119,8 @@ Core variables:
 - NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
 - GROQ_API_SECRET_KEY
-- OPENAI_API_SECRET_KEY (optional: enables `gpt-4o-mini` visual extraction and automatic flyer cropping; otherwise the pipeline attempts Groq vision and preserves the original if vision is unavailable or uncertain)
+- GROQ_VISION_MODEL (optional; defaults to `qwen/qwen3.8-27b` for the vision checks)
+- NVIDIA_API_SECRET_KEY and NVIDIA_VISION_MODEL (optional; NVIDIA is first in the default vision order)
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_SECRET_KEY
 - NEXT_PUBLIC_SUPABASE_URL

@@ -62,20 +62,20 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             }
 
             if (!isPdf && !data.previewImageDataUrl) {
-                throw new Error('Locandina non verificata. Ritaglia solo l\'immagine dell\'evento e riprova.');
+                toast.warn(data.imageWarning?.message || 'Evento generato senza copertina: immagine non disponibile. Puoi aggiungerla manualmente.', { autoClose: false });
             }
             const imageUrl = data.previewImageDataUrl
                 ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
-                : URL.createObjectURL(file);
+                : isPdf ? URL.createObjectURL(file) : '';
 
             // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
                 console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
-                onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl: undefined })), imageUrl, data.debug);
+                onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug);
             } else {
                 // Fallback for old structure or single event
                 console.log('[ImageUploader] ✅ Ricevuto evento singolo/vecchio formato');
-                onProcessed({ ...data, originalImageUrl: undefined }, imageUrl, data.debug);
+                onProcessed({ ...data, imageUrl: undefined, originalImageUrl: undefined }, imageUrl, data.debug);
             }
         } catch (error) {
             const errorMessage = error instanceof Error

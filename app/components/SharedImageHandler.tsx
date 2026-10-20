@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { EventData } from '../types/event';
+import { toast } from 'react-toastify';
 
 interface SharedImageHandlerProps {
     onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any) => void;
@@ -74,13 +75,15 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
 
                     const data = await response.json();
                     if (!data.previewImageDataUrl) {
-                        throw new Error('Locandina non verificata. Ritaglia solo l\'immagine dell\'evento e riprova.');
+                        toast.warn(data.imageWarning?.message || 'Evento generato senza copertina: immagine non disponibile. Puoi aggiungerla manualmente.', { autoClose: false });
                     }
-                    const imageUrl = URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob());
+                    const imageUrl = data.previewImageDataUrl
+                        ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
+                        : '';
                     if (data.events && Array.isArray(data.events)) {
-                        onProcessed(data.events.map((event: EventData) => ({ ...event, originalImageUrl: undefined })), imageUrl, data.debug);
+                        onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug);
                     } else {
-                        onProcessed({ ...data, originalImageUrl: undefined }, imageUrl, data.debug);
+                        onProcessed({ ...data, imageUrl: undefined, originalImageUrl: undefined }, imageUrl, data.debug);
                     }
                 } catch (err) {
                     console.error('[PWA] Error handling shared data:', err);

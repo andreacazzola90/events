@@ -1,32 +1,37 @@
 import OpenAI from 'openai';
 
-type VisionProvider = 'groq' | 'gemini' | 'openrouter';
+type VisionProvider = 'nvidia' | 'gemini' | 'openrouter' | 'groq';
 
 export class VisionServiceUnavailableError extends Error {
   constructor() {
-    super('Il servizio di controllo immagini non e al momento disponibile. Riprova tra poco o verifica quota e configurazione dei servizi AI. Non e necessario ritagliare di nuovo la locandina.');
+    super('Il servizio vision non e al momento disponibile. Riprova tra poco o verifica quota e configurazione. Non e necessario ricaricare o ritagliare il file.');
     this.name = 'VisionServiceUnavailableError';
   }
 }
 
-function getVisionProviders() {
-  const order = [...new Set((process.env.AI_VISION_PROVIDERS ?? 'gemini,groq,openrouter')
+function getVisionProviders(providerOrder?: string) {
+  const order = [...new Set((providerOrder ?? process.env.AI_VISION_PROVIDERS ?? 'nvidia,groq')
     .split(',').map(value => value.trim()).filter(Boolean))];
   const settings = {
-    groq: {
-      apiKey: process.env.GROQ_API_SECRET_KEY,
-      baseURL: 'https://api.groq.com/openai/v1',
-      model: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b',
+    nvidia: {
+      apiKey: process.env.NVIDIA_API_SECRET_KEY,
+      baseURL: 'https://integrate.api.nvidia.com/v1',
+      model: process.env.NVIDIA_VISION_MODEL?.trim() || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
     },
     gemini: {
       apiKey: process.env.GEMINI_API_SECRET_KEY,
       baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-      model: process.env.GEMINI_VISION_MODEL || 'gemini-2.5-flash',
+      model: process.env.GEMINI_VISION_MODEL?.trim() || 'gemini-3.8-flash',
     },
     openrouter: {
       apiKey: process.env.OPENROUTER_API_SECRET_KEY,
       baseURL: 'https://openrouter.ai/api/v1',
       model: process.env.OPENROUTER_VISION_MODEL?.trim() || '',
+    },
+    groq: {
+      apiKey: process.env.GROQ_API_SECRET_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+      model: process.env.GROQ_VISION_MODEL?.trim() || 'qwen/qwen3.8-27b',
     },
   };
 
@@ -57,10 +62,10 @@ function isSafetyRejection(error: unknown): boolean {
   });
 }
 
-export function createEventImageAnalyzer() {
-  const providers = getVisionProviders();
+export function createEventImageAnalyzer(providerOrder?: string) {
+  const providers = getVisionProviders(providerOrder);
   const unavailable = new Set<string>();
-  const deadline = Date.now() + 35_000;
+  const deadline = Date.now() + 180_000;
 
   return async (imageUrl: string, prompt: string): Promise<string> => {
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{
@@ -75,11 +80,13 @@ export function createEventImageAnalyzer() {
       if (unavailable.has(provider.name)) continue;
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
+      const startedAt = Date.now();
+      const timeout = Math.min(60_000, remaining);
       try {
         const client = new OpenAI({
           apiKey: provider.apiKey,
           baseURL: provider.baseURL,
-          timeout: Math.min(9_000, remaining),
+          timeout,
           maxRetries: 0,
         });
         const completion = await client.chat.completions.create({
@@ -101,10 +108,13 @@ export function createEventImageAnalyzer() {
         if (choice?.finish_reason !== 'stop' || choice.message?.refusal) return '';
         return typeof choice.message?.content === 'string' ? choice.message.content : '';
       } catch (error) {
+        if (error instanceof VisionServiceUnavailableError) throw error;
         if (isSafetyRejection(error)) return '';
         unavailable.add(provider.name);
         const detail = error && typeof error === 'object' ? error as { status?: unknown; code?: unknown } : {};
         console.warn('[vision-ai] Provider unavailable:', provider.name, {
+          elapsedMs: Date.now() - startedAt,
+          timeoutMs: timeout,
           status: detail.status ?? null,
           code: detail.code ?? null,
           message: (error instanceof Error ? error.message : String(error)).slice(0, 200),

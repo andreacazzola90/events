@@ -50,7 +50,19 @@ export async function webSearch(query: string, options?: SearchOptions): Promise
     if (googleKey && googleCx) return await googleCustomSearch(query, googleKey, googleCx, options);
     console.warn('⚠️ No web search provider configured (TAVILY_API_KEY or GOOGLE_API_SECRET_KEY+GOOGLE_CX). Skipping.');
   } catch (error) {
-    console.error('❌ Web search failed:', error instanceof Error ? error.message : error);
+    const provider = tavilyKey ? 'tavily' : 'google';
+    if (axios.isAxiosError(error)) {
+      const detail = error.response?.data?.error;
+      const reason = detail?.details?.find((item: { reason?: string }) => item.reason)?.reason
+        || detail?.errors?.[0]?.reason;
+      console.warn('Web search failed:', {
+        provider,
+        status: error.response?.status ?? null,
+        reason: typeof reason === 'string' ? reason : error.code || 'request_failed',
+      });
+    } else {
+      console.warn('Web search failed:', { provider, reason: 'request_failed' });
+    }
   }
   return [];
 }

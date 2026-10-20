@@ -7,7 +7,7 @@
       "maxDuration": 55
     },
     "app/api/process-image/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "app/api/cron/scrape-visitpedemontana/route.ts": {
       "maxDuration": 300

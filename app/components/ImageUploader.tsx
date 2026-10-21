@@ -6,18 +6,22 @@ import { EventData } from '@/types/event';
 import LoadingAnimation from './LoadingAnimation';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
+import { startDraftImageCrop, type DraftImageCrop, type DraftImageScan } from '../../lib/draft-image-crop';
 
 interface ImageUploaderProps {
-    onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any) => void;
+    onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any, crop?: DraftImageCrop) => void;
     onError: (error: string) => void;
+    onStart?: () => DraftImageScan;
 }
 
-export default function ImageUploader({ onProcessed, onError }: ImageUploaderProps) {
+export default function ImageUploader({ onProcessed, onError, onStart }: ImageUploaderProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [showReceived, setShowReceived] = useState(false);
     const [showSourcePicker, setShowSourcePicker] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
+    const cancelRequest = useRef<(() => void) | undefined>(undefined);
+    useEffect(() => () => cancelRequest.current?.(), []);
 
     const processFile = async (file: File) => {
         if (file.size > 10 * 1024 * 1024) { // 10MB limit
@@ -25,6 +29,17 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             return;
         }
         const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+        cancelRequest.current?.();
+        const scan = onStart?.();
+        const crop = isPdf ? undefined : startDraftImageCrop(file);
+        if (crop) scan?.registerCrop(crop);
+        let cancelled = false;
+        let handedOff = false;
+        cancelRequest.current = () => {
+            cancelled = true;
+            if (!handedOff) crop?.cancel();
+        };
+        const isCurrent = () => !cancelled && (!scan || scan.isCurrent());
 
         // Mostra subito l'animazione di ricezione, poi passa allo stato di elaborazione
         setShowReceived(true);
@@ -41,8 +56,10 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
                 })(),
             });
 
+            if (!isCurrent()) return;
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
+                if (!isCurrent()) return;
                 const errorMessage = errorData.error || 'Impossibile elaborare l\'immagine';
                 if ((response.status === 422 && errorData.code === 'POSTER_PRIVACY_REVIEW_REQUIRED') ||
                     (response.status === 503 && errorData.code === 'VISION_SERVICE_UNAVAILABLE')) {
@@ -54,6 +71,7 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             }
 
             const data = await response.json();
+            if (!isCurrent()) return;
             console.log('[ImageUploader] 📦 Received data:', data);
 
             if (data.error) {
@@ -67,17 +85,23 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             const imageUrl = data.previewImageDataUrl
                 ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
                 : isPdf ? URL.createObjectURL(file) : '';
+            if (!isCurrent()) {
+                if (imageUrl) URL.revokeObjectURL(imageUrl);
+                return;
+            }
 
             // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
                 console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
-                onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug);
+                onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug, crop);
             } else {
                 // Fallback for old structure or single event
                 console.log('[ImageUploader] ✅ Ricevuto evento singolo/vecchio formato');
-                onProcessed({ ...data, imageUrl: undefined, originalImageUrl: undefined }, imageUrl, data.debug);
+                onProcessed({ ...data, imageUrl: undefined, originalImageUrl: undefined }, imageUrl, data.debug, crop);
             }
+            handedOff = true;
         } catch (error) {
+            if (!isCurrent()) return;
             const errorMessage = error instanceof Error
                 ? error.message
                 : 'Impossibile elaborare l\'immagine';
@@ -106,8 +130,11 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
             toast.error(errorMessage);
             onError(errorMessage);
         } finally {
-            setIsProcessing(false);
-            setShowSourcePicker(false);
+            if (!handedOff) crop?.cancel();
+            if (isCurrent()) {
+                setIsProcessing(false);
+                setShowSourcePicker(false);
+            }
         }
     };
 
@@ -115,7 +142,7 @@ export default function ImageUploader({ onProcessed, onError }: ImageUploaderPro
         if (acceptedFiles.length === 0) return;
         const file = acceptedFiles[0];
         await processFile(file);
-    }, [onProcessed, onError]);
+    }, [onProcessed, onError, onStart]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,

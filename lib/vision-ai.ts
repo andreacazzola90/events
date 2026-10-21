@@ -3,9 +3,12 @@ import OpenAI from 'openai';
 type VisionProvider = 'nvidia' | 'gemini' | 'openrouter' | 'groq';
 
 export class VisionServiceUnavailableError extends Error {
-  constructor() {
+  readonly reason: 'unavailable' | 'rate-limited' | 'timeout' | 'not-configured';
+
+  constructor(reason: VisionServiceUnavailableError['reason'] = 'unavailable') {
     super('Il servizio vision non e al momento disponibile. Riprova tra poco o verifica quota e configurazione. Non e necessario ricaricare o ritagliare il file.');
     this.name = 'VisionServiceUnavailableError';
+    this.reason = reason;
   }
 }
 
@@ -62,10 +65,18 @@ function isSafetyRejection(error: unknown): boolean {
   });
 }
 
-export function createEventImageAnalyzer(providerOrder?: string) {
+export function createEventImageAnalyzer(providerOrder?: string, options: {
+  budgetMs?: number;
+  signal?: AbortSignal;
+  jsonMode?: boolean;
+  retryRateLimit?: boolean;
+  onProviderFailure?: (provider: string, status?: number) => void;
+} = {}) {
   const providers = getVisionProviders(providerOrder);
   const unavailable = new Set<string>();
-  const deadline = Date.now() + 180_000;
+  let failureReason: VisionServiceUnavailableError['reason'] = providers.length ? 'unavailable' : 'not-configured';
+  let rateLimitRetried = false;
+  const deadline = Date.now() + (options.budgetMs ?? 180_000);
 
   return async (imageUrl: string, prompt: string): Promise<string> => {
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{
@@ -79,7 +90,10 @@ export function createEventImageAnalyzer(providerOrder?: string) {
     for (const provider of providers) {
       if (unavailable.has(provider.name)) continue;
       const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
+      if (remaining <= 0 || options.signal?.aborted) {
+        failureReason = 'timeout';
+        break;
+      }
       const startedAt = Date.now();
       const timeout = Math.min(60_000, remaining);
       try {
@@ -89,17 +103,44 @@ export function createEventImageAnalyzer(providerOrder?: string) {
           timeout,
           maxRetries: 0,
         });
-        const completion = await client.chat.completions.create({
+        const invoke = () => client.chat.completions.create({
           model: provider.model,
           messages,
           temperature: 0.1,
-          max_tokens: 2000,
+          max_tokens: options.jsonMode && provider.name === 'groq' ? 512 : 2000,
+          ...(options.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
           ...(provider.name === 'gemini' ? { reasoning_effort: 'low' as const } : {}),
-        });
+        }, { signal: options.signal, timeout: Math.min(60_000, Math.max(1, deadline - Date.now())) });
+        let completion;
+        try {
+          completion = await invoke();
+        } catch (error) {
+          const detail = error as { status?: number; headers?: { get?: (name: string) => string | null; 'retry-after'?: string } } | null;
+          const header = typeof detail?.headers?.get === 'function' ? detail.headers.get('retry-after') : detail?.headers?.['retry-after'];
+          const delay = typeof header === 'string' && header.trim() ? Number(header) * 1000 + 150 : NaN;
+          if (!options.retryRateLimit || provider.name !== 'groq' || rateLimitRetried || detail?.status !== 429 ||
+            !Number.isFinite(delay) || delay < 150 || delay > 20_000 || deadline - Date.now() < delay + 2_000) throw error;
+          rateLimitRetried = true;
+          console.warn('[vision-ai] Free quota temporarily busy; retrying Groq once after Retry-After');
+          await new Promise<void>((resolve, reject) => {
+            const abort = () => {
+              clearTimeout(timer);
+              options.signal?.removeEventListener('abort', abort);
+              reject(new VisionServiceUnavailableError('timeout'));
+            };
+            const timer = setTimeout(() => {
+              options.signal?.removeEventListener('abort', abort);
+              resolve();
+            }, delay);
+            options.signal?.addEventListener('abort', abort, { once: true });
+            if (options.signal?.aborted) abort();
+          });
+          completion = await invoke();
+        }
         if ('error' in completion && completion.error) throw completion.error;
         const choice = completion.choices?.[0];
         if (choice && 'error' in choice && choice.error) throw choice.error;
-        if (deadline <= Date.now()) throw new VisionServiceUnavailableError();
+        if (deadline <= Date.now()) throw new VisionServiceUnavailableError('timeout');
         if (choice?.finish_reason === 'length') {
           unavailable.add(provider.name);
           console.warn('[vision-ai] Provider response was truncated:', provider.name);
@@ -112,6 +153,8 @@ export function createEventImageAnalyzer(providerOrder?: string) {
         if (isSafetyRejection(error)) return '';
         unavailable.add(provider.name);
         const detail = error && typeof error === 'object' ? error as { status?: unknown; code?: unknown } : {};
+        failureReason = detail.status === 429 ? 'rate-limited' : options.signal?.aborted ? 'timeout' : 'unavailable';
+        options.onProviderFailure?.(provider.name, typeof detail.status === 'number' ? detail.status : undefined);
         console.warn('[vision-ai] Provider unavailable:', provider.name, {
           elapsedMs: Date.now() - startedAt,
           timeoutMs: timeout,
@@ -122,7 +165,7 @@ export function createEventImageAnalyzer(providerOrder?: string) {
       }
     }
 
-    throw new VisionServiceUnavailableError();
+    throw new VisionServiceUnavailableError(failureReason);
   };
 }
 

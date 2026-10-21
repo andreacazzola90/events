@@ -13,6 +13,7 @@ import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
+import type { DraftImageCrop, DraftImageCropFailure, DraftImageCropStatus, DraftImageScan } from '../../lib/draft-image-crop';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -67,6 +68,27 @@ export default function CreaEvento() {
     const [isPublishingAll, setIsPublishingAll] = useState(false);
     const [duplicates, setDuplicates] = useState<(DuplicateMatch | null)[]>([]);
     const duplicateCheckId = useRef(0);
+    const imageCropId = useRef(0);
+    const pendingImageCrop = useRef<DraftImageCrop | undefined>(undefined);
+    const [imageCropStatus, setImageCropStatus] = useState<DraftImageCropStatus>('idle');
+    const [imageCropFailure, setImageCropFailure] = useState<DraftImageCropFailure | undefined>(undefined);
+    const imageProcessing = imageCropStatus === 'processing';
+    const draftScanId = useRef(0);
+
+    const beginDraftScan = (): DraftImageScan => {
+        const scanId = ++draftScanId.current;
+        imageCropId.current++;
+        pendingImageCrop.current?.cancel();
+        pendingImageCrop.current = undefined;
+        setImageCropStatus('idle');
+        return {
+            isCurrent: () => draftScanId.current === scanId,
+            registerCrop: crop => {
+                if (draftScanId.current !== scanId) crop.cancel();
+                else pendingImageCrop.current = crop;
+            },
+        };
+    };
 
     const checkDuplicates = async (list: EventData[]) => {
         const checkId = ++duplicateCheckId.current;
@@ -96,6 +118,11 @@ export default function CreaEvento() {
     };
 
     const resetEvents = () => {
+        draftScanId.current++;
+        imageCropId.current++;
+        pendingImageCrop.current?.cancel();
+        pendingImageCrop.current = undefined;
+        setImageCropStatus('idle');
         setEvents([]);
         setOptimisticEvents(null);
         setImageUrl(null);
@@ -107,30 +134,38 @@ export default function CreaEvento() {
     useEffect(() => {
         return () => {
             // Cleanup any object URLs when component unmounts
-            if (imageUrl) {
+            if (imageUrl && imageUrl !== originalImageUrl) {
                 URL.revokeObjectURL(imageUrl);
             }
         };
-    }, [imageUrl]);
+    }, [imageUrl, originalImageUrl]);
+
+    useEffect(() => () => {
+        draftScanId.current++;
+        imageCropId.current++;
+        pendingImageCrop.current?.cancel();
+    }, []);
 
     useEffect(() => () => {
         if (originalImageUrl) URL.revokeObjectURL(originalImageUrl);
     }, [originalImageUrl]);
 
-    const handleNewEvents = (newEventsOrSingle: EventData | EventData[], newImageUrl: string, debug?: any) => {
-        // Cleanup previous image URL if it exists
-        if (imageUrl) {
-            URL.revokeObjectURL(imageUrl);
-        }
+    const handleNewEvents = (newEventsOrSingle: EventData | EventData[], newImageUrl: string, debug?: any, crop?: DraftImageCrop) => {
+        const cropId = ++imageCropId.current;
+        if (pendingImageCrop.current !== crop) pendingImageCrop.current?.cancel();
+        pendingImageCrop.current = crop;
+        setImageCropStatus(crop && newImageUrl ? 'processing' : 'idle');
+        setImageCropFailure(undefined);
 
         // Converti in array se è un singolo evento
         const newEvents = Array.isArray(newEventsOrSingle) ? newEventsOrSingle : [newEventsOrSingle];
-        setOriginalImageUrl(newEvents[0]?.originalImageUrl || null);
+        setOriginalImageUrl(newImageUrl || null);
 
         // Normalizza e aggiungi imageUrl
         let eventsWithImage = newEvents.map(ev => normalizeEventFields({
             ...ev,
-            imageUrl: ev.imageUrl || newImageUrl
+            imageUrl: ev.imageUrl || newImageUrl,
+            originalImageUrl: newImageUrl || undefined,
         }));
 
         // Se ci sono più eventi, controlla se hanno stessa data e orario
@@ -156,8 +191,31 @@ export default function CreaEvento() {
             toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
         }
         checkDuplicates(eventsWithImage);
+        if (crop && newImageUrl) {
+            void crop.result.then(blob => {
+                if (cropId !== imageCropId.current) return;
+                if (blob) {
+                    const croppedUrl = URL.createObjectURL(blob);
+                    setEvents(current => current.map(event => event.imageUrl === newImageUrl
+                        ? { ...event, imageUrl: croppedUrl, originalImageUrl: newImageUrl }
+                        : event));
+                    setImageUrl(croppedUrl);
+                }
+                pendingImageCrop.current = undefined;
+                setImageCropStatus(blob ? 'completed' : 'failed');
+                setImageCropFailure(blob ? undefined : crop.failureReason);
+            });
+        } else {
+            crop?.cancel();
+        }
     };
 
+
+    const handleDraftImageChange = (index: number, image: string, original?: string) => {
+        setEvents(current => current.map((event, eventIndex) => eventIndex === index
+            ? { ...event, imageUrl: image, originalImageUrl: original || event.originalImageUrl }
+            : event));
+    };
 
     const handleSaveAll = async (eventsToSave: EventData[]) => {
         if (eventsToSave.length === 0) return;
@@ -180,7 +238,7 @@ export default function CreaEvento() {
                     const blob = await response.blob();
                     const formData = new FormData();
                     formData.append('eventData', JSON.stringify(eventData));
-                    formData.append('image', blob, 'event-image.jpg');
+                    formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
 
                     const saveResponse = await fetch('/api/events', {
                         method: 'POST',
@@ -322,6 +380,7 @@ export default function CreaEvento() {
             return;
         }
 
+        const scan = beginDraftScan();
         setLoadingLink(true);
         setLinkReceived(true);
         setError(null);
@@ -358,9 +417,14 @@ export default function CreaEvento() {
             const data = await response.json();
 
             if (data.events && data.events.length > 0) {
+                if (!scan.isCurrent()) return;
                 const pdfPreviewUrl = data.previewImageDataUrl
                     ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
                     : null;
+                if (!scan.isCurrent()) {
+                    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+                    return;
+                }
                 // Normalizza i campi estratti
                 const normalized = data.events.map((ev: EventData) => normalizeEventFields({
                     ...ev,
@@ -378,6 +442,7 @@ export default function CreaEvento() {
                 setError('Nessun evento trovato dal link');
             }
         } catch (error) {
+            if (!scan.isCurrent()) return;
             console.error('Error processing link:', error);
 
             if (error instanceof Error) {
@@ -434,6 +499,7 @@ export default function CreaEvento() {
                     onStart={() => {
                         setError(null);
                         setProcessingSharedImage(true);
+                        return beginDraftScan();
                     }}
                     onError={(message) => {
                         setProcessingSharedImage(false);
@@ -486,7 +552,8 @@ export default function CreaEvento() {
                                     </div>
 
                                     <ImageUploader
-                                        onProcessed={(data, imgUrl, debug) => handleNewEvents(data, imgUrl, debug)}
+                                        onStart={beginDraftScan}
+                                        onProcessed={handleNewEvents}
                                         onError={(message: string) => {
                                             setError(message);
                                             resetEvents();
@@ -602,7 +669,7 @@ export default function CreaEvento() {
                                 <button
                                     type="button"
                                     onClick={handlePublishAllEvents}
-                                    disabled={isPublishingAll || (duplicates.length === events.length && duplicates.every(Boolean))}
+                                    disabled={isPublishingAll || imageProcessing || (duplicates.length === events.length && duplicates.every(Boolean))}
                                     className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 bg-[#1d1d1b] px-2 py-3 text-xs font-bold text-white transition-colors hover:bg-[#d65a38] disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-5 sm:text-sm"
                                 >
                                     <Send className="h-4 w-4" aria-hidden="true" />
@@ -615,14 +682,25 @@ export default function CreaEvento() {
                         {events.length > 1 ? (
                             <MultipleEventsEditor
                                 events={events}
+                                imageProcessing={imageProcessing}
+                                imageCropStatus={imageCropStatus}
+                                imageCropFailure={imageCropFailure}
+                                onImageChange={handleDraftImageChange}
                                 duplicates={duplicates}
-                                onEventsChange={checkDuplicates}
+                                onEventsChange={updated => {
+                                    setEvents(updated);
+                                    checkDuplicates(updated);
+                                }}
                                 onSaveAll={handleSaveAll}
                                 onCancel={resetEvents}
                             />
                         ) : events.length === 1 ? (
                             <EventDisplay
                                 eventData={events[0]}
+                                imageProcessing={imageProcessing}
+                                imageCropStatus={imageCropStatus}
+                                imageCropFailure={imageCropFailure}
+                                onImageChange={(image, original) => handleDraftImageChange(0, image, original)}
                                 duplicate={duplicates[0]}
                                 showPublishButton={false}
                                 onSave={(updated) => {

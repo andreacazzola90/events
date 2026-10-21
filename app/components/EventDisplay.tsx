@@ -13,6 +13,8 @@ import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media'
 import { MAX_AI_INSTRUCTIONS_LENGTH } from '../../lib/ai-instructions';
 import SaveAnimation from './SaveAnimation';
 import { toast } from 'react-toastify';
+import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
+import { DRAFT_CROP_FAILURE_MESSAGES, type DraftImageCropFailure, type DraftImageCropStatus } from '../../lib/draft-image-crop';
 
 async function cropCoverToFile(imageSource: string, area: Area) {
     const image = new window.Image();
@@ -38,6 +40,10 @@ interface EventDisplayProps {
     onSave?: (updatedData: EventData) => void;
     duplicate?: DuplicateMatch | null;
     showPublishButton?: boolean;
+    imageProcessing?: boolean;
+    imageCropStatus?: DraftImageCropStatus;
+    imageCropFailure?: DraftImageCropFailure;
+    onImageChange?: (imageUrl: string, originalImageUrl?: string) => void;
 }
 
 const isMissing = (value?: string) => !value || !value.trim() || /^non trovato$/i.test(value.trim());
@@ -55,7 +61,7 @@ function formatDateLong(raw?: string): string {
 
 const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d1b] focus:outline-none focus:border-[#d65a38] transition-colors';
 
-export default function EventDisplay({ eventData, onSave, duplicate, showPublishButton = true }: EventDisplayProps) {
+export default function EventDisplay({ eventData, onSave, duplicate, showPublishButton = true, imageProcessing = false, imageCropStatus = imageProcessing ? 'processing' : 'idle', imageCropFailure, onImageChange }: EventDisplayProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
@@ -69,6 +75,11 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     const formRef = useRef<HTMLFormElement>(null);
     const cropPreviewUrls = useRef<string[]>([]);
     const originalCropSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
+    const [manualImageOverride, setManualImageOverride] = useState(false);
+    const draftImageSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
+    const currentImageUrl = useRef(eventData.imageUrl);
+    const currentOnSave = useRef(onSave);
+    useEffect(() => { currentOnSave.current = onSave; }, [onSave]);
 
     useEffect(() => () => cropPreviewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
 
@@ -90,9 +101,16 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     };
 
     useEffect(() => {
-        setImageUrl(eventData.imageUrl);
-        originalCropSource.current = eventData.originalImageUrl || eventData.imageUrl;
-    }, [eventData.imageUrl, eventData.originalImageUrl]);
+        const source = eventData.originalImageUrl || eventData.imageUrl;
+        const newDraft = draftImageSource.current !== source;
+        if (newDraft) setManualImageOverride(false);
+        draftImageSource.current = source;
+        if (newDraft || !manualImageOverride) {
+            currentImageUrl.current = eventData.imageUrl;
+            setImageUrl(eventData.imageUrl);
+            originalCropSource.current = source;
+        }
+    }, [eventData.imageUrl, eventData.originalImageUrl, manualImageOverride]);
 
     const handleOpenCropper = () => {
         if (!imageUrl) return;
@@ -106,7 +124,10 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             const croppedFile = await cropCoverToFile(cropSource, croppedAreaPixels);
             const previewUrl = URL.createObjectURL(croppedFile);
             cropPreviewUrls.current.push(previewUrl);
+            setManualImageOverride(true);
             setImageUrl(previewUrl);
+            currentImageUrl.current = previewUrl;
+            onImageChange?.(previewUrl, originalCropSource.current);
             setCropSource(null);
         } catch {
             toast.error('Impossibile ritagliare l’immagine o il ritaglio supera il limite di 4 MiB.');
@@ -177,7 +198,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             organizer: readValue('organizer'),
             price: readValue('price'),
             description: readValue('description'),
-            imageUrl: imageUrl,
+            imageUrl: currentImageUrl.current,
             originalImageUrl: originalCropSource.current,
             sourceUrl: readValue('sourceUrl') || eventData.sourceUrl,
             rawText: eventData.rawText,
@@ -232,7 +253,8 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                 if (input) input.value = updatedEvent[field] || '';
             });
             setImageUrl(updatedEvent.imageUrl);
-            onSave(updatedEvent);
+            currentImageUrl.current = updatedEvent.imageUrl;
+            currentOnSave.current?.(updatedEvent);
             setReprocessMessage('Bozza aggiornata dall’AI. Controlla i campi e salva le modifiche.');
         } catch (error) {
             setReprocessError(error instanceof Error ? error.message : 'Impossibile rielaborare l’evento.');
@@ -288,7 +310,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                 const blob = await response.blob();
                 const formData = new FormData();
                 formData.append('eventData', JSON.stringify(eventToSave));
-                formData.append('image', blob, 'event-image.jpg');
+                formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
 
                 const saveResponse = await fetch('/api/events', {
                     method: 'POST',
@@ -379,6 +401,30 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }} className="event-form">
                 <div className="event-main-layout grid gap-6 md:gap-8 md:grid-cols-[minmax(0,320px)_1fr] items-start">
                     <div className="event-image-section surface-panel overflow-hidden md:sticky md:top-24">
+                        {(imageCropStatus !== 'idle' || manualImageOverride) && (
+                            <div
+                                role="status"
+                                aria-live="polite"
+                                aria-atomic="true"
+                                data-image-crop-status={manualImageOverride ? 'manual' : imageCropStatus}
+                                className={`flex items-start gap-2 border-b border-black/10 px-4 py-3 text-sm ${manualImageOverride ? 'bg-white text-[#5f5b56]' : imageCropStatus === 'failed' ? 'bg-[#fff7f4] text-[#8f3823]' : imageCropStatus === 'completed' ? 'bg-green-50 text-green-800' : 'bg-white text-[#5f5b56]'}`}
+                            >
+                                {!manualImageOverride && imageCropStatus === 'processing'
+                                    ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                                    : !manualImageOverride && imageCropStatus === 'failed'
+                                        ? <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                                        : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+                                <div className="min-w-0">
+                                    <span className="block font-semibold">{manualImageOverride
+                                        ? 'Immagine modificata manualmente'
+                                        : imageCropStatus === 'processing' ? 'Immagine in elaborazione'
+                                            : imageCropStatus === 'completed' ? 'Ritaglio completato' : 'Ritaglio non riuscito'}</span>
+                                    {!manualImageOverride && imageCropStatus === 'failed' && (
+                                        <span className="mt-1 block">{imageCropFailure && DRAFT_CROP_FAILURE_MESSAGES[imageCropFailure]}{imageCropFailure ? ' ' : ''}Immagine originale mantenuta.</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         {imageUrl ? (
                             <img
                                 src={imageUrl}
@@ -402,7 +448,11 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                             const url = URL.createObjectURL(file);
                                             cropPreviewUrls.current.push(url);
                                             originalCropSource.current = url;
+                                            draftImageSource.current = url;
+                                            setManualImageOverride(true);
                                             setImageUrl(url);
+                                            currentImageUrl.current = url;
+                                            onImageChange?.(url, url);
                                         }
                                     }}
                                 />

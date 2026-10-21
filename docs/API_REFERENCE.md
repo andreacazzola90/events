@@ -77,6 +77,10 @@ Example 200 response:
   - duplicate check on (title, date, location)
   - geocode location (best effort)
   - cache/path revalidation
+  - persists the cover selected in the draft, with no vision or automatic crop calls and no deferred cover replacement
+  - upload/share clients run `POST /api/crop-image` alongside extraction, show the draft with an image-processing status, and enable publishing after crop completion or fallback
+  - JSON image URLs, PDF, link and manual-crop flows are unchanged. Page pre-warming runs after the response with bounded requests
+  - privacy is not guaranteed: if cropping fails and the user publishes the original, personal/social details can remain public; originals are sent to cloud vision for analysis
 - Responses:
   - 201: created event (+ slug)
   - 409: EVENT_DUPLICATE
@@ -256,6 +260,16 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - On images, a URL printed on the flyer remains authoritative. When no source URL exists, search can supply only a matching HTTP(S) result after review; unrelated first results and secondary unverified URL searches are not used. Image cropping is no longer part of this endpoint.
 - Reports are returned for inspection, not stored as training data. This release does not implement persistent learning, automatic prompt updates or model fine-tuning. Such changes require a separately reviewed correction store and evaluation set. No additional provider, paid service or database migration is required; cron consumers of the link scanner inherit the same conservative checks.
 
+### POST /api/crop-image
+- File: [app/api/crop-image/route.ts](../app/api/crop-image/route.ts)
+- Purpose: best-effort verified poster crop for a draft, before publishing.
+- Input: multipart `image`, supported JPEG/PNG/WebP with matching MIME/signature, at most 4 MiB.
+- Responses: `200 image/jpeg` for a verified crop; `204` for unavailable, uncertain or failed analysis; `400` invalid image; `413` oversized image. All responses are `no-store`.
+- Uses `AI_VISION_CROP_PROVIDERS` (default `groq`), a shared 45-second AI budget and 50-second server cancellation. Client cancellation is 55 seconds and also occurs when a draft is replaced or closed. Groq may retry a single HTTP 429 per crop, only with a valid `Retry-After` no longer than 20 seconds and enough remaining budget; other extraction paths keep retries disabled.
+- A fallback response includes `X-Image-Crop-Reason`: `rate-limited`, `timeout`, `not-configured`, `bounds-rejected`, `verification-rejected`, `image-invalid` or `service-unavailable`. Provider HTTP failures may include a sanitized `X-Image-Crop-Service-Status`. These contain no credentials or image content; the browser shows the reason alongside the original cover.
+- Does not create events, write to the database, upload to storage or schedule a background job. The browser applies the returned blob to the current draft only, preserving manual cover edits and the original for manual cropping. The original remains on any failure.
+- The original image is sent to the configured vision provider. This endpoint does not guarantee anonymity or bypass provider quotas.
+
 ### POST /api/process-image
 - File: [app/api/process-image/route.ts](../app/api/process-image/route.ts)
 - Purpose: OCR + AI extraction from flyer image
@@ -264,7 +278,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - Success output: `events` and `previewImageDataUrl`, a JPEG data URL containing the complete uploaded image, auto-oriented without cropping, padding or stretching. Crop-related `imageWarning` and `POSTER_PRIVACY_REVIEW_REQUIRED` responses are no longer produced.
 - Data vision prefers Groq then NVIDIA unless overridden by `AI_VISION_PROVIDERS` or, with higher precedence, `AI_VISION_EXTRACTION_PROVIDERS`. `AI_VISION_CROP_PROVIDERS` is no longer used by this endpoint. The analyzer has a 180-second budget, at most 60 seconds per request and no automatic retries; truncated responses are discarded. Structured text extraction, PDFs and cron continue to use Groq. See [OPENAI_SETUP.md](../OPENAI_SETUP.md).
 - Web verification is attempted whenever Tavily or Google credentials are configured. Search failures are nonblocking; warnings include provider, HTTP status and provider reason without credentials. Google HTTP 403 `API_KEY_SERVICE_BLOCKED` means the key is not authorized for Custom Search; check its API restrictions and API enablement in Google Cloud Console.
-- Privacy limitation: the complete uploaded image is used as the cover. Social UI, user avatars and personal information are no longer removed or checked automatically. Prompts instruct data extraction to ignore unrelated personal details, but this does not anonymize the cover. Review images before publishing. The original is sent to cloud vision/OCR services.
+- Privacy limitation: this endpoint returns the complete image, not an anonymized cover. Upload clients request a separate best-effort crop in parallel through `POST /api/crop-image`; failures retain the original. Prompts instruct data extraction to ignore unrelated personal details, but this does not anonymize the image. Review images before publishing. The original is sent to cloud vision/OCR services.
 
 Example request:
 

@@ -1,6 +1,131 @@
 /// <reference types="cypress" />
 
-describe('Event Creation via Image - OCR & AI Testing', () => {
+describe('Parallel event cover', () => {
+  beforeEach(() => {
+    cy.visit('/crea', { failOnStatusCode: false });
+    cy.wait(2000);
+  });
+
+  it('keeps the failed crop status visible when cropping finishes before extraction', () => {
+    cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'rate-limited' } }).as('earlyCrop');
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      cy.intercept('POST', '/api/process-image', {
+        statusCode: 200,
+        delay: 300,
+        body: {
+          events: [{ title: 'Early crop fallback', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' }],
+          previewImageDataUrl: `data:image/png;base64,${image}`,
+        },
+      }).as('laterExtraction');
+    });
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait(['@earlyCrop', '@laterExtraction']);
+    cy.contains('Early crop fallback').should('be.visible');
+    cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Immagine originale mantenuta.');
+    cy.get('[data-image-crop-status="failed"]').should('contain', 'Quota gratuita AI temporaneamente esaurita.');
+    cy.contains('button', /^Pubblica$/).should('be.enabled');
+  });
+
+  for (const outcome of ['cropped', 'original', 'manual', 'multiple', 'reprocess']) {
+    it(`shows draft during image processing and keeps the ${outcome} cover before publishing`, () => {
+      cy.viewport(outcome === 'original' ? 390 : 1280, outcome === 'original' ? 844 : 720);
+      let finishCrop: () => void;
+      let finishReprocess: (() => void) | undefined;
+      let saves = 0;
+      let selectedCover: string | undefined;
+      cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+      cy.intercept('POST', '/api/crop-image', request => new Promise<void>(resolve => {
+        finishCrop = () => {
+          request.reply(outcome === 'original'
+            ? { statusCode: 204 }
+            : { statusCode: 200, fixture: 'event-poster.jpg,null', headers: { 'Content-Type': 'image/jpeg' } });
+          resolve();
+        };
+      })).as('draftCrop');
+      cy.intercept('POST', '/api/ai/reprocess-event', request => new Promise<void>(resolve => {
+        finishReprocess = () => {
+          request.reply({ statusCode: 200, body: { event: request.body.event } });
+          resolve();
+        };
+      })).as('reprocessDraft');
+      cy.fixture('event-poster.png', 'base64').then(image => {
+        const event = { title: 'Parallel cover event', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music', rawText: 'Concerto' };
+        cy.intercept('POST', '/api/process-image', {
+          statusCode: 200,
+          body: {
+            events: outcome === 'multiple' ? [event, { ...event, title: 'Second event', time: '21:00' }] : [event],
+            previewImageDataUrl: `data:image/png;base64,${image}`,
+          },
+        }).as('parallelImage');
+      });
+      cy.intercept('POST', '/api/events', request => {
+        saves++;
+        expect(request.headers['content-type']).to.include('multipart/form-data');
+        const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+        expect(body).not.to.include('"autoCropImage":true');
+        expect(body).to.include(`"imageUrl":"${selectedCover}"`);
+        expect(body).to.include(`filename="event-image.${outcome === 'original' || outcome === 'manual' ? 'png' : 'jpg'}"`);
+        request.reply({ statusCode: 201, body: { id: 999, title: 'Parallel cover event' } });
+      }).as('parallelSave');
+      cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+      cy.wait('@parallelImage');
+      cy.contains('Parallel cover event').should('be.visible');
+      cy.contains('[role="status"]', 'Immagine in elaborazione').should('be.visible');
+      cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.disabled');
+      if (outcome === 'cropped' || outcome === 'original') {
+        cy.screenshot(`draft-image-processing-${outcome === 'original' ? 'mobile' : 'desktop'}`, { overwrite: true, capture: 'viewport' });
+      }
+      if (outcome === 'manual' || outcome === 'reprocess') {
+        cy.contains('button', 'Modifica dettagli').click();
+        if (outcome === 'manual') cy.get('input.event-image-upload').selectFile('cypress/fixtures/event-poster.png', { force: true });
+        else {
+          cy.get('textarea[maxlength]').type('Correggi il titolo');
+          cy.contains('button', 'Rielabora con AI').click();
+          cy.wrap(null).should(() => expect(finishReprocess).to.be.a('function'));
+        }
+      }
+      cy.get('img.event-image').first().invoke('attr', 'src').then(original => {
+        cy.then(() => {
+          expect(saves).to.eq(0);
+          expect(finishCrop).to.be.a('function');
+          finishCrop();
+        });
+        cy.wait('@draftCrop');
+        cy.contains('[role="status"]', 'Immagine in elaborazione').should('not.exist');
+        if (outcome === 'manual') {
+          cy.get('[data-image-crop-status="manual"]').should('contain', 'Immagine modificata manualmente');
+        } else if (outcome === 'original') {
+          cy.get('[data-image-crop-status="failed"]').should('contain', 'Ritaglio non riuscito').and('contain', 'Immagine originale mantenuta.');
+        } else {
+          cy.get('[data-image-crop-status="completed"]').first().should('contain', 'Ritaglio completato');
+        }
+        cy.get('img.event-image').first().should(outcome === 'original' || outcome === 'manual' ? 'have.attr' : 'not.have.attr', 'src', original);
+        if (outcome === 'multiple') {
+          cy.get('img.event-image').should('have.length', 2).each(image => expect(image.attr('src')).not.to.eq(original));
+        }
+      });
+      if (outcome === 'reprocess') {
+        cy.get('img.event-image').invoke('attr', 'src').then(cropped => {
+          cy.then(() => finishReprocess?.());
+          cy.wait('@reprocessDraft');
+          cy.contains('[role="alert"]', 'La bozza o le istruzioni sono cambiate').should('be.visible');
+          cy.get('img.event-image').should('have.attr', 'src', cropped);
+        });
+      }
+      if (outcome === 'original') {
+        cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(390));
+        cy.screenshot('draft-image-fallback-mobile', { overwrite: true, capture: 'viewport' });
+      }
+      cy.get('img.event-image').first().invoke('attr', 'src').then(source => { selectedCover = source; });
+      cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.enabled').click();
+      cy.wait('@parallelSave').its('response.statusCode').should('eq', 201);
+      cy.contains(outcome === 'multiple' ? '2 eventi creati' : 'Evento creato').should('be.visible');
+    });
+  }
+});
+
+(Cypress.env('parallelCoverOnly') ? describe.skip : describe)('Event Creation via Image - OCR & AI Testing', () => {
   beforeEach(() => {
     cy.visit('/crea', { failOnStatusCode: false });
     cy.wait(2000);

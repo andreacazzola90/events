@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createEventWithCalendar, scheduleCalendarDeliveries } from "../../lib/google-calendar";
 import { uploadImageToSupabase } from "../../lib/supabase";
@@ -15,6 +15,15 @@ import {
   withExtensionCors,
 } from "../../../lib/extension-cors";
 import type { DbEvent } from "../../types/event";
+
+function refreshEventCache(eventSlug: string) {
+  revalidatePath("/", "page");
+  revalidatePath("/eventi", "page");
+  revalidatePath("/tutti-gli-eventi", "page");
+  revalidatePath("/mappa", "page");
+  revalidateTag("events-list", { expire: 0 });
+  revalidatePath(`/events/${eventSlug}`, "page");
+}
 
 export async function OPTIONS(request: NextRequest) {
   return extensionCorsPreflight(request);
@@ -176,49 +185,28 @@ export async function POST(request: NextRequest) {
 
     console.log("[API /events POST] Event saved successfully, ID:", event.id);
 
-    // Revalidate all pages that display events
-    revalidatePath("/", "page");
-    revalidatePath("/eventi", "page");
-    revalidatePath("/tutti-gli-eventi", "page");
-    revalidatePath("/mappa", "page");
-    revalidateTag("events-list", { expire: 0 });
     const eventSlug = generateUniqueSlug(event.title, event.id);
     const eventDetailPath = `/events/${eventSlug}`;
-    revalidatePath(eventDetailPath, "page");
-    console.log(
-      "[API /events POST] Cache revalidated for home, eventi, mappa pages and events-list tag",
-    );
-
     try {
-      const listingUrl = new URL(
+      refreshEventCache(eventSlug);
+    } catch {
+      console.warn("[API /events POST] Event saved; cache refresh unavailable");
+    }
+
+    after(async () => {
+      await Promise.all([
         `/api/events?limit=200&_rebuild=${Date.now()}`,
-        request.nextUrl.origin,
-      ).toString();
-      await fetch(listingUrl, { cache: "no-store" });
-      console.log(
-        "[API /events POST] Events listing JSON rebuilt:",
-        listingUrl,
-      );
-    } catch (listingRebuildError) {
-      console.warn(
-        "[API /events POST] Events listing JSON rebuild failed, continuing:",
-        listingRebuildError,
-      );
-    }
-
-    try {
-      const detailUrl = new URL(
         eventDetailPath,
-        request.nextUrl.origin,
-      ).toString();
-      await fetch(detailUrl, { cache: "no-store" });
-      console.log("[API /events POST] Event detail pre-warmed:", detailUrl);
-    } catch (prewarmError) {
-      console.warn(
-        "[API /events POST] Event detail pre-warm failed, continuing:",
-        prewarmError,
-      );
-    }
+      ].map(async path => {
+        try {
+          await fetch(new URL(path, request.nextUrl.origin), {
+            cache: "no-store", signal: AbortSignal.timeout(3_000),
+          });
+        } catch {
+          console.warn("[API /events POST] Event saved; page pre-warm unavailable");
+        }
+      }));
+    });
 
     return withExtensionCors(
       NextResponse.json(

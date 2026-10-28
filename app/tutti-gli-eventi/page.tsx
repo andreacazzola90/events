@@ -7,7 +7,8 @@ import { TransitionLink } from "../components/TransitionLink";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { parseEventDate, parseEventTime } from "../../lib/calendar-ics";
 import { calendarDateLabel, calendarDays, calendarPeriodLabel, calendarToday, moveCalendarDate, type CalendarView } from "../../lib/calendar-view";
-import type { DbEvent } from "../types/event";
+import type { PublicCalendarEvent } from "../../lib/public-event-list";
+import { usePublicEvents, usePublicToday } from "../components/PublicEventsProvider";
 
 const views: { value: CalendarView; label: string }[] = [
   { value: "month", label: "Mese" },
@@ -16,7 +17,7 @@ const views: { value: CalendarView; label: string }[] = [
   { value: "day", label: "Giorno" },
 ];
 
-function CalendarEventLink({ event, compact = false }: { event: DbEvent; compact?: boolean }) {
+function CalendarEventLink({ event, compact = false }: { event: PublicCalendarEvent; compact?: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
   return (
     <TransitionLink href={`/events/${generateUniqueSlug(event.title, event.id)}`}
@@ -38,7 +39,7 @@ function CalendarEventLink({ event, compact = false }: { event: DbEvent; compact
 }
 
 function DayPreview({ date, events, onClose, onOpenDay }: {
-  date: string; events: DbEvent[]; onClose: () => void; onOpenDay: () => void;
+  date: string; events: PublicCalendarEvent[]; onClose: () => void; onOpenDay: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -79,11 +80,21 @@ function DayPreview({ date, events, onClose, onOpenDay }: {
 }
 
 export default function TuttiGliEventiPage() {
-  const [events, setEvents] = useState<DbEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialEvents = usePublicEvents();
+  const initialToday = usePublicToday();
+  const [events, setEvents] = useState<PublicCalendarEvent[]>(initialEvents ?? []);
+  const [loading, setLoading] = useState(initialEvents === undefined);
   const [loadError, setLoadError] = useState(false);
   const [reload, setReload] = useState(0);
-  const [anchorDate, setAnchorDate] = useState(calendarToday);
+  const [anchorDate, setAnchorDate] = useState(initialToday ?? calendarToday);
+  const [today, setToday] = useState(initialToday ?? calendarToday);
+  useEffect(() => {
+    const currentToday = calendarToday();
+    setToday(currentToday);
+    if (initialToday && initialToday !== currentToday) {
+      setAnchorDate(current => current === initialToday ? currentToday : current);
+    }
+  }, [initialToday]);
   const [view, setView] = useState<CalendarView>("month");
   const [previewDate, setPreviewDate] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -108,7 +119,7 @@ export default function TuttiGliEventiPage() {
         if (!Array.isArray(data)) throw new Error("Invalid calendar response");
         setEvents(data);
       } catch {
-        if (!controller.signal.aborted) { setEvents([]); setLoadError(true); }
+        if (!controller.signal.aborted) setLoadError(true);
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -118,7 +129,7 @@ export default function TuttiGliEventiPage() {
   }, [reload]);
 
   const eventsByDate = useMemo(() => {
-    const grouped = new Map<string, DbEvent[]>();
+    const grouped = new Map<string, PublicCalendarEvent[]>();
     for (const event of events) {
       const date = parseEventDate(event.date);
       if (!date) continue;
@@ -127,7 +138,7 @@ export default function TuttiGliEventiPage() {
       list.push(event);
       grouped.set(key, list);
     }
-    const minutes = (event: DbEvent) => {
+    const minutes = (event: PublicCalendarEvent) => {
       const time = parseEventTime(event.time);
       return time ? time.hour * 60 + time.minute : 24 * 60;
     };
@@ -135,8 +146,7 @@ export default function TuttiGliEventiPage() {
     return grouped;
   }, [events]);
 
-  const today = calendarToday();
-  const days = calendarDays(anchorDate, view);
+  const days = calendarDays(anchorDate, view, today);
   const openDay = (date: string) => {
     focusDayRef.current = true;
     setAnchorDate(date);

@@ -1,17 +1,18 @@
 import Image from 'next/image';
 import type { Metadata } from 'next';
+import { cache } from 'react';
 import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons';
-import { extractIdFromSlug, generateUniqueSlug, getPrimaryLocationToken } from '../../../lib/slug-utils';
+import { generateUniqueSlug, getPrimaryLocationToken } from '../../../lib/slug-utils';
+import { getEventBreadcrumbJsonLd, getEventIdFromSlug, getEventJsonLd, getEventMetadata, getEventPath, getEventStartDate } from '../../../lib/event-seo';
+import { publicPageMetadata, serializeJsonLd } from '../../../lib/seo-metadata';
 import { TransitionLink } from '../../components/TransitionLink';
 import { prisma } from '../../lib/prisma';
 import FavoriteButton from '../../components/FavoriteButton';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
-
-const BASE_URL = "https://events-scanner.vercel.app";
 
 export async function generateMetadata(
     { params }: { params: Promise<{ slug: string }> }
@@ -21,47 +22,16 @@ export async function generateMetadata(
 
     if (!event) {
         return {
-            title: "Evento non trovato",
-            description: "L'evento che stai cercando non esiste o è stato rimosso.",
+            ...publicPageMetadata({
+                title: "Evento non trovato",
+                description: "L'evento che stai cercando non esiste o è stato rimosso.",
+                path: `/events/${encodeURIComponent(slug)}`,
+            }),
+            robots: { index: false, follow: false, googleBot: { index: false, follow: false } },
         };
     }
 
-    const title = `${event.title} | EventScanner`;
-    const description = event.description
-        ? event.description.slice(0, 155)
-        : `${event.title} — ${event.date}${event.location ? ` a ${event.location}` : ""}. Scopri tutti i dettagli su EventScanner.`;
-    const eventUrl = `${BASE_URL}/events/${slug}`;
-
-    return {
-        title,
-        description,
-        keywords: [
-            event.title,
-            event.location,
-            "eventi schio",
-            "eventi alto vicentino",
-            "eventi vicenza",
-            event.category ?? "evento",
-        ].filter(Boolean) as string[],
-        openGraph: {
-            type: "article",
-            locale: "it_IT",
-            url: eventUrl,
-            siteName: "EventScanner",
-            title,
-            description,
-            ...(event.imageUrl ? { images: [{ url: event.imageUrl, alt: event.title }] } : {}),
-        },
-        twitter: {
-            card: "summary_large_image",
-            title,
-            description,
-            ...(event.imageUrl ? { images: [event.imageUrl] } : {}),
-        },
-        alternates: {
-            canonical: eventUrl,
-        },
-    };
+    return getEventMetadata(event);
 }
 
 export async function generateStaticParams() {
@@ -86,8 +56,8 @@ export async function generateStaticParams() {
     }
 }
 
-async function getEvent(slug: string) {
-    const eventId = extractIdFromSlug(slug);
+const getEvent = cache(async (slug: string) => {
+    const eventId = getEventIdFromSlug(slug);
     if (!eventId) return null;
 
     const event = await prisma.event.findUnique({
@@ -99,7 +69,7 @@ async function getEvent(slug: string) {
     });
 
     return event;
-}
+});
 
 async function getSameDayEvents(date: string, currentEventId: number) {
     const events = await prisma.event.findMany({
@@ -149,6 +119,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
         notFound();
     }
 
+    const canonicalPath = getEventPath(event);
+    if (`/events/${slug}` !== canonicalPath) {
+        permanentRedirect(canonicalPath);
+    }
+    const eventJsonLd = getEventJsonLd(event);
+    const startDate = getEventStartDate(event.date, event.time);
+
     const session: any = await getServerSession(authOptions as any);
     const sessionUser = session?.user as any;
     const sessionUserId = parseInt((sessionUser?.id || '').toString(), 10);
@@ -167,6 +144,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
 
     return (
         <div className="min-h-screen page-shell w-full event-detail-page">
+            {eventJsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(eventJsonLd) }} />}
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(getEventBreadcrumbJsonLd(event)) }} />
             <div className="editorial-container">
                 <div className="w-full space-y-8">
                     <div className="lg:flex lg:gap-8 lg:items-start">
@@ -220,8 +199,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-base">
                                         <div className="space-y-4">
-                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><CalendarIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> <span>{event.date}</span></p>
-                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><ClockIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> <span>{event.time}</span></p>
+                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><CalendarIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> {startDate ? <time dateTime={startDate.slice(0, 10)}>{event.date}</time> : <span>{event.date}</span>}</p>
+                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><ClockIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> {startDate?.includes('T') ? <time dateTime={startDate}>{event.time}</time> : <span>{event.time}</span>}</p>
                                             <p className="flex items-center gap-3 text-[#1d1d1b]">
                                                 <MapPinIcon className="w-5 h-5 text-[#d65a38] shrink-0" />
                                                 <a

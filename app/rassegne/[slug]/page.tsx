@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { publicPageMetadata, serializeJsonLd } from "../../../lib/seo-metadata";
+import { siteUrl } from "../../../lib/site-url";
+import { generateUniqueSlug } from "../../../lib/slug-utils";
 
 export const revalidate = 60;
 
@@ -58,11 +61,15 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { slug } = await params;
   const series = await getSeries(slug);
-  if (!series?.isPublished) return { title: "Rassegna non trovata | EventScanner" };
-  return {
-    title: `${series.title} | EventScanner`,
-    description: series.description || `Programma completo di ${series.title} nell'Alto Vicentino.`,
+  if (!series?.isPublished) return {
+    title: "Rassegna non trovata",
+    robots: { index: false, follow: false },
   };
+  return publicPageMetadata({
+    path: `/rassegne/${encodeURIComponent(series.slug)}`,
+    title: series.title,
+    description: series.description || `Programma completo di ${series.title} nell'Alto Vicentino.`,
+  });
 }
 
 export default async function EventSeriesPage(
@@ -83,8 +90,41 @@ export default async function EventSeriesPage(
     dayGroups.set(key, [...(dayGroups.get(key) ?? []), event]);
   }
 
+  const url = siteUrl(`/rassegne/${encodeURIComponent(series.slug)}`);
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'CollectionPage',
+        '@id': url,
+        url,
+        name: series.title,
+        ...(series.description ? { description: series.description } : {}),
+        mainEntity: {
+          '@type': 'ItemList',
+          numberOfItems: events.length,
+          itemListElement: events.map((event, index) => ({
+            '@type': 'ListItem',
+            position: index + 1,
+            name: event.title,
+            url: siteUrl(`/events/${generateUniqueSlug(event.title, event.id)}`),
+          })),
+        },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl('/') },
+          { '@type': 'ListItem', position: 2, name: 'Rassegne', item: siteUrl('/rassegne') },
+          { '@type': 'ListItem', position: 3, name: series.title, item: url },
+        ],
+      },
+    ],
+  };
+
   return (
     <main className="min-h-screen bg-[#f5f2ec] px-4 py-8 text-[#1d1d1b] md:px-8 md:py-12">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <div className="mx-auto max-w-5xl">
         <Link href="/rassegne" className="text-sm font-semibold text-[#a33f24] underline underline-offset-4">Tutte le rassegne</Link>
         <header className="border-b border-black/10 py-8 md:py-12">

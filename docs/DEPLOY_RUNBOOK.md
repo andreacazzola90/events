@@ -93,6 +93,23 @@ npx eslint next.config.ts app/layout.tsx app/components/Footer.tsx app/versioni/
 
 ## 6) Post-deploy validation
 
+### Public Search, Social Sharing And AI Discovery
+
+1. Set `NEXT_PUBLIC_SITE_URL` to the definitive public HTTPS origin in Vercel Production, for example `https://your-public-domain.example`, then rebuild. Without this setting, the existing `https://events-scanner.vercel.app` origin is preserved. Do not select a different deployment hostname for every build. Confirm the real domain before changing it; configure redirects from aliases in Vercel separately.
+2. Verify `/robots.txt`, `/sitemap.xml`, `/llms.txt` and `/opengraph-image` on that public domain. The fallback social image is PNG, 1200x630. Sitemap contains canonical public pages, events and published series only; private account/admin/auth/edit/creation routes and operational APIs are not search content. HTML pages with `noindex` remain crawlable so already-discovered URLs can receive that directive; operational APIs are disallowed. Robots rules do not replace authentication. Missing URLs return HTTP 404 and explicit Google `noindex`.
+3. Check one existing event and an old title/slug pointing to its ID. The canonical should match the sitemap; stale slugs redirect permanently. The event page must return its text, canonical, Open Graph/Twitter tags, `Event` and breadcrumbs in initial HTML without JavaScript. Home, list, calendar and map also provide initial public event links; interactive controls still require JavaScript.
+4. Verify the canonical property in Google Search Console and Bing Webmaster Tools, submit `/sitemap.xml`, and inspect representative event URLs. Existing Google verification can use `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`; do not share credentials in chat. No account connection or sitemap submission is performed by this code change.
+5. Test published event URLs with [Google Rich Results Test](https://search.google.com/test/rich-results), [Schema Markup Validator](https://validator.schema.org/), [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/) and [LinkedIn Post Inspector](https://www.linkedin.com/post-inspector/). Check both events with their own image and those using the fallback. Platform caches may require a new scrape.
+6. Dates use actual event data and `Europe/Rome` offsets; missing or ambiguous times stay date-only. Unknown prices, addresses, ticket URLs, performers, end dates and availability are not invented. Events lacking precise physical addresses or other Google requirements may not qualify for event rich results even when the Schema.org markup is syntactically valid. Complete and maintain the source records rather than manufacturing markup values.
+7. Vercel Preview/development deployments emit `noindex` and disallow crawling; they must not replace the canonical production origin. Check Vercel deployment protection, firewall/CDN and bot rules on Production: allow Googlebot/Bingbot and search crawlers such as OAI-SearchBot and PerplexityBot without bypassing private authentication. Verify published IP ranges when making firewall changes; user-agent text alone is not proof of identity.
+8. `llms.txt` is a supplementary public index, not an accepted ranking requirement or an indexing guarantee. Search crawling and AI-model training are separate policies; explicit search-agent rules retain the site's existing wildcard crawling policy. Neither rich results, SERP positions nor chatbot citations can be guaranteed. Monitor crawl errors, duplicates, indexed URLs and real traffic after deployment.
+
+The current single sitemap is capped at 50,000 URLs and logs a sanitized warning when older records exceed that limit. Split it into sitemap shards before approaching that size. Static URLs do not advertise a new modification timestamp on every request; records use their actual `updatedAt`.
+
+Server-rendered list previews normalize supported stored date formats in memory and display at most 200 events from a bounded read of 2,000 candidate records. The sitemap, rather than one calendar view, is the complete discovery mechanism up to its stated limit. A failed server read is distinct from a genuinely empty result; client refreshes retain previously loaded data on failure. Initial day values are passed from server to browser to avoid hydration changes across Rome midnight.
+
+References: [Google event structured data](https://developers.google.com/search/docs/appearance/structured-data/event), [Google AI search guidance](https://developers.google.com/search/docs/appearance/ai-features), [OpenAI crawler controls](https://developers.openai.com/api/docs/bots).
+
 Run smoke checks:
 
 1. Web pages:

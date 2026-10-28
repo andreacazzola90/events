@@ -1,29 +1,18 @@
 import type { Metadata } from "next";
+import { publicPageMetadata } from "../../lib/seo-metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
+  path: '/mappa',
   title: "Mappa eventi | Schio e Alto Vicentino",
   description:
     "Esplora sulla mappa gli eventi in corso a Schio, Thiene, Valdagno e in tutto l'Alto Vicentino. Scopri concerti, sagre e manifestazioni vicino a te.",
-  keywords: [
-    "mappa eventi schio",
-    "eventi vicino a me alto vicentino",
-    "mappa eventi vicenza",
-    "eventi schio mappa",
-    "dove andare schio",
-  ],
-  alternates: {
-    canonical: "https://events-scanner.vercel.app/mappa",
-  },
-  openGraph: {
-    title: "Mappa eventi | Schio e Alto Vicentino",
-    description:
-      "Esplora sulla mappa gli eventi a Schio, Thiene, Valdagno e nell'Alto Vicentino.",
-    url: "https://events-scanner.vercel.app/mappa",
-    type: "website",
-    locale: "it_IT",
-  },
-};
+});
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return children;
+export const revalidate = 60;
+
+export default async function Layout({ children }: { children: React.ReactNode }) {
+  const { getPublicCalendarEvents } = await import("../../lib/public-event-list");
+  const { PublicEventsProvider } = await import("../components/PublicEventsProvider");
+  const events = await getPublicCalendarEvents();
+  return <PublicEventsProvider events={events}>{children}</PublicEventsProvider>;
 }

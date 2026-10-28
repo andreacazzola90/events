@@ -2,18 +2,38 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect } from 'react';
+import Link from 'next/link';
+import { usePublicEvents } from '../components/PublicEventsProvider';
+import { generateUniqueSlug } from '../../lib/slug-utils';
+import { calendarDateLabel } from '../../lib/calendar-view';
+
+function MapEventFallback() {
+    const events = usePublicEvents();
+    return (
+        <section className="h-full overflow-y-auto p-5 md:p-8" aria-label="Eventi per luogo">
+            <h2 className="text-2xl font-bold mb-4">Eventi per luogo</h2>
+            {events?.length ? (
+                <ul className="divide-y divide-black/15">
+                    {events.map(event => (
+                        <li key={event.id} className="py-4">
+                            <Link href={`/events/${generateUniqueSlug(event.title, event.id)}`} className="font-bold underline underline-offset-4">
+                                {event.title}
+                            </Link>
+                            <p><time dateTime={event.date}>{calendarDateLabel(event.date)}</time>{event.time ? `, ${event.time}` : ''}</p>
+                            {event.location && <p>{event.location}</p>}
+                        </li>
+                    ))}
+                </ul>
+            ) : <p>{events === undefined ? 'Eventi temporaneamente non disponibili.' : 'Nessun evento disponibile in questo momento.'}</p>}
+            <Link href="/eventi" className="inline-block mt-4 underline underline-offset-4">Tutti gli eventi</Link>
+        </section>
+    );
+}
 
 // Importo EventMap dinamicamente per evitare SSR (Leaflet funziona solo client-side)
 const EventMap = dynamic(() => import('../components/EventMap'), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center h-full bg-gray-100">
-            <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Caricamento mappa...</p>
-            </div>
-        </div>
-    ),
+    loading: MapEventFallback,
 });
 
 export default function MappaPage() {

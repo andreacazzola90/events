@@ -55,6 +55,12 @@ const nextConfig = {
   async headers() {
     return [
       {
+        source: process.env.VERCEL_ENV && process.env.VERCEL_ENV !== 'production'
+          ? '/:path*'
+          : '/api/:path*',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
+      {
         source: "/manifest.json",
         headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
       },

@@ -3,11 +3,13 @@ import { Settings2 } from "lucide-react";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/admin-auth";
+import { publicPageMetadata } from "../../lib/seo-metadata";
 
-export const metadata: Metadata = {
-  title: "Rassegne ed eventi speciali | EventScanner",
+export const metadata: Metadata = publicPageMetadata({
+  path: '/rassegne',
+  title: "Rassegne ed eventi speciali",
   description: "Programmi completi di festival e rassegne nell'Alto Vicentino.",
-};
+});
 
 export const revalidate = 60;
 

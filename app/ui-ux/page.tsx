@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { TransitionLink } from "../components/TransitionLink";
+import { publicPageMetadata } from "../../lib/seo-metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
+  path: '/ui-ux',
   title: "Regole UI/UX",
   description: "Palette, tipografia, spaziatura e principi d'interazione di EventScanner.",
-};
+});
 
 const palette = [
   { name: "Sfondo", value: "#f1eee7", variable: "--background" },

@@ -1,8 +1,12 @@
-"use client";
-
 import EventList from "../components/EventList";
+import { getPublicEventList } from "../../lib/public-event-list";
+import { calendarToday } from "../../lib/calendar-view";
 
-export default function EventiPage() {
+export const revalidate = 60;
+
+export default async function EventiPage() {
+  const initialToday = calendarToday();
+  const initialEvents = await getPublicEventList(undefined, initialToday);
   return (
     <main className="events-page min-h-screen page-shell">
       <div className="editorial-container">
@@ -17,7 +21,7 @@ export default function EventiPage() {
         </div>
 
         <div className="surface-panel p-3 md:p-5">
-          <EventList mode="full" />
+          <EventList mode="full" initialEvents={initialEvents} initialToday={initialToday} />
         </div>
       </div>
     </main>

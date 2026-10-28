@@ -7,11 +7,11 @@ export function calendarToday(): string {
   return DateTime.now().setZone(CALENDAR_ZONE).toISODate()!;
 }
 
-export function calendarDays(anchor: string, view: CalendarView): (string | null)[] {
+export function calendarDays(anchor: string, view: CalendarView, todayKey = calendarToday()): (string | null)[] {
   const date = DateTime.fromISO(anchor, { zone: CALENDAR_ZONE });
   if (!date.isValid) return [];
   if (view === "month") {
-    const today = DateTime.now().setZone(CALENDAR_ZONE).startOf("day");
+    const today = DateTime.fromISO(todayKey, { zone: CALENDAR_ZONE }).startOf("day");
     const monthStart = date.startOf("month");
     const first = date.hasSame(today, "month")
       ? today.startOf("week")

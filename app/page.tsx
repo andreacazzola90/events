@@ -1,8 +1,21 @@
 import EventList from "./components/EventList";
 import Link from "next/link";
 import HomeMotion from "./components/HomeMotion";
+import { getPublicEventList } from "../lib/public-event-list";
+import { publicPageMetadata } from "../lib/seo-metadata";
+import { calendarToday } from "../lib/calendar-view";
 
-export default function Home() {
+export const metadata = publicPageMetadata({
+  path: "/",
+  title: "EventScanner | Eventi a Schio e Alto Vicentino",
+  description: "Concerti, mostre e appuntamenti a Schio, Thiene, Valdagno e nell'Alto Vicentino. Scopri gli eventi di oggi e il calendario completo.",
+});
+
+export const revalidate = 60;
+
+export default async function Home() {
+  const initialToday = calendarToday();
+  const initialEvents = await getPublicEventList("today", initialToday);
   return (
     <main className="min-h-screen">
       <HomeMotion>
@@ -55,7 +68,7 @@ export default function Home() {
               </div>
               <p>Una selezione aggiornata ogni giorno.<br />Scegli quando, al resto pensiamo noi.</p>
             </div>
-            <EventList mode="quick" />
+            <EventList mode="quick" initialEvents={initialEvents} initialToday={initialToday} />
             <div className="home-section-end" data-scroll-reveal>
               <span>Non finisce qui.</span>
               <Link href="/tutti-gli-eventi" className="industrial-link industrial-link-outline">

@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { appBuildInfo } from "../../lib/build-info";
 import { releaseNotes } from "../../lib/release-notes";
 import { TransitionLink } from "../components/TransitionLink";
+import { publicPageMetadata } from "../../lib/seo-metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
+  path: '/versioni',
   title: "Novità e versioni",
   description: "Cronologia delle novità e degli aggiornamenti di EventScanner.",
-};
+});
 
 export default function VersioniPage() {
   return (

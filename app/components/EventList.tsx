@@ -12,7 +12,8 @@ import { STANDARD_CATEGORIES } from "../../lib/constants";
 import FavoriteButton from "./FavoriteButton";
 import { AppIcon, CalendarIcon, MapPinIcon } from "./EventIcons";
 import EventCategoryIcon from "./EventCategoryIcon";
-import type { DbEvent } from "../../app/types/event";
+import { calendarToday } from "../../lib/calendar-view";
+import type { PublicListEvent } from "../../lib/public-event-list";
 
 type EventListMode = "full" | "quick";
 type QuickDateFilter = "today" | "tomorrow" | "weekend" | "week";
@@ -41,7 +42,7 @@ function cleanText(text: string): string {
   );
 }
 
-type Event = DbEvent;
+type Event = PublicListEvent;
 type PriceLabel = "gratis" | "pagamento" | "non definito";
 
 function getPriceLabel(rawPrice: string | null | undefined): PriceLabel {
@@ -82,14 +83,14 @@ function parseEventDate(value: string): Date | null {
     parsed.setHours(0, 0, 0, 0);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
-  const parsed = new Date(value);
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   parsed.setHours(0, 0, 0, 0);
   return parsed;
 }
 
-function getQuickRange(filter: QuickDateFilter): { start: Date; end: Date } {
-  const today = new Date();
+function getQuickRange(filter: QuickDateFilter, dateAnchor = calendarToday()): { start: Date; end: Date } {
+  const today = new Date(`${dateAnchor}T00:00:00`);
   today.setHours(0, 0, 0, 0);
 
   if (filter === "today") {
@@ -138,12 +139,20 @@ function formatApiDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
+export default function EventList({ mode = "full", initialEvents, initialToday }: { mode?: EventListMode; initialEvents?: Event[]; initialToday?: string }) {
   const gridRef = useRef<HTMLDivElement>(null);
-  const hasLoadedEventsRef = useRef(false);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const hasLoadedEventsRef = useRef(initialEvents !== undefined);
+  const [events, setEvents] = useState<Event[]>(initialEvents ?? []);
+  const [filteredEvents, setFilteredEvents] = useState<Event[]>(() => {
+    const { start, end } = getQuickRange("today", initialToday);
+    return (initialEvents ?? []).filter(event => {
+      const date = parseEventDate(event.date);
+      return date && (mode === "quick" ? isDateInRange(date, start, end) : date >= start);
+    }).sort((first, second) =>
+      (parseEventDate(first.date)?.getTime() ?? 0) - (parseEventDate(second.date)?.getTime() ?? 0) || first.id - second.id,
+    );
+  });
+  const [loading, setLoading] = useState(initialEvents === undefined);
   const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -189,7 +198,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
       hasLoadedEventsRef.current = true;
     } catch (error) {
       console.error("Error fetching events:", error);
-      setLoadError(true);
+      setLoadError(!hasLoadedEventsRef.current);
     } finally {
       setLoading(false);
     }
@@ -252,8 +261,7 @@ export default function EventList({ mode = "full" }: { mode?: EventListMode }) {
     let filtered = events;
 
     // In full mode show only events from today onward.
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const { start: today } = getQuickRange("today");
     filtered = filtered.filter((event) => {
       const parsedDate = parseEventDate(event.date);
       if (!parsedDate) return false;

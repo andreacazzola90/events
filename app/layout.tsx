@@ -12,16 +12,18 @@ import { GoogleAnalytics } from "./lib/analytics";
 import { GoogleTagManager } from "./lib/gtm";
 import { Analytics } from "@vercel/analytics/next";
 import { appBuildInfo } from "../lib/build-info";
+import { getSiteUrl, siteUrl } from "../lib/site-url";
+import { getWebSiteJsonLd, isPublicIndexingAllowed, serializeJsonLd } from "../lib/seo-metadata";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
 });
 
-const BASE_URL = "https://events-scanner.vercel.app";
+const allowIndexing = isPublicIndexingAllowed();
 
 export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: "EventScanner | Eventi Schio e Alto Vicentino",
     template: "%s | EventScanner",
@@ -49,11 +51,11 @@ export const metadata: Metadata = {
   creator: "EventScanner",
   publisher: "EventScanner",
   robots: {
-    index: true,
-    follow: true,
+    index: allowIndexing,
+    follow: allowIndexing,
     googleBot: {
-      index: true,
-      follow: true,
+      index: allowIndexing,
+      follow: allowIndexing,
       "max-image-preview": "large",
       "max-snippet": -1,
     },
@@ -61,28 +63,26 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "it_IT",
-    url: BASE_URL,
+    url: siteUrl('/'),
     siteName: "EventScanner",
     title: "EventScanner | Eventi Schio e Alto Vicentino",
     description:
       "Scopri gli eventi a Schio, Thiene, Valdagno e nell'Alto Vicentino. Concerti, mostre, sagre e molto altro. Aggiornato ogni giorno.",
     images: [
       {
-        url: "/icons/pwa-512.png",
-        width: 512,
-        height: 512,
+        url: siteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
         alt: "EventScanner - Eventi Alto Vicentino",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
+    images: [siteUrl('/opengraph-image')],
     title: "EventScanner | Eventi Schio e Alto Vicentino",
     description:
       "Scopri gli eventi a Schio, Thiene, Valdagno e nell'Alto Vicentino. Aggiornato ogni giorno.",
-  },
-  alternates: {
-    canonical: BASE_URL,
   },
   manifest: "/manifest.json",
   appleWebApp: {
@@ -109,6 +109,10 @@ export default function RootLayout({
   return (
     <html lang="it" data-theme="dicefm">
       <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(getWebSiteJsonLd()) }}
+        />
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 

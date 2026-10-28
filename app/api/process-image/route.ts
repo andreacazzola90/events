@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { normalizeEventTitle } from '../../../lib/event-title';
 import { createEventImageAnalyzer, VisionServiceUnavailableError } from '../../../lib/vision-ai';
 import { compressImage } from '../../lib/image-utils';
-import { groupEventsByDate } from '../../../lib/event-utils';
+import { splitEventsByTime } from '../../../lib/event-display';
 import { buildEventExtractionHints } from '../../../lib/event-hints';
 import type { EventData } from '../../types/event';
 import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extension-cors';
@@ -181,7 +181,6 @@ Ignora interfacce social, nomi utente, avatar, chat, notifiche e dati personali 
     });
 
     const currentDate = new Date().toISOString().split('T')[0];
-    const truncatedRawText = rawText.slice(0, 3000);
     // PROMPT PER EVENTI MULTIPLI / SINGOLO EVENTO
     const prompt = hasMultipleEvents
     ? `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
@@ -211,9 +210,9 @@ ISTRUZIONI CRITICHE:
 1. NON raggruppare eventi diversi insieme
 2. OGNI evento DEVE avere il suo titolo unico
 3. Se vedi "Artista A vs Artista B" o "Artista A & Artista B" nello stesso slot, è UN evento
-4. Se c'è UN SOLO TITOLO principale con più conferenze/sessioni nello stesso giorno, è UN SOLO evento (metti il programma nella description)
+4. Se lo stesso titolo ha più orari di inizio nella stessa data, crea un evento distinto per ogni orario e ripeti i dettagli comuni
 5. Se ci sono date diverse nella stessa rassegna/ciclo, crea un evento per ogni data
-6. Se non sei sicuro tra 1 evento-agenda e più eventi distinti, usa il criterio: stesso titolo ombrello + stessa data => singolo evento
+6. Se non sei sicuro, crea un evento per ogni orario di inizio distinto; accorpa solo dettagli riferiti allo stesso orario
 
 REGOLE PER OGNI EVENTO:
 - TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
@@ -258,8 +257,8 @@ GESTIONE DATE:
 INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
 ${heuristicHints}
 
-TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
-${truncatedRawText}
+TESTO ORIGINALE COMPLETO DA ANALIZZARE (OCR GREZZO):
+${rawText}
 
 Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
 {
@@ -330,7 +329,8 @@ ANALISI SEMANTICA:
   1) evento singolo
   2) multi-evento su più giorni (rassegna/festival)
   3) evento singolo con più conferenze/sessioni nella stessa data
-- Se trovi il caso (3), restituisci UN SOLO evento con programma dettagliato nella description
+- Se trovi il caso (3), restituisci un evento per ogni orario di inizio distinto; non separare gli estremi di un intervallo orario
+- Se un singolo evento ha più orari di inizio, restituisci un oggetto per ogni orario dentro "events", ripetendo titolo e dettagli comuni
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
@@ -340,10 +340,10 @@ GESTIONE DATE:
 INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
 ${heuristicHints}
 
-TESTO ORIGINALE DA ANALIZZARE (OCR GREZZO):
-${truncatedRawText}
+TESTO ORIGINALE COMPLETO DA ANALIZZARE (OCR GREZZO):
+${rawText}
 
-Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo):
+Rispondi SOLO con JSON valido (senza markdown, senza testo aggiuntivo). Se ci sono più orari di inizio, usa {"events":[...]} con un elemento per ogni orario; altrimenti usa un singolo oggetto:
 {
   "title": "",
   "description": "",
@@ -446,9 +446,8 @@ REGOLE:
         eventsArray = [parsedData as EventData];
       }
 
-      // Raggruppa per data: più incontri nello stesso giorno → unico evento
-      const grouped = groupEventsByDate(eventsArray);
-      console.log('📊 Grouping by date completed:', {
+      const grouped = splitEventsByTime(eventsArray);
+      console.log('📊 Expanded time slots:', {
         originalCount: eventsArray.length,
         groupedCount: grouped.length,
       });

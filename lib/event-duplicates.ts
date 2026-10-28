@@ -1,10 +1,12 @@
 import { prisma } from '../app/lib/prisma';
 import type { DuplicateMatch } from '../app/types/event';
+import { sameEventStartTime } from './event-display';
 import { generateUniqueSlug } from './slug-utils';
 
 export interface DuplicateCandidate {
   title?: string | null;
   date?: string | null;
+  time?: string | null;
   sourceUrl?: string | null;
 }
 
@@ -36,15 +38,6 @@ function normalizeText(value: string): string {
     .trim();
 }
 
-function normalizeUrl(value?: string | null): string {
-  return (value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/[/?#]+$/, '');
-}
-
 function titlesMatch(a: string, b: string): boolean {
   const na = normalizeText(a);
   const nb = normalizeText(b);
@@ -61,7 +54,7 @@ function titlesMatch(a: string, b: string): boolean {
   return shared / new Set([...tokensA, ...tokensB]).size >= 0.6;
 }
 
-/** Same date and (similar title or same source URL) as an existing event. */
+/** Same date, similar title, and start time as an existing event. */
 export async function findDuplicateEvent(candidate: DuplicateCandidate): Promise<DuplicateMatch | null> {
   const dates = dateVariants(candidate.date);
   if (dates.length === 0 || !candidate.title?.trim()) return null;
@@ -71,13 +64,9 @@ export async function findDuplicateEvent(candidate: DuplicateCandidate): Promise
     select: { id: true, title: true, date: true, time: true, location: true, sourceUrl: true },
   });
 
-  // A bare domain (e.g. an organizer homepage) is shared by many events, so only compare URLs with a path.
-  const candidateUrl = normalizeUrl(candidate.sourceUrl);
-  const comparableUrl = candidateUrl.includes('/') ? candidateUrl : '';
   const match = sameDay.find(
     (ev) =>
-      titlesMatch(ev.title, candidate.title!) ||
-      (comparableUrl.length > 0 && normalizeUrl(ev.sourceUrl) === comparableUrl),
+      titlesMatch(ev.title, candidate.title!) && sameEventStartTime(ev.time, candidate.time),
   );
 
   if (!match) return null;

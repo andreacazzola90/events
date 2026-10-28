@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
       findDuplicateEvent({
         title: typeof ev?.title === 'string' ? ev.title : '',
         date: typeof ev?.date === 'string' ? ev.date : '',
+        time: typeof ev?.time === 'string' ? ev.time : '',
         sourceUrl: typeof ev?.sourceUrl === 'string' ? ev.sourceUrl : '',
       }),
     ),

@@ -4,7 +4,7 @@ import { EventData } from '../app/types/event';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
 import { extractTextFromImage } from '../app/lib/ocr';
 import { compressImage } from '../app/lib/image-utils';
-import { groupEventsByDate } from './event-utils';
+import { splitEventsByTime } from './event-display';
 import { buildEventExtractionHints } from './event-hints';
 import { isWebSearchConfigured, webSearch } from './google-search';
 import { selectEventImage } from './event-image';
@@ -568,13 +568,13 @@ Prima classifica il contenuto in uno dei 3 casi:
 3) evento_singolo_con_più_sessioni
 
 REGOLE DI CLASSIFICAZIONE:
-- Se trovi stesso titolo ombrello e stessa data con più talk/conferenze/sessioni => caso 3 (UN solo evento)
+- Se trovi stesso titolo e stessa data con più orari di inizio => caso 3 (un evento per ogni orario)
 - Se trovi date diverse all'interno di rassegna/ciclo/festival => caso 2 (UN evento per data)
 - Se non ci sono segnali di multiplo => caso 1
 
 FORMATO RISPOSTA:
-- Caso 1 o 3: restituisci un oggetto JSON singolo
-- Caso 2: restituisci un JSON con "events": []
+- Caso 1: restituisci un oggetto JSON singolo
+- Caso 2 o 3: restituisci un JSON con "events": [], un elemento per ogni data e orario distinto
 
 Esempio caso singolo:
 {
@@ -621,7 +621,8 @@ GESTIONE CATEGORIA:
 
 GESTIONE DATE:
 - Data corrente di riferimento: ${currentDate}
-- Se è un evento singolo con più sessioni nella stessa data, NON separarlo in eventi diversi: metti agenda/orari in description
+- Se nella stessa data sono indicati più orari di inizio, crea un evento distinto per ogni orario, mantenendo titolo e dettagli comuni
+- Non dividere gli estremi di un intervallo (es. "dalle 20:00 alle 23:00"): quello è un solo orario di evento
 - Se è una rassegna con giorni diversi, crea eventi separati per data
 - ATTENZIONE: Se vedi [VISITCHIO DATE TIME INFO] con "Data Inizio:" usa QUELLA data e orario
 - Formato date visitSchio: "23 gen 21:00" → converti in formato YYYY-MM-DD e HH:MM
@@ -638,8 +639,8 @@ GESTIONE DATE:
 INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
 ${heuristicHints}
 
-CONTENUTO DA ANALIZZARE (TESTO TRONCATO A 5000 CARATTERI):
-${combinedText.slice(0, 5000)}
+CONTENUTO COMPLETO DA ANALIZZARE:
+${combinedText}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
@@ -691,8 +692,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         sourceUrl: ensureAbsoluteUrl(url, url) || url
     }));
 
-    // Group by date: same-day "incontri" stay in one event, different days → multiple events
-    events = groupEventsByDate(events);
+    events = splitEventsByTime(events);
 
     const completeScanAgent: ScanAgentCompletion = async (messages, signal) => {
         const result = await groq.chat.completions.create({

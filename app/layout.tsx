@@ -11,7 +11,7 @@ import { PageTransitionWrapper } from "./components/PageTransition";
 import { GoogleAnalytics } from "./lib/analytics";
 import { GoogleTagManager } from "./lib/gtm";
 import { Analytics } from "@vercel/analytics/next";
-import packageMetadata from "../package.json";
+import { appBuildInfo } from "../lib/build-info";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -135,7 +135,15 @@ export default function RootLayout({
             <main className="app-main min-h-screen">
               <PageTransitionWrapper>{children}</PageTransitionWrapper>
             </main>
-            <Footer version={packageMetadata.version} />
+            <Footer
+              version={appBuildInfo.version}
+              builtAt={appBuildInfo.builtAt}
+              builtAtLabel={appBuildInfo.builtAtLabel ?? (
+                process.env.NODE_ENV === "development"
+                  ? "Sviluppo locale"
+                  : "Data build non disponibile"
+              )}
+            />
             <Analytics />
           </PageTransitionProvider>
         </Providers>

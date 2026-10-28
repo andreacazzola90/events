@@ -2,7 +2,11 @@
 import { TransitionLink } from "./TransitionLink";
 import { useSession } from "next-auth/react";
 
-export default function Footer({ version }: { version: string }) {
+export default function Footer({ version, builtAt, builtAtLabel = "Data build non disponibile" }: {
+  version: string;
+  builtAt?: string;
+  builtAtLabel?: string;
+}) {
   const { data: session } = useSession();
 
   const navLinks = [
@@ -103,20 +107,27 @@ export default function Footer({ version }: { version: string }) {
             © {new Date().getFullYear()} EventScanner
           </p>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-2">
             <a
               href="mailto:hello@eventscanner.ai"
               className="text-black/65 hover:text-black text-sm no-underline hover:no-underline"
             >
               hello@eventscanner.ai
             </a>
-            <TransitionLink
-              href="/versioni"
-              aria-label={`Versione ${version}, novità e cronologia`}
-              className="text-black/65 hover:text-black text-xs font-bold uppercase tracking-[0.12em] no-underline hover:no-underline"
-            >
-              v{version}
-            </TransitionLink>
+            <div className="flex min-w-0 max-w-full flex-col gap-1">
+              <TransitionLink
+                href="/versioni"
+                aria-label={`Versione ${version}, novità e cronologia`}
+                className="break-all text-black/65 hover:text-black text-xs font-bold uppercase tracking-[0.12em] no-underline hover:no-underline"
+              >
+                v{version}
+              </TransitionLink>
+              <p className="m-0 break-words text-xs text-black/55">
+                {builtAt ? (
+                  <>Build del deploy: <time dateTime={builtAt}>{builtAtLabel}</time></>
+                ) : builtAtLabel}
+              </p>
+            </div>
           </div>
         </div>
       </div>

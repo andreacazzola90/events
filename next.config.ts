@@ -1,4 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
+import { execFileSync } from "node:child_process";
+import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants";
+import packageMetadata from "./package.json";
 
 const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
@@ -71,6 +74,47 @@ const nextConfig = {
   }),
 };
 
-export default Sentry.withSentryConfig(nextConfig, {
+function getCommitSha() {
+  const providerSha = process.env.VERCEL_GIT_COMMIT_SHA || "";
+  if (/^[a-f0-9]{7,64}$/i.test(providerSha)) return providerSha.toLowerCase();
+
+  try {
+    const localSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 1000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return /^[a-f0-9]{7,64}$/i.test(localSha) ? localSha.toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+
+let buildMetadata: Record<string, string> | undefined;
+
+export default Sentry.withSentryConfig((phase: string) => {
+  if (phase === PHASE_PRODUCTION_BUILD) {
+    buildMetadata ??= {
+      NEXT_PUBLIC_APP_VERSION: packageMetadata.version,
+      NEXT_PUBLIC_APP_COMMIT_SHA: getCommitSha(),
+      NEXT_PUBLIC_APP_BUILT_AT: new Date().toISOString(),
+    };
+    return { ...nextConfig, env: buildMetadata };
+  }
+
+  if (phase === PHASE_DEVELOPMENT_SERVER) {
+    return {
+      ...nextConfig,
+      env: {
+        NEXT_PUBLIC_APP_VERSION: packageMetadata.version,
+        NEXT_PUBLIC_APP_COMMIT_SHA: getCommitSha(),
+        NEXT_PUBLIC_APP_BUILT_AT: "",
+      },
+    };
+  }
+
+  return nextConfig;
+}, {
   silent: true,
 });

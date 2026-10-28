@@ -73,6 +73,24 @@ The event media feature adds `20261012160000_add_event_media`; apply it before d
 - Use preview deployments for validation before merge.
 - Confirm final deployment health by hitting core pages and APIs.
 
+## 5.4 Build identity and timestamp
+
+- The footer and `/versioni` share the current build identity: the unchanged package version plus the first seven commit characters, for example `0.3.4+abcdef1`. Release-history version numbers remain unchanged.
+- During `phase-production-build`, the config injects `NEXT_PUBLIC_APP_VERSION`, `NEXT_PUBLIC_APP_COMMIT_SHA` and `NEXT_PUBLIC_APP_BUILT_AT` as compile-time literals. Do not configure these generated values manually in platform environment settings.
+- A valid `VERCEL_GIT_COMMIT_SHA` takes precedence. Otherwise, a local `git rev-parse HEAD` runs with a one-second timeout and no shell. Missing Git or invalid output leaves the base version without a commit suffix; it does not fail the build.
+- `NEXT_PUBLIC_APP_BUILT_AT` is generated once as an ISO UTC timestamp during the production build. The server formats its label in `Europe/Rome`, including daylight-saving changes and a timezone indicator, and passes that stable label to the footer. The client does not reformat the timestamp.
+- The label **Build del deploy** identifies build time, not the exact Vercel READY/deployment-completion time. Reopening a page or restarting the same compiled artifact does not update it. Rebuilding the same commit creates a new build timestamp, while its version identity stays the same.
+- Development shows the package version plus the available commit suffix and **Sviluppo locale**, with no deploy date. Production artifacts without a valid build timestamp show **Data build non disponibile**. Production startup neither generates a date nor reinjects metadata over the compiled literals.
+- After deployment, compare footer and `/versioni`: version, timestamp and timezone must match. The semantic `<time datetime>` value is UTC; the visible label is Italian local time.
+
+Focused checks, without a full Next build:
+
+```bash
+node --experimental-strip-types --test lib/build-info.test.mjs
+npx tsc --noEmit --incremental false
+npx eslint next.config.ts app/layout.tsx app/components/Footer.tsx app/versioni/page.tsx lib/build-info.test.mjs
+```
+
 ## 6) Post-deploy validation
 
 Run smoke checks:

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import packageMetadata from "../../package.json";
+import { appBuildInfo } from "../../lib/build-info";
 import { releaseNotes } from "../../lib/release-notes";
 import { TransitionLink } from "../components/TransitionLink";
 
@@ -17,7 +17,12 @@ export default function VersioniPage() {
           <h1 className="section-title mb-5">Novità e versioni</h1>
           <p className="section-lead mb-6">
             Aggiornamenti del prodotto e miglioramenti visibili, ordinati per
-            versione. La versione corrente è <strong className="text-[#1d1d1b]">{packageMetadata.version}</strong>.
+            versione. La versione corrente è <strong className="break-all text-[#1d1d1b]">{appBuildInfo.version}</strong>.
+          </p>
+          <p className="mb-6 text-sm text-[#5f5b56]">
+            {appBuildInfo.builtAt ? (
+              <>Build del deploy: <time dateTime={appBuildInfo.builtAt}>{appBuildInfo.builtAtLabel}</time></>
+            ) : process.env.NODE_ENV === "development" ? "Sviluppo locale" : "Data build non disponibile"}
           </p>
           <TransitionLink href="/ui-ux" className="industrial-link industrial-link-outline">
             Regole UI/UX <span aria-hidden="true">↗</span>

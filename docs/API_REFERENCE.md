@@ -78,9 +78,9 @@ Example 200 response:
   - geocode location (best effort)
   - cache/path revalidation
   - persists the cover selected in the draft, with no vision or automatic crop calls and no deferred cover replacement
-  - upload/share clients run `POST /api/crop-image` alongside extraction, show the draft with an image-processing status, and enable publishing after crop completion or fallback
+  - upload/share clients run `POST /api/crop-image` alongside extraction; publishing waits for the crop result. A failed crop removes the automatic cover and opens a web-image selection, with manual cropping or publication without a cover as alternatives
   - JSON image URLs, PDF, link and manual-crop flows are unchanged. Page pre-warming runs after the response with bounded requests
-  - privacy is not guaranteed: if cropping fails and the user publishes the original, personal/social details can remain public; originals are sent to cloud vision for analysis
+  - draft clients omit temporary `originalImageUrl` from publication payloads. The events route persists an explicit allowlist and never uploads that field. Originals are still sent to cloud vision for analysis; AI checks and user-confirmed images do not guarantee anonymity
 - Responses:
   - 201: created event (+ slug)
   - 409: EVENT_DUPLICATE
@@ -266,9 +266,23 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - Input: multipart `image`, supported JPEG/PNG/WebP with matching MIME/signature, at most 4 MiB.
 - Responses: `200 image/jpeg` for a verified crop; `204` for unavailable, uncertain or failed analysis; `400` invalid image; `413` oversized image. All responses are `no-store`.
 - Uses `AI_VISION_CROP_PROVIDERS` (default `groq`), a shared 45-second AI budget and 50-second server cancellation. Client cancellation is 55 seconds and also occurs when a draft is replaced or closed. Groq may retry a single HTTP 429 per crop, only with a valid `Retry-After` no longer than 20 seconds and enough remaining budget; other extraction paths keep retries disabled.
-- A fallback response includes `X-Image-Crop-Reason`: `rate-limited`, `timeout`, `not-configured`, `bounds-rejected`, `verification-rejected`, `image-invalid` or `service-unavailable`. Provider HTTP failures may include a sanitized `X-Image-Crop-Service-Status`. These contain no credentials or image content; the browser shows the reason alongside the original cover.
-- Does not create events, write to the database, upload to storage or schedule a background job. The browser applies the returned blob to the current draft only, preserving manual cover edits and the original for manual cropping. The original remains on any failure.
+- A fallback response includes `X-Image-Crop-Reason`: `rate-limited`, `timeout`, `not-configured`, `bounds-rejected`, `verification-rejected`, `image-invalid` or `service-unavailable`. Provider HTTP failures may include a sanitized `X-Image-Crop-Service-Status`. These contain no credentials or image content; the browser shows the reason and excludes the original from publication.
+- Does not create events, write to the database, upload to storage or schedule a background job. The browser applies the returned blob to the current draft only, preserving manual cover edits and keeping the original temporarily available for manual cropping, not as an automatic publishable cover.
 - The original image is sent to the configured vision provider. This endpoint does not guarantee anonymity or bypass provider quotas.
+
+### POST /api/event-cover-search
+- File: [app/api/event-cover-search/route.ts](../app/api/event-cover-search/route.ts)
+- Input JSON: only `title`, `date`, `location` strings, limited to 160/40/160 characters; maximum request body 2 KiB. OCR, screenshots and additional fields are rejected. Email addresses, phone numbers, handles and URLs are removed from the query fields.
+- Uses existing Tavily/Google page search. Fetches at most five result pages and extracts event image metadata; results are alternatives for explicit user selection, not reverse-image matches or certified originals.
+- Response: `{ "status": "completed" | "not-configured" | "failed", "candidates": [{ "id", "title", "sourceUrl", "previewUrl" }] }`. Empty and failed searches permit manual cropping or publication without a cover. This caller opts into explicit provider errors; existing callers retain their empty-result fallback.
+- Validates public DNS addresses, pins connections, checks every redirect, limits response sizes and validates actual bitmap bytes. Filters generic images and duplicate URLs/pixels. Total search budget 20 seconds; no DB/storage writes. Cross-origin browser requests are rejected.
+
+### GET /api/event-cover-image?token=...
+- File: [app/api/event-cover-image/route.ts](../app/api/event-cover-image/route.ts)
+- Requires a signed five-minute token returned by the search API, not an arbitrary URL. Uses the existing auth secret; without it tokens are process-local and may not survive cross-instance routing or restarts.
+- Downloads only validated public HTTP(S) resources with checked redirects, a 10-second budget, 4 MiB download/output limits and a 16-million-pixel decode limit. Returns metadata-stripped JPEG, maximum 2048 pixels per side, or 404 when unavailable/expired; instance-local rate/concurrency limits can return 429.
+- The browser queues searches and preview downloads across drafts, with at most two active requests. Dismissal, new scans and manual selection cancel pending work. Broken previews remain unavailable rather than becoming selectable.
+- Confirmation reuses the exact downloaded preview blob without another upstream request, avoiding image changes and publication/download races. Publication uploads that selected JPEG through the existing multipart flow. Nothing is selected automatically, and the screenshot is not included. Cropping the selected cover is separate from explicitly reopening the original.
 
 ### POST /api/process-image
 - File: [app/api/process-image/route.ts](../app/api/process-image/route.ts)
@@ -278,7 +292,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - Success output: `events` and `previewImageDataUrl`, a JPEG data URL containing the complete uploaded image, auto-oriented without cropping, padding or stretching. Crop-related `imageWarning` and `POSTER_PRIVACY_REVIEW_REQUIRED` responses are no longer produced.
 - Data vision prefers Groq then NVIDIA unless overridden by `AI_VISION_PROVIDERS` or, with higher precedence, `AI_VISION_EXTRACTION_PROVIDERS`. `AI_VISION_CROP_PROVIDERS` is no longer used by this endpoint. The analyzer has a 180-second budget, at most 60 seconds per request and no automatic retries; truncated responses are discarded. Structured text extraction, PDFs and cron continue to use Groq. See [OPENAI_SETUP.md](../OPENAI_SETUP.md).
 - Web verification is attempted whenever Tavily or Google credentials are configured. Search failures are nonblocking; warnings include provider, HTTP status and provider reason without credentials. Google HTTP 403 `API_KEY_SERVICE_BLOCKED` means the key is not authorized for Custom Search; check its API restrictions and API enablement in Google Cloud Console.
-- Privacy limitation: this endpoint returns the complete image, not an anonymized cover. Upload clients request a separate best-effort crop in parallel through `POST /api/crop-image`; failures retain the original. Prompts instruct data extraction to ignore unrelated personal details, but this does not anonymize the image. Review images before publishing. The original is sent to cloud vision/OCR services.
+- Privacy limitation: this endpoint returns the complete image, not an anonymized cover. Upload clients request a separate crop through `POST /api/crop-image`; failures leave no automatic cover and offer web-image selection before manual cropping. Prompts instruct extraction to ignore unrelated personal details, but this does not anonymize the source. Review chosen images before publishing. The original is sent to cloud vision/OCR services.
 
 Example request:
 

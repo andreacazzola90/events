@@ -13,7 +13,7 @@ import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
-import type { DraftImageCrop, DraftImageCropFailure, DraftImageCropStatus, DraftImageScan } from '../../lib/draft-image-crop';
+import { prepareDraftForPublication, type DraftImageCrop, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -164,7 +164,7 @@ export default function CreaEvento() {
         // Normalizza e aggiungi imageUrl
         let eventsWithImage = newEvents.map(ev => normalizeEventFields({
             ...ev,
-            imageUrl: ev.imageUrl || newImageUrl,
+            imageUrl: crop ? newImageUrl : ev.imageUrl || newImageUrl,
             originalImageUrl: newImageUrl || undefined,
         }));
 
@@ -194,13 +194,11 @@ export default function CreaEvento() {
         if (crop && newImageUrl) {
             void crop.result.then(blob => {
                 if (cropId !== imageCropId.current) return;
-                if (blob) {
-                    const croppedUrl = URL.createObjectURL(blob);
-                    setEvents(current => current.map(event => event.imageUrl === newImageUrl
-                        ? { ...event, imageUrl: croppedUrl, originalImageUrl: newImageUrl }
-                        : event));
-                    setImageUrl(croppedUrl);
-                }
+                const croppedUrl = blob ? URL.createObjectURL(blob) : undefined;
+                setEvents(current => current.map(event => event.imageUrl === newImageUrl
+                    ? { ...event, imageUrl: croppedUrl, originalImageUrl: newImageUrl }
+                    : event));
+                setImageUrl(croppedUrl || null);
                 pendingImageCrop.current = undefined;
                 setImageCropStatus(blob ? 'completed' : 'failed');
                 setImageCropFailure(blob ? undefined : crop.failureReason);
@@ -218,6 +216,7 @@ export default function CreaEvento() {
     };
 
     const handleSaveAll = async (eventsToSave: EventData[]) => {
+        if (imageProcessing) throw new Error('Attendi il controllo della copertina.');
         if (eventsToSave.length === 0) return;
 
         setError(null);
@@ -231,7 +230,8 @@ export default function CreaEvento() {
             let successfulSaves = 0;
             let firstSavedSlug: string | null = null;
 
-            for (const [eventIndex, eventData] of eventsToSave.entries()) {
+            for (const [eventIndex, draft] of eventsToSave.entries()) {
+                const eventData = prepareDraftForPublication(draft);
                 // Se c'è un'immagine blob, carica con FormData
                 if (eventData.imageUrl && eventData.imageUrl.startsWith('blob:')) {
                     const response = await fetch(eventData.imageUrl);

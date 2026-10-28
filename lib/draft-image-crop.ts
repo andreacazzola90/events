@@ -12,6 +12,40 @@ export type DraftImageCrop = { result: Promise<Blob | undefined>; cancel: () => 
 export type DraftImageCropStatus = 'idle' | 'processing' | 'completed' | 'failed';
 export type DraftImageScan = { isCurrent: () => boolean; registerCrop: (crop: DraftImageCrop) => void };
 
+export function prepareDraftForPublication<Event extends { originalImageUrl?: string }>(event: Event): Event {
+  const publishable = { ...event };
+  delete publishable.originalImageUrl;
+  return publishable;
+}
+
+let activeCoverRequests = 0;
+const coverRequestQueue: Array<() => void> = [];
+
+export function fetchDraftCover(url: string, options: RequestInit & { signal: AbortSignal }, timeoutMs: number): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      const index = coverRequestQueue.indexOf(start);
+      if (index >= 0) coverRequestQueue.splice(index, 1);
+      reject(new Error('Cover request cancelled'));
+    };
+    const start = () => {
+      options.signal.removeEventListener('abort', cancel);
+      if (options.signal.aborted) { cancel(); return; }
+      activeCoverRequests++;
+      void Promise.resolve().then(() => fetch(url, {
+        ...options, signal: AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]),
+      })).then(resolve, reject).finally(() => {
+        activeCoverRequests--;
+        coverRequestQueue.shift()?.();
+      });
+    };
+    if (options.signal.aborted) { cancel(); return; }
+    options.signal.addEventListener('abort', cancel, { once: true });
+    if (activeCoverRequests < 2) start();
+    else coverRequestQueue.push(start);
+  });
+}
+
 export function startDraftImageCrop(file: File): DraftImageCrop {
   const controller = new AbortController();
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]);

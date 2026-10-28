@@ -6,7 +6,7 @@ export interface SearchResult {
   snippet: string;
 }
 
-type SearchOptions = { signal?: AbortSignal };
+type SearchOptions = { signal?: AbortSignal; throwOnFailure?: boolean };
 
 export function isWebSearchConfigured(): boolean {
   return !!process.env.TAVILY_API_KEY || !!(process.env.GOOGLE_API_SECRET_KEY && process.env.GOOGLE_CX);
@@ -63,6 +63,7 @@ export async function webSearch(query: string, options?: SearchOptions): Promise
     } else {
       console.warn('Web search failed:', { provider, reason: 'request_failed' });
     }
+    if (options?.throwOnFailure) throw new Error('Web search unavailable');
   }
   return [];
 }

@@ -2,6 +2,7 @@
 
 describe('Parallel event cover', () => {
   beforeEach(() => {
+    cy.intercept('POST', '/api/event-cover-search', { statusCode: 200, body: { candidates: [], status: 'completed' } }).as('coverSearch');
     cy.visit('/crea', { failOnStatusCode: false });
     cy.wait(2000);
   });
@@ -22,8 +23,10 @@ describe('Parallel event cover', () => {
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
     cy.wait(['@earlyCrop', '@laterExtraction']);
     cy.contains('Early crop fallback').should('be.visible');
-    cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Immagine originale mantenuta.');
+    cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Originale escluso dalla pubblicazione.');
     cy.get('[data-image-crop-status="failed"]').should('contain', 'Quota gratuita AI temporaneamente esaurita.');
+    cy.get('img.event-image').should('not.exist');
+    cy.contains('Nessuna immagine trovata.').scrollIntoView().should('be.visible');
     cy.contains('button', /^Pubblica$/).should('be.enabled');
   });
 
@@ -61,11 +64,18 @@ describe('Parallel event cover', () => {
       });
       cy.intercept('POST', '/api/events', request => {
         saves++;
-        expect(request.headers['content-type']).to.include('multipart/form-data');
-        const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
-        expect(body).not.to.include('"autoCropImage":true');
-        expect(body).to.include(`"imageUrl":"${selectedCover}"`);
-        expect(body).to.include(`filename="event-image.${outcome === 'original' || outcome === 'manual' ? 'png' : 'jpg'}"`);
+        if (outcome === 'original') {
+          expect(request.headers['content-type']).to.include('application/json');
+          expect(request.body.imageUrl).to.be.undefined;
+          expect(request.body.originalImageUrl).to.be.undefined;
+        } else {
+          const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+          expect(request.headers['content-type']).to.include('multipart/form-data');
+          expect(body).not.to.include('"autoCropImage":true');
+          expect(body).not.to.include('"originalImageUrl"');
+          expect(body).to.include(`"imageUrl":"${selectedCover}"`);
+          expect(body).to.include(`filename="event-image.${outcome === 'manual' ? 'png' : 'jpg'}"`);
+        }
         request.reply({ statusCode: 201, body: { id: 999, title: 'Parallel cover event' } });
       }).as('parallelSave');
       cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
@@ -96,11 +106,12 @@ describe('Parallel event cover', () => {
         if (outcome === 'manual') {
           cy.get('[data-image-crop-status="manual"]').should('contain', 'Immagine modificata manualmente');
         } else if (outcome === 'original') {
-          cy.get('[data-image-crop-status="failed"]').should('contain', 'Ritaglio non riuscito').and('contain', 'Immagine originale mantenuta.');
+          cy.get('[data-image-crop-status="failed"]').should('contain', 'Ritaglio non riuscito').and('contain', 'Originale escluso dalla pubblicazione.');
         } else {
           cy.get('[data-image-crop-status="completed"]').first().should('contain', 'Ritaglio completato');
         }
-        cy.get('img.event-image').first().should(outcome === 'original' || outcome === 'manual' ? 'have.attr' : 'not.have.attr', 'src', original);
+        if (outcome === 'original') cy.get('img.event-image').should('not.exist');
+        else cy.get('img.event-image').first().should(outcome === 'manual' ? 'have.attr' : 'not.have.attr', 'src', original);
         if (outcome === 'multiple') {
           cy.get('img.event-image').should('have.length', 2).each(image => expect(image.attr('src')).not.to.eq(original));
         }
@@ -117,12 +128,156 @@ describe('Parallel event cover', () => {
         cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(390));
         cy.screenshot('draft-image-fallback-mobile', { overwrite: true, capture: 'viewport' });
       }
-      cy.get('img.event-image').first().invoke('attr', 'src').then(source => { selectedCover = source; });
+      if (outcome !== 'original') cy.get('img.event-image').first().invoke('attr', 'src').then(source => { selectedCover = source; });
       cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.enabled').click();
       cy.wait('@parallelSave').its('response.statusCode').should('eq', 201);
       cy.contains(outcome === 'multiple' ? '2 eventi creati' : 'Evento creato').should('be.visible');
     });
   }
+
+  const searchCandidates = [
+    { id: 'first', title: 'Concerto Schio', sourceUrl: 'https://comune.example/evento', previewUrl: '/api/event-cover-image?token=fixture-first' },
+    { id: 'second', title: 'Concerto Schio', sourceUrl: 'https://teatro.example/concerto', previewUrl: '/api/event-cover-image?token=fixture-second' },
+  ];
+
+  const failedScan = (multiple = false, onPreview?: () => void) => {
+    cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'verification-rejected' } });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('GET', '/api/event-cover-image?*', request => {
+      onPreview?.();
+      request.reply({ statusCode: 200, fixture: 'event-poster.jpg,null', headers: { 'Content-Type': 'image/jpeg' } });
+    }).as('coverPreview');
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      const event = { title: 'Concerto Schio', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music', rawText: 'PRIVATE SCREENSHOT @private-user 3331234567' };
+      cy.intercept('POST', '/api/process-image', { statusCode: 200, body: {
+        events: multiple ? [event, { ...event, title: 'Secondo concerto', time: '21:00' }] : [event],
+        previewImageDataUrl: `data:image/png;base64,${image}`,
+      } }).as('failedCropExtraction');
+    });
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait('@failedCropExtraction');
+    cy.get('[data-image-crop-status="failed"]').first().should('be.visible');
+  };
+
+  for (const multiple of [false, true]) {
+    it(`selects a web cover explicitly and publishes ${multiple ? 'multiple events independently' : 'only the selected JPEG'}`, () => {
+      cy.viewport(multiple ? 1280 : 390, multiple ? 900 : 844);
+      cy.intercept('POST', '/api/event-cover-search', request => {
+        expect(Object.keys(request.body).sort()).to.deep.equal(['date', 'location', 'title']);
+        expect(JSON.stringify(request.body)).not.to.include('PRIVATE');
+        expect(JSON.stringify(request.body)).not.to.include('private-user');
+        request.reply({ statusCode: 200, body: { status: 'completed', candidates: searchCandidates } });
+      }).as('webCoverSearch');
+      failedScan(multiple);
+      cy.wait('@webCoverSearch');
+      cy.get('[data-cover-picker]').first().within(() => {
+        cy.get('input[type="radio"]').should('have.length', 2).and('not.be.checked');
+        cy.contains('button', 'Usa immagine').should('be.disabled');
+        cy.get('input[type="radio"]').eq(1).check();
+      });
+      cy.get('img.event-image').should('not.exist');
+      cy.get('[data-cover-picker]').first().contains('button', 'Usa immagine').click();
+      cy.get('[data-image-crop-status="web"]').should('contain', 'Immagine scelta dal web');
+      cy.get('img.event-image').should('have.length', 1).scrollIntoView().should('be.visible');
+      cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(multiple ? 1280 : 390));
+      let saves = 0;
+      cy.intercept('POST', '/api/events', request => {
+        saves++;
+        if (request.headers['content-type'].includes('multipart/form-data')) {
+          const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+          expect(body).to.include('filename="event-image.jpg"');
+          expect(body).not.to.include('"originalImageUrl"');
+        } else {
+          expect(request.body.imageUrl).to.be.undefined;
+          expect(request.body.originalImageUrl).to.be.undefined;
+        }
+        request.reply({ statusCode: 201, body: { id: 999, title: 'Concerto Schio' } });
+      }).as('webCoverSave');
+      cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().click();
+      cy.wait('@webCoverSave');
+      cy.contains(multiple ? '2 eventi creati' : 'Evento creato').should('be.visible').then(() => expect(saves).to.eq(multiple ? 2 : 1));
+    });
+  }
+
+  it('keeps a confirmed manual crop when web results arrive late', () => {
+    let finishSearch: (() => void) | undefined;
+    cy.intercept('POST', '/api/event-cover-search', request => new Promise<void>(resolve => {
+      finishSearch = () => { request.reply({ statusCode: 200, body: { status: 'completed', candidates: searchCandidates } }); resolve(); };
+    }));
+    failedScan();
+    cy.contains('Ricerca immagini...').scrollIntoView().should('be.visible');
+    cy.contains('button', 'Ritaglia originale').click();
+    cy.contains('button', 'Applica ritaglio').should('be.enabled').click();
+    cy.get('[data-image-crop-status="manual"]').should('be.visible');
+    cy.get('img.event-image').invoke('attr', 'src').then(source => {
+      cy.then(() => finishSearch?.());
+      cy.get('[data-cover-picker]').should('not.exist');
+      cy.get('img.event-image').should('have.attr', 'src', source);
+    });
+  });
+
+  it('confirms the displayed bytes without another download and crops the selected web cover', () => {
+    let downloads = 0;
+    let previewBytes: number[] = [];
+    cy.intercept('POST', '/api/event-cover-search', { statusCode: 200, body: { status: 'completed', candidates: searchCandidates } });
+    failedScan(false, () => { downloads++; });
+    cy.get('[data-cover-picker] img').should('have.length', 2);
+    cy.get('[data-cover-picker] input[type="radio"]').first().check();
+    cy.get('[data-cover-picker] img').first().invoke('attr', 'src').then(source => {
+      cy.window().then(async win => {
+        previewBytes = [...new Uint8Array(await (await win.fetch(source || '')).arrayBuffer())];
+      });
+    });
+    cy.contains('button', 'Usa immagine').click();
+    cy.get('img.event-image').invoke('attr', 'src').then(source => {
+      cy.window().then(async win => {
+        const selected = await (await win.fetch(source || '')).arrayBuffer();
+        expect(selected.byteLength).to.be.greaterThan(0);
+        expect([...new Uint8Array(selected)]).to.deep.equal(previewBytes);
+        expect(downloads).to.eq(2);
+      });
+      cy.contains('button', 'Modifica dettagli').click();
+      cy.contains('button', 'Ritaglia immagine').click();
+      cy.get('img[alt="Immagine da ritagliare"]').should('have.attr', 'src', source);
+      cy.contains('button', 'Applica ritaglio').should('be.enabled').click();
+      cy.get('[data-image-crop-status="manual"]').should('be.visible');
+    });
+  });
+
+  it('cancels the search when the user chooses no cover', () => {
+    let searchSignal: AbortSignal | undefined;
+    cy.window().then(win => {
+      const originalFetch = win.fetch.bind(win);
+      cy.stub(win, 'fetch').callsFake((input: RequestInfo | URL, options?: RequestInit) => {
+        if (String(input) !== '/api/event-cover-search') return originalFetch(input, options);
+        searchSignal = options?.signal || undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          searchSignal?.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true });
+        });
+      });
+    });
+    failedScan();
+    cy.contains('Ricerca immagini...').scrollIntoView().should('be.visible');
+    cy.contains('button', 'Senza copertina').click();
+    cy.get('[data-cover-picker]').should('not.exist').then(() => expect(searchSignal?.aborted).to.eq(true));
+  });
+
+  it('allows publication without an image when web search fails', () => {
+    cy.intercept('POST', '/api/event-cover-search', { statusCode: 503, body: { status: 'failed', candidates: [] } });
+    failedScan();
+    cy.contains('Ricerca immagini non disponibile.').scrollIntoView().should('be.visible');
+    cy.contains('button', 'Ritaglia originale').scrollIntoView().should('be.visible');
+    cy.intercept('POST', '/api/events', request => {
+      expect(request.headers['content-type']).to.include('application/json');
+      expect(request.body.imageUrl).to.be.undefined;
+      expect(request.body.originalImageUrl).to.be.undefined;
+      request.reply({ statusCode: 201, body: { id: 999 } });
+    }).as('noCoverSave');
+    cy.contains('button', 'Senza copertina').click();
+    cy.get('img.event-image').should('not.exist');
+    cy.contains('button', /^Pubblica$/).click();
+    cy.wait('@noCoverSave');
+  });
 });
 
 (Cypress.env('parallelCoverOnly') ? describe.skip : describe)('Event Creation via Image - OCR & AI Testing', () => {

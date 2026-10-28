@@ -3,6 +3,7 @@
 
 import { type Area } from 'react-easy-crop';
 import EventImageCropper from './EventImageCropper';
+import EventCoverPicker from './EventCoverPicker';
 import { DuplicateMatch, EventData } from '../types/event';
 import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
@@ -13,8 +14,8 @@ import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media'
 import { MAX_AI_INSTRUCTIONS_LENGTH } from '../../lib/ai-instructions';
 import SaveAnimation from './SaveAnimation';
 import { toast } from 'react-toastify';
-import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
-import { DRAFT_CROP_FAILURE_MESSAGES, type DraftImageCropFailure, type DraftImageCropStatus } from '../../lib/draft-image-crop';
+import { CheckCircle2, CircleAlert, Crop, Loader2 } from 'lucide-react';
+import { DRAFT_CROP_FAILURE_MESSAGES, prepareDraftForPublication, type DraftImageCropFailure, type DraftImageCropStatus } from '../../lib/draft-image-crop';
 
 async function cropCoverToFile(imageSource: string, area: Area) {
     const image = new window.Image();
@@ -76,6 +77,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     const cropPreviewUrls = useRef<string[]>([]);
     const originalCropSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
     const [manualImageOverride, setManualImageOverride] = useState(false);
+    const [webImageOverride, setWebImageOverride] = useState(false);
     const draftImageSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
     const currentImageUrl = useRef(eventData.imageUrl);
     const currentOnSave = useRef(onSave);
@@ -103,7 +105,10 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     useEffect(() => {
         const source = eventData.originalImageUrl || eventData.imageUrl;
         const newDraft = draftImageSource.current !== source;
-        if (newDraft) setManualImageOverride(false);
+        if (newDraft) {
+            setManualImageOverride(false);
+            setWebImageOverride(false);
+        }
         draftImageSource.current = source;
         if (newDraft || !manualImageOverride) {
             currentImageUrl.current = eventData.imageUrl;
@@ -112,9 +117,9 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
         }
     }, [eventData.imageUrl, eventData.originalImageUrl, manualImageOverride]);
 
-    const handleOpenCropper = () => {
-        if (!imageUrl) return;
-        setCropSource(originalCropSource.current || imageUrl);
+    const handleOpenCropper = (source = imageUrl) => {
+        if (!source) return;
+        setCropSource(source);
         setCroppedAreaPixels(null);
     };
 
@@ -125,6 +130,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             const previewUrl = URL.createObjectURL(croppedFile);
             cropPreviewUrls.current.push(previewUrl);
             setManualImageOverride(true);
+            setWebImageOverride(false);
             setImageUrl(previewUrl);
             currentImageUrl.current = previewUrl;
             onImageChange?.(previewUrl, originalCropSource.current);
@@ -264,6 +270,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     };
 
     const handleAddEvent = async () => {
+        if (imageProcessing) return;
         setIsSaving(true);
         setSaveAnimationStatus('saving');
 
@@ -299,6 +306,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             // Normalizza i dati prima del salvataggio
             eventToSave.category = normalizeCategory(eventToSave.category);
             eventToSave.price = normalizePrice(eventToSave.price);
+            eventToSave = prepareDraftForPublication(eventToSave);
 
             console.log('[EventDisplay] Saving event:', eventToSave);
 
@@ -400,13 +408,13 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
 
             <form ref={formRef} onSubmit={e => { e.preventDefault(); if (isEditing) handleSave(); }} className="event-form">
                 <div className="event-main-layout grid gap-6 md:gap-8 md:grid-cols-[minmax(0,320px)_1fr] items-start">
-                    <div className="event-image-section surface-panel overflow-hidden md:sticky md:top-24">
+                    <div className={`event-image-section surface-panel overflow-hidden ${imageCropStatus === 'failed' ? '' : 'md:sticky md:top-24'}`}>
                         {(imageCropStatus !== 'idle' || manualImageOverride) && (
                             <div
                                 role="status"
                                 aria-live="polite"
                                 aria-atomic="true"
-                                data-image-crop-status={manualImageOverride ? 'manual' : imageCropStatus}
+                                data-image-crop-status={manualImageOverride ? webImageOverride ? 'web' : 'manual' : imageCropStatus}
                                 className={`flex items-start gap-2 border-b border-black/10 px-4 py-3 text-sm ${manualImageOverride ? 'bg-white text-[#5f5b56]' : imageCropStatus === 'failed' ? 'bg-[#fff7f4] text-[#8f3823]' : imageCropStatus === 'completed' ? 'bg-green-50 text-green-800' : 'bg-white text-[#5f5b56]'}`}
                             >
                                 {!manualImageOverride && imageCropStatus === 'processing'
@@ -416,11 +424,11 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                         : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
                                 <div className="min-w-0">
                                     <span className="block font-semibold">{manualImageOverride
-                                        ? 'Immagine modificata manualmente'
+                                        ? webImageOverride ? 'Immagine scelta dal web' : 'Immagine modificata manualmente'
                                         : imageCropStatus === 'processing' ? 'Immagine in elaborazione'
                                             : imageCropStatus === 'completed' ? 'Ritaglio completato' : 'Ritaglio non riuscito'}</span>
                                     {!manualImageOverride && imageCropStatus === 'failed' && (
-                                        <span className="mt-1 block">{imageCropFailure && DRAFT_CROP_FAILURE_MESSAGES[imageCropFailure]}{imageCropFailure ? ' ' : ''}Immagine originale mantenuta.</span>
+                                        <span className="mt-1 block">{imageCropFailure && DRAFT_CROP_FAILURE_MESSAGES[imageCropFailure]}{imageCropFailure ? ' ' : ''}Originale escluso dalla pubblicazione.</span>
                                     )}
                                 </div>
                             </div>
@@ -432,7 +440,24 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                 className="event-image w-full h-auto object-cover"
                             />
                         ) : (
-                            <div className="event-image-placeholder w-full h-55 flex items-center justify-center text-[#5f5b56]">Nessuna immagine</div>
+                            <div className={`event-image-placeholder w-full ${imageCropStatus === 'failed' ? 'h-24' : 'h-55'} flex items-center justify-center text-[#5f5b56]`}>Nessuna immagine</div>
+                        )}
+                        {imageCropStatus === 'failed' && !manualImageOverride && (
+                            <EventCoverPicker title={eventData.title || ''} date={eventData.date || ''} location={eventData.location || ''}
+                                onSelect={blob => {
+                                    const previewUrl = URL.createObjectURL(blob);
+                                    cropPreviewUrls.current.push(previewUrl);
+                                    setManualImageOverride(true);
+                                    setWebImageOverride(true);
+                                    setImageUrl(previewUrl);
+                                    currentImageUrl.current = previewUrl;
+                                    onImageChange?.(previewUrl, originalCropSource.current);
+                                }} />
+                        )}
+                        {imageCropStatus === 'failed' && eventData.originalImageUrl && (
+                            <button type="button" onClick={() => handleOpenCropper(eventData.originalImageUrl)} className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-sm font-semibold text-[#8f3823]">
+                                <Crop className="h-4 w-4" aria-hidden="true" />Ritaglia originale
+                            </button>
                         )}
                         {isEditing && (
                             <div className="block p-4 border-t border-black/10 text-sm text-[#5f5b56]">
@@ -450,6 +475,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                             originalCropSource.current = url;
                                             draftImageSource.current = url;
                                             setManualImageOverride(true);
+                                            setWebImageOverride(false);
                                             setImageUrl(url);
                                             currentImageUrl.current = url;
                                             onImageChange?.(url, url);
@@ -458,7 +484,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                 />
                                 </label>
                                 {imageUrl && (
-                                    <button type="button" onClick={handleOpenCropper} className="mt-3 block text-sm font-semibold text-red-700 underline underline-offset-4">
+                                    <button type="button" onClick={() => handleOpenCropper()} className="mt-3 block text-sm font-semibold text-red-700 underline underline-offset-4">
                                         Ritaglia immagine
                                     </button>
                                 )}

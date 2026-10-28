@@ -18,7 +18,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="760" height="1240">
 <text x="285" y="910" font-size="22">Ricercatrice universitaria</text><text x="90" y="1070" font-size="28">22 OTTOBRE 2026 ore 18:30</text>
 <text x="90" y="1120" font-size="25">CENTRO VERDI - ENTRATA LIBERA</text></svg>`;
 const bytes = path ? await readFile(path) : await sharp(Buffer.from(svg)).png().toBuffer();
-const analyze = createEventImageAnalyzer(process.env.AI_VISION_CROP_PROVIDERS || 'groq', {
+const analyze = createEventImageAnalyzer(process.env.AI_VISION_CROP_PROVIDERS || 'groq,nvidia', {
   budgetMs: 45_000,
   signal: AbortSignal.timeout(50_000),
   retryRateLimit: true,

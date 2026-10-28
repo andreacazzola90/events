@@ -2,6 +2,24 @@ import OpenAI from 'openai';
 
 type VisionProvider = 'nvidia' | 'gemini' | 'openrouter' | 'groq';
 
+const nvidiaCoordinate = { type: ['number', 'null'], minimum: 0, maximum: 1 };
+const nvidiaCropResponseFormat = {
+  type: 'json_schema' as const,
+  json_schema: {
+    name: 'poster_crop', strict: true,
+    schema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        x: nvidiaCoordinate, y: nvidiaCoordinate, width: nvidiaCoordinate, height: nvidiaCoordinate,
+        socialHeaderBottom: nvidiaCoordinate, socialFooterTop: nvidiaCoordinate,
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+        safe: { type: ['boolean', 'null'] },
+      },
+      required: ['x', 'y', 'width', 'height', 'socialHeaderBottom', 'socialFooterTop', 'confidence', 'safe'],
+    },
+  },
+};
+
 export class VisionServiceUnavailableError extends Error {
   readonly reason: 'unavailable' | 'rate-limited' | 'timeout' | 'not-configured';
 
@@ -105,10 +123,14 @@ export function createEventImageAnalyzer(providerOrder?: string, options: {
         });
         const invoke = () => client.chat.completions.create({
           model: provider.model,
-          messages,
+          messages: options.jsonMode && provider.name === 'nvidia' ? [{
+            role: 'system' as const,
+            content: 'Return only valid JSON matching the schema. Coordinates and confidence are decimal fractions on 0..1, never pixels, percentages or 0..1000. Example confidence:0.95 and x:0.05. For privacy verdicts return safe and confidence; all coordinates are null. For bounds set safe to null. If no bounds are found, set coordinates to null and confidence to zero. Absent header/footer values stay null.',
+          }, ...messages] : messages,
           temperature: 0.1,
           max_tokens: options.jsonMode && provider.name === 'groq' ? 512 : 2000,
-          ...(options.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
+          ...(options.jsonMode ? { response_format: provider.name === 'nvidia' ? nvidiaCropResponseFormat : { type: 'json_object' as const } } : {}),
+          ...(options.jsonMode && provider.name === 'nvidia' ? { chat_template_kwargs: { enable_thinking: false } } : {}),
           ...(provider.name === 'gemini' ? { reasoning_effort: 'low' as const } : {}),
         }, { signal: options.signal, timeout: Math.min(60_000, Math.max(1, deadline - Date.now())) });
         let completion;

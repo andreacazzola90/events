@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(50_000)]);
     let providerStatus = '';
-    const analyze = createEventImageAnalyzer(process.env.AI_VISION_CROP_PROVIDERS || 'groq', {
+    const analyze = createEventImageAnalyzer(process.env.AI_VISION_CROP_PROVIDERS || 'groq,nvidia', {
       budgetMs: 45_000, signal, jsonMode: true, retryRateLimit: true,
       onProviderFailure: (provider, status) => { providerStatus = `${provider}:${status || 'network'}`; },
     });

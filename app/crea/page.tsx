@@ -516,7 +516,7 @@ export default function CreaEvento() {
                             <p className="section-kicker mb-4">EventScanner / Nuovo evento</p>
                             <h1 className="section-title max-w-4xl">
                                 {events.length > 0 ? (
-                                    <>Rivedi i dettagli <span className="text-[#d65a38]">dell’evento</span></>
+                                    <>Rivedi i dettagli <span className="text-[#d65a38]">{events.length > 1 ? 'degli eventi' : 'dell’evento'}</span></>
                                 ) : (
                                     <>Crea un nuovo <span className="text-[#d65a38]">evento</span></>
                                 )}
@@ -652,7 +652,7 @@ export default function CreaEvento() {
                             </section>
                         )}
 
-                        {events.length === 1 && (
+                        {events.length > 0 && (
                             <div className="sticky top-16 z-30 flex items-center justify-between gap-2 border-b border-black/10 bg-[var(--background)] py-3">
                                 <button
                                     type="button"

@@ -106,7 +106,14 @@ describe('Parallel event cover', () => {
       cy.wait('@parallelImage');
       cy.contains('Parallel cover event').should('be.visible');
       cy.contains('[role="status"]', 'Immagine in elaborazione').should('be.visible');
-      cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.disabled');
+      cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.enabled').click();
+      cy.contains('Attendi il controllo della copertina.').should('be.visible');
+      cy.then(() => expect(saves).to.eq(0));
+      if (outcome === 'multiple') {
+        cy.get('[data-testid="publish-all-events-bottom"]').scrollIntoView().should('be.enabled').and('have.css', 'background-color', 'rgb(29, 29, 27)').click();
+        cy.contains('[role="alert"]', 'Attendi il controllo della copertina.').should('be.visible');
+        cy.then(() => expect(saves).to.eq(0));
+      }
       if (outcome === 'cropped' || outcome === 'original') {
         cy.screenshot(`draft-image-processing-${outcome === 'original' ? 'mobile' : 'desktop'}`, { overwrite: true, capture: 'viewport' });
       }
@@ -163,6 +170,60 @@ describe('Parallel event cover', () => {
     { id: 'first', title: 'Concerto Schio', sourceUrl: 'https://comune.example/evento', previewUrl: '/api/event-cover-image?token=fixture-first' },
     { id: 'second', title: 'Concerto Schio', sourceUrl: 'https://teatro.example/concerto', previewUrl: '/api/event-cover-image?token=fixture-second' },
   ];
+
+  it('keeps duplicate-only publication available and explains the result after clicking', () => {
+    const event = { title: 'Evento gia presente', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' };
+    const duplicate = { id: 987, ...event, slug: 'evento-gia-presente-987' };
+    let saves = 0;
+    cy.intercept('POST', '/api/crop-image', { statusCode: 204 });
+    cy.intercept('POST', '/api/process-image', { statusCode: 200, body: { events: [event, { ...event, title: 'Secondo evento presente', time: '21:00' }] } });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [duplicate, { ...duplicate, id: 988 }] } }).as('allDuplicates');
+    cy.intercept('POST', '/api/events', request => { saves++; request.reply({ statusCode: 500 }); });
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait('@allDuplicates');
+    cy.get('[data-testid="publish-all-events-top"]').should('be.enabled').click();
+    cy.contains('Nessun nuovo evento da pubblicare: gli eventi risultano già presenti.').should('be.visible');
+    cy.get('[data-testid="publish-all-events-bottom"]').scrollIntoView().should('be.enabled').and('have.css', 'background-color', 'rgb(29, 29, 27)').click();
+    cy.contains('[role="alert"]', 'Nessun nuovo evento da pubblicare: gli eventi risultano già presenti.').should('be.visible');
+    cy.then(() => expect(saves).to.eq(0));
+    cy.get('.Toastify__close-button').click({ multiple: true, force: true });
+    cy.get('.Toastify__toast').should('not.exist');
+    for (const width of [1280, 390]) {
+      cy.viewport(width, 900);
+      cy.get('[data-testid="publish-all-events-bottom"]').scrollIntoView({ offset: { top: -120, left: 0 } }).should('be.visible');
+      cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(width));
+    }
+  });
+
+  it('blocks both publication controls during one batch and allows retry after a save error', () => {
+    const event = { title: 'Pubblicazione coordinata', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' };
+    let saves = 0;
+    let finishSave: () => void;
+    cy.intercept('POST', '/api/crop-image', { statusCode: 204 });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('POST', '/api/process-image', { statusCode: 200, body: { events: [event, { ...event, title: 'Seconda pubblicazione', time: '21:00' }] } });
+    cy.intercept('POST', '/api/events', request => new Promise<void>(resolve => {
+      saves++;
+      finishSave = () => { request.reply({ statusCode: 503, body: { error: 'Pubblicazione temporaneamente non disponibile' } }); resolve(); };
+    })).as('pendingPublication');
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.get('[data-testid="publish-all-events-bottom"]').scrollIntoView().should('be.enabled').click();
+    cy.get('[data-testid="publish-all-events-top"]').should('be.disabled');
+    cy.get('[data-testid="publish-all-events-bottom"]').should('be.disabled');
+    cy.then(() => { expect(saves).to.eq(1); finishSave(); });
+    cy.wait('@pendingPublication');
+    cy.contains('[role="alert"]', 'Pubblicazione temporaneamente non disponibile').should('be.visible');
+    cy.get('[data-testid="publish-all-events-top"]').should('be.enabled');
+    cy.get('[data-testid="publish-all-events-bottom"]').should('be.enabled');
+    cy.intercept('POST', '/api/events', request => {
+      saves++;
+      request.reply({ statusCode: 201, body: { id: 990 + saves, title: request.body.title } });
+    }).as('retriedPublication');
+    cy.get('[data-testid="publish-all-events-top"]').click();
+    cy.wait('@retriedPublication');
+    cy.contains('2 eventi creati').should('be.visible');
+    cy.then(() => expect(saves).to.eq(3));
+  });
 
   const failedScan = (multiple = false, onPreview?: () => void) => {
     cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'verification-rejected' } });

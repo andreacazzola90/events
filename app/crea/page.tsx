@@ -66,6 +66,7 @@ export default function CreaEvento() {
     const [loadingLink, setLoadingLink] = useState(false);
     const [linkReceived, setLinkReceived] = useState(false);
     const [isPublishingAll, setIsPublishingAll] = useState(false);
+    const publicationInFlight = useRef(false);
     const [duplicates, setDuplicates] = useState<(DuplicateMatch | null)[]>([]);
     const duplicateCheckId = useRef(0);
     const imageCropId = useRef(0);
@@ -216,9 +217,12 @@ export default function CreaEvento() {
     };
 
     const handleSaveAll = async (eventsToSave: EventData[]) => {
+        if (publicationInFlight.current) return;
         if (imageProcessing) throw new Error('Attendi il controllo della copertina.');
-        if (eventsToSave.length === 0) return;
+        if (eventsToSave.length === 0) throw new Error('Nessun nuovo evento da pubblicare: gli eventi risultano già presenti.');
 
+        publicationInFlight.current = true;
+        setIsPublishingAll(true);
         setError(null);
         setOptimisticEvents(eventsToSave.map(event => ({ event: { ...event }, status: 'pending' })));
         const updateOptimisticStatus = (eventIndex: number, status: OptimisticEventStatus) => {
@@ -340,14 +344,16 @@ export default function CreaEvento() {
             console.error('Error saving events:', error);
             setOptimisticEvents(null);
             throw error; // Re-throw to let the MultipleEventsEditor handle it
+        } finally {
+            publicationInFlight.current = false;
+            setIsPublishingAll(false);
         }
     };
 
     const handlePublishAllEvents = async () => {
         const eventsToSave = events.filter((_, index) => !duplicates[index]);
-        if (!eventsToSave.length || isPublishingAll) return;
+        if (publicationInFlight.current) return;
 
-        setIsPublishingAll(true);
         setError(null);
         try {
             await handleSaveAll(eventsToSave);
@@ -355,8 +361,6 @@ export default function CreaEvento() {
             const message = publishError instanceof Error ? publishError.message : 'Errore durante la pubblicazione degli eventi';
             setError(message);
             toast.error(message);
-        } finally {
-            setIsPublishingAll(false);
         }
     };
 
@@ -668,8 +672,10 @@ export default function CreaEvento() {
                                 </button>
                                 <button
                                     type="button"
+                                    data-testid="publish-all-events-top"
                                     onClick={handlePublishAllEvents}
-                                    disabled={isPublishingAll || imageProcessing || (duplicates.length === events.length && duplicates.every(Boolean))}
+                                    disabled={isPublishingAll}
+                                    aria-busy={isPublishingAll}
                                     className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 bg-[#1d1d1b] px-2 py-3 text-xs font-bold text-white transition-colors hover:bg-[#d65a38] disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-5 sm:text-sm"
                                 >
                                     <Send className="h-4 w-4" aria-hidden="true" />
@@ -682,6 +688,7 @@ export default function CreaEvento() {
                         {events.length > 1 ? (
                             <MultipleEventsEditor
                                 events={events}
+                                publishing={isPublishingAll}
                                 imageProcessing={imageProcessing}
                                 imageCropStatus={imageCropStatus}
                                 imageCropFailure={imageCropFailure}

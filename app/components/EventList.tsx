@@ -168,7 +168,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
   const [visibleCount, setVisibleCount] = useState(12);
 
   const fetchEvents = useCallback(async () => {
-    if (!hasLoadedEventsRef.current) setLoading(true);
+    setLoading(true);
     setLoadError(false);
     try {
       const params = new URLSearchParams({ limit: "200" });
@@ -340,10 +340,6 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
       return next;
     });
   };
-
-  if (loading) {
-    return <div className="text-center py-8">Caricamento eventi...</div>;
-  }
 
   if (loadError) {
     return (
@@ -522,7 +518,15 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
         return (
           <>
             <div className={gridClasses}>
-              {filteredEvents.length === 0 ? (
+              {loading ? (
+                <div role="status" className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+                  <span
+                    aria-hidden="true"
+                    className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-black/15 border-t-[#d65a38]"
+                  />
+                  <span className="text-sm text-black/60">Caricamento eventi...</span>
+                </div>
+              ) : filteredEvents.length === 0 ? (
                 <div className="col-span-full text-center py-16">
                   <h3 className="text-2xl font-bold text-black mb-2">
                     Nessun evento trovato
@@ -649,7 +653,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
               )}
             </div>
 
-            {mode === "quick" && filteredEvents.length > visibleCount && (
+            {mode === "quick" && !loading && filteredEvents.length > visibleCount && (
               <div className="flex justify-center pt-2">
                 <button
                   onClick={() => setVisibleCount((prev) => prev + 12)}

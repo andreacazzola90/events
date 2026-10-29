@@ -14,14 +14,6 @@ export default function HomeMotion({ children }: { children: React.ReactNode }) 
     if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const context = gsap.context(() => {
-      gsap.from("[data-hero-reveal]", {
-        y: 28,
-        duration: 0.9,
-        stagger: 0.12,
-        ease: "power3.out",
-        clearProps: "all",
-      });
-
       gsap.utils.toArray<HTMLElement>("[data-scroll-reveal]").forEach((section) => {
         gsap.from(section, {
           y: 30,

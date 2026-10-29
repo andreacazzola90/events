@@ -5,6 +5,8 @@ import { processEventLink } from '../../../../lib/event-processor';
 import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { geocodeLocation } from '@/lib/geocoding';
+import { scanTelegramQueue } from '../../../../lib/telegram-event-scanning';
+import { findDuplicateEvent, lockEventDates } from '../../../../lib/event-duplicates';
 
 export const maxDuration = 300; // 5 minuti per il cron job
 
@@ -799,7 +801,12 @@ async function scrapeOneSource(
               longitude = coords.longitude;
             }
 
-            const savedEvent = await createEventWithCalendar({
+            const publication = await prisma.$transaction(async tx => {
+              await lockEventDates(tx, [candidateDate]);
+              const duplicate = await tx.event.findFirst({ where: { title: candidateTitle, date: candidateDate, location: candidateLocation } }) ||
+                await findDuplicateEvent({ ...eventData, title: candidateTitle, date: candidateDate }, tx);
+              if (duplicate) return { saved: null, duplicate };
+              const saved = await createEventWithCalendar({
               data: {
                 title: eventData.title || 'Senza titolo',
                 description: eventData.description || '',
@@ -818,7 +825,14 @@ async function scrapeOneSource(
                 externalId: getExternalIdFromUrl(url),
                 origin: originTag,
               } as any,
-            });
+              }, tx);
+              return { saved, duplicate: null };
+            }, { maxWait: 2_000, timeout: 15_000 });
+            if (!publication.saved) {
+              duplicateEvents.push({ title: candidateTitle, date: candidateDate, existingId: publication.duplicate.id });
+              continue;
+            }
+            const savedEvent = publication.saved;
 
             processedEvents.push(savedEvent.id);
             processedEventDetails.push({
@@ -894,7 +908,8 @@ async function scrapeOneSource(
 export async function GET(request: NextRequest) {
   // Controllo del secret per il cron (stessa logica di scrape-visitschio)
   const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET_KEY && authHeader !== `Bearer ${process.env.CRON_SECRET_KEY}`) {
+  const secrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_KEY].filter(Boolean);
+  if (!secrets.some(secret => authHeader === `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -905,6 +920,9 @@ export async function GET(request: NextRequest) {
   const TIME_BUDGET_MS = 260_000;
   const MIN_SOURCE_BUDGET_MS = 120_000;
   const runDeadline = runStartedAt + TIME_BUDGET_MS;
+  const webDeadline = runDeadline - 15_000;
+  const telegramWork = scanTelegramQueue({ dryRun, deadline: Math.min(runStartedAt + 90_000, runDeadline - 5_000) })
+    .catch(() => ({ status: 'partial-error', dryRun, error: 'telegram_processing_unavailable', published: 0 }));
   try {
     await prisma.cronJobRun.upsert({
       where: { jobKey: 'visitpedemontana' },
@@ -926,7 +944,7 @@ export async function GET(request: NextRequest) {
   let sourcesProcessed = 0;
 
   for (const [sourceIndex, source] of sources.entries()) {
-    const availableTime = runDeadline - Date.now();
+    const availableTime = webDeadline - Date.now();
     if (availableTime < MIN_SOURCE_BUDGET_MS) {
       console.warn(`[VisitPedemontana] Time budget exceeded, skipping remaining source: ${source.name}`);
       results.push({ sourceId: source.id, sourceName: source.name, status: 'skipped', message: 'Time budget exceeded for this run' });
@@ -981,15 +999,24 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const overallStatus = results.some(r => ['error', 'partial-error'].includes(r.status))
+  const telegram = await telegramWork;
+  if (!dryRun && telegram.published > 0) {
+    scheduleCalendarDeliveries();
+    revalidatePath('/', 'layout');
+    revalidatePath('/api/events', 'page');
+    revalidateTag('events-list', { expire: 0 });
+  }
+  const allResults = [...results, telegram];
+  const overallStatus = allResults.some(r => ['error', 'partial-error'].includes(r.status))
     ? 'partial-error'
-    : results.some(r => ['partial', 'skipped'].includes(r.status)) ? 'partial' : 'success';
+    : allResults.some(r => ['partial', 'skipped'].includes(r.status)) ? 'partial' : 'success';
 
   const response = {
     status: overallStatus,
     dryRun,
     sourcesProcessed,
     sources: results,
+    telegram,
   };
   try {
     await prisma.cronJobRun.updateMany({

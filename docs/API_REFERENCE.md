@@ -4,6 +4,56 @@ Last update: 2026-05-27
 
 This document is generated from current route handlers under [app/api](../app/api).
 
+## Telegram Admin And Collection (2026-10-29)
+
+Implementation: [admin API](../app/api/admin/telegram/route.ts), [webhook](../app/api/telegram/webhook/route.ts), [connection security](../lib/telegram-connection.ts), [store](../lib/telegram-store.ts), [queue consumer](../lib/telegram-event-scanning.ts).
+
+### GET /api/admin/telegram
+
+Requires a NextAuth session and a database user with `role=admin` or `type=admin`. Email-prefix exceptions do not authorize this API. Every query is scoped to the authenticated owner. Returns `connected`, `status`, `botUsername`, sanitized `lastError`, the owner's sources and message/event counts. Never returns the connection ID, token, ciphertext, webhook secret/hash, raw messages or file IDs. Responses use `Cache-Control: no-store`; anonymous/nonadmin requests receive 401/403 before accessing Telegram data.
+
+### POST /api/admin/telegram
+
+Same authorization as GET. Requires `Origin` to match server-configured `TELEGRAM_ADMIN_ORIGIN` (or `NEXTAUTH_URL`), not a client-provided host or forwarded origin. JSON body maximum: 4 KiB.
+
+| action | Required fields | Behavior |
+| --- | --- | --- |
+| `connect` | `token` | AES-256-GCM encryption with required server key; official `getMe`, then `setWebhook` to the trusted HTTPS origin. Only confirmed registration becomes active. One bot per owner and one owner per bot. Reconnect is blocked during remote operations and unconfirmed cleanup. |
+| `save-source` | negative numeric `chatId` string, `consent: true` | Separate public-republication consent. Official `getMe`, `getChat`, `getChatMember` verify access. Activation compares the connection generation and source identity/revision captured before remote verification. At most 50 nonremoved sources, including paused sources. Transient errors preserve source/queue; current access revocation suspends the matching generation and clears pending payloads. |
+| `pause-source` | owner's `sourceId` | Stops collection/publication, revokes consent and destroys pending raw text/file references. Resume requires explicit consent and verification again. |
+| `remove-source` | owner's `sourceId` | Same stop/purge, removes display title/public username and sets stable `removedAt`. Hidden from the source list and excluded from the limit. A new source can be added without reconnect; reauthorizing a removed source still checks the limit. |
+| `disconnect` | none | Stops local access, clears webhook authentication/consent/pending payloads and persists `disconnecting`, then calls `deleteWebhook` outside the transaction. Confirmed cleanup becomes `disconnected` and erases the encrypted token. Failure/timeout becomes `disconnect_unknown`, returns `remoteRemoved: false` and retains only the encrypted token needed to retry cleanup. Reconnect remains blocked. |
+
+Lifecycle mutations are serialized locally before network work. `connecting`/`disconnecting` reject overlapping mutations with 409; `disconnect_unknown` permits retrying `disconnect`, not `connect`. An ambiguous `setWebhook` failure also requires confirmed cleanup before reconnect. Finalization uses connection identity/status CAS. Pause/removal/access revocation increment the source revision, so old saves and worker errors cannot reactivate or disable a reauthorized source or destroy its new queue. Publication and destructive worker handling also require the current job version, lease and connection generation.
+
+Known errors are stable codes such as `telegram_key_not_configured`, `telegram_https_not_configured`, `telegram_webhook_failed`, `privacy_mode_limited`, `protected_content`, `bot_not_member`, `same_origin_required`. Provider response descriptions, fetch errors/causes and token-bearing URLs are not returned or logged by this feature. Management/API storage failures return a generic 503. The server Sentry hooks redact Bot API token URL segments, secret headers and Telegram request bodies; external infrastructure must also avoid recording these sensitive values.
+
+### POST /api/telegram/webhook?connection=opaque-id
+
+The opaque routing ID is not a credential. Authentication is the exact `X-Telegram-Bot-Api-Secret-Token` value configured through Telegram's `setWebhook.secret_token`; only its SHA-256 hash is stored. This is Telegram's official secret header, not an invented request-body HMAC signature.
+
+Only `message`, `channel_post`, `edited_message`, `edited_channel_post` are requested. JSON payloads are streamed with a 64 KiB bound. Text plus caption is limited to 8,192 characters; at most ten photo sizes are inspected and only a file within 4 MiB is selected. Private user chats, forwarded/protected content, unsupported updates and nonallowed/inactive/unconsented sources do not enter the queue. A newer unsupported/protected/forwarded edit with valid message/chat identity invalidates any older unpublished version: payload cleared, version incremented and lease revoked, including while AI is in flight. No AI or file downloads run in the webhook. Success for an accepted message follows durable transaction completion; storage failures return 503 for Telegram retry. Duplicate/out-of-order updates and edits of published messages are acknowledged without rewriting published events.
+
+Queue identity is `(sourceId, messageId)` plus the most recent `updateId` and a version counter. A source/connection transaction lock serializes ingestion, revocation and publication. Credentials are never placed in webhook URLs.
+
+### Daily Cron Telegram Result
+
+`GET /api/cron/scrape-visitpedemontana` accepts exact Bearer authorization against either configured `CRON_SECRET` or legacy `CRON_SECRET_KEY`. Both absent/empty always returns 401, including requests with a Vercel user-agent. Vercel scheduling uses `CRON_SECRET`; the protected manual proxy prefers it, falls back to `CRON_SECRET_KEY`, and returns 503 without calling the scraper if neither exists. Other cron targets retain their existing auth contracts. The scraper returns a separate `telegram` summary with `visited`, `published`, `duplicates`, `discarded`, `retried`, `failed`, `wouldPublish`, `deferred`, `imageOmitted`, `status`, `dryRun`. Telegram failures do not prevent web sources from running and do affect the aggregate partial/error status.
+
+One bounded Telegram lot starts alongside web scraping, with a 90-second deadline and at most two messages, one per visited source, oldest-scan-first. Each message's API/AI phase is capped at 40 seconds and by remaining time minus a 17-second commit reserve (2-second transaction maxWait plus 15-second timeout). Transport calls are capped at 8 seconds. Publication is refused if the full commit reserve no longer fits after verification/AI. The overall 260-second cron budget reserves 15 seconds after web work; web sources retain their 120-second minimum and oldest-first rotation. A crashed lease expires after 60 seconds; three attempts maximum, exponential retry delay. Expired raw payloads become ineligible after 72 hours and are destroyed at the next non-dry cron cleanup. Completed/terminal messages are cleared immediately. Non-sensitive IDs, counts, timestamps and dedupe tombstones remain.
+
+The consumer uses the existing centralized vision client for text/captions and poster transcription. It requires a literal coherent evidence paragraph for title, complete date (including explicit year), and location; title/location must retain at least two normalized characters. Date evidence includes `DD-MM-YYYY`; mixed dates remain conservatively rejected. Cancellation is checked in the candidate's paragraph, while explicit whole-program/all-events cancellation still rejects all candidates. Incomplete, unsupported, past or private-invitation results are discarded. Uncertain OCR/AI is not a guarantee of extraction accuracy. No public page scraping is used to retrieve bot-private content. Membership/privacy/protected-content are rechecked after AI, and current consent, source revision, connection, lease, version and expiry are checked again in the publication transaction.
+
+Existing field deduplication and calendar creation accept the same transaction client. Events, dedupe receipts and calendar deliveries commit together. Both web and Telegram publication acquire the same sorted, canonical-date advisory locks and recheck duplicates inside the transaction immediately before creation. Web geocoding remains outside the lock. Unique fingerprints provide an additional receipt constraint. Deleting an event nulls its receipt's event ID; deleting connection/message history nulls its message ID, never the fingerprint. Tombstones therefore survive reconnect, bot changes and event deletion. Published messages are never auto-edited. Local tests exercise CAS sequencing, unique-insert checks and snapshot rollback; they do not prove PostgreSQL lock behavior.
+
+Photos use official `getFile` and a bounded server-only download. No Telegram file URL is returned or stored. Only the existing verified poster crop may become a cover; rejection/failure yields no cover, never the full original photo. Approved covers are metadata-free JPEG data URLs, at most 960x960 and 256 KiB before base64, stored directly in `Event.imageUrl` without new storage infrastructure. Original private data may be transmitted to the configured cloud AI for extraction, not automatically anonymized. `Event.rawText` stays empty. Public `https://t.me/username/messageId` provenance is emitted only for currently verified public channels; private sources use `origin=telegram`, an opaque internal external ID and `sourceUrl=null`.
+
+HTTP 5xx, network failures and rate limits are retryable, not source revocations. Auth 401 revokes only the still-current connection generation; source-verification 403/membership/privacy failures affect the still-current source. `getFile` 400/invalid photos do not suspend sources or clear other jobs: a caption can still be extracted without the photo; photo-only failure is scoped to that job. Covers are omitted for all events when an extraction yields multiple events, rather than reusing a crop verified only for its first candidate.
+
+`dryRun=1` performs bounded provider verification/extraction and duplicate reads, but never leases/updates/cleans Telegram rows, advances its cursor, publishes events or creates calendar deliveries. Existing cron observability records may still change. No `getUpdates` runs alongside the webhook. Personal Telegram accounts, history, stories, Facebook, Instagram and WhatsApp are outside this integration.
+
+Official references verified on 2026-10-29: [Bot API](https://core.telegram.org/bots/api), [getMe](https://core.telegram.org/bots/api/methods/getme), [getChatMember](https://core.telegram.org/bots/api/methods/getchatmember), [setWebhook](https://core.telegram.org/bots/api/methods/setwebhook), [getFile](https://core.telegram.org/bots/api/methods/getfile), [privacy FAQ](https://core.telegram.org/bots/faq). Telegram documents a 20 MB cloud download limit; this application deliberately uses the stricter 4 MiB limit.
+
 ## 1) Auth
 
 ### POST /api/auth/register
@@ -345,13 +395,13 @@ curl -X POST "http://localhost:3000/api/process-link" \
 ### GET /api/cron/scrape-visitpedemontana
 - File: [app/api/cron/scrape-visitpedemontana/route.ts](../app/api/cron/scrape-visitpedemontana/route.ts)
 - Purpose: scrape and ingest events from visitpedemontana source
-- Protected by CRON_SECRET_KEY bearer token when configured
+- Requires Bearer `CRON_SECRET` or legacy `CRON_SECRET_KEY`; no configured secret means 401.
 
 Example request:
 
 ```bash
 curl -X GET "http://localhost:3000/api/cron/scrape-visitpedemontana" \
-  -H "Authorization: Bearer <CRON_SECRET_KEY>"
+  -H "Authorization: Bearer <CRON_SECRET>"
 ```
 
 ### GET /api/cron/generate-instagram-story
@@ -369,6 +419,7 @@ curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
 ### POST /api/admin/run-cron/instagram-story
 - File: [app/api/admin/run-cron/instagram-story/route.ts](../app/api/admin/run-cron/instagram-story/route.ts)
 - Purpose: admin-triggered proxy endpoint to run cron targets
+- For `visitpedemontana`, uses `CRON_SECRET` first, then legacy `CRON_SECRET_KEY`; without either, returns 503. Instagram target auth remains unchanged.
 - target values:
   - instagram-story
   - visitpedemontana
@@ -386,7 +437,7 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 
 - Extension-specific CORS is applied in extension login and events/image flows.
 - User/admin protection is handled by auth helpers in protected routes.
-- Cron routes rely on Authorization: Bearer <CRON_SECRET_KEY> when secret is configured.
+- Daily scraping requires Bearer `CRON_SECRET` or `CRON_SECRET_KEY` and fails closed without either. Other cron routes retain their documented legacy authorization.
 
 ## 7) Calendar preferences and Google connection
 

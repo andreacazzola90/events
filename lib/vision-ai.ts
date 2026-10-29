@@ -96,11 +96,11 @@ export function createEventImageAnalyzer(providerOrder?: string, options: {
   let rateLimitRetried = false;
   const deadline = Date.now() + (options.budgetMs ?? 180_000);
 
-  return async (imageUrl: string, prompt: string): Promise<string> => {
+  return async (imageUrl: string | null, prompt: string): Promise<string> => {
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{
       role: 'user',
       content: [
-        { type: 'image_url', image_url: { url: imageUrl } },
+        ...(imageUrl ? [{ type: 'image_url' as const, image_url: { url: imageUrl } }] : []),
         { type: 'text', text: prompt },
       ],
     }];

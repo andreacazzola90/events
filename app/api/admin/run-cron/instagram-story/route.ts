@@ -22,6 +22,13 @@ export async function POST(request: NextRequest) {
         // Body opzionale: default instagram-story
       }
 
+      const secret = target === "visitpedemontana"
+        ? process.env.CRON_SECRET || process.env.CRON_SECRET_KEY
+        : process.env.CRON_SECRET_KEY;
+      if (target === "visitpedemontana" && !secret) {
+        return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 503 });
+      }
+
       // Marca il job come "running" nel DB così la UI può rilevarlo dopo un refresh
       await (prisma as any).cronJobRun.upsert({
         where: { jobKey: target },
@@ -30,8 +37,8 @@ export async function POST(request: NextRequest) {
       });
 
       const headers: HeadersInit = {};
-      if (process.env.CRON_SECRET_KEY) {
-        headers["authorization"] = `Bearer ${process.env.CRON_SECRET_KEY}`;
+      if (secret) {
+        headers["authorization"] = `Bearer ${secret}`;
       }
 
       const targetPath =

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import TelegramAdmin from "./TelegramAdmin";
 
 type CronSource = {
   id: number;
@@ -804,6 +805,8 @@ export default function CronAdminClient() {
             </button>
           </div>
         </div>
+
+        <TelegramAdmin />
 
         {/* Form */}
         <div className="glass-effect rounded-2xl p-6 sm:p-8">

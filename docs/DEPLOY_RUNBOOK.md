@@ -6,6 +6,50 @@ Last update: 2026-05-27
 
 This runbook covers deployment and operations for the Next.js application on Vercel, including DB migrations, secrets, cron jobs, and incident handling basics.
 
+### Telegram Setup And Safety (2026-10-29)
+
+This integration is implemented and mock-tested, not activated or live-certified. No real bot registration, Telegram credential call, test-event publication, remote Git operation, deployment or database migration was performed for this change.
+
+Manual prerequisites, in order:
+
+1. Review [the prepared SQL](../prisma/migrations/20261029130000_add_telegram_scanning/migration.sql). It adds owner-bound connections, source revisions/`removedAt`, versioned message jobs and unique publication receipts. Receipt message/event foreign keys are nullable `ON DELETE SET NULL`, preserving opaque dedup tombstones when sensitive history or events are deleted. Applying this migration requires separate authorization through the deployment process. If an earlier draft was already applied elsewhere, inspect that database and prepare an authorized additive migration rather than rerunning CREATE TABLE statements. `prisma validate` and `prisma generate` do not apply SQL. Do not run `migrate dev` against a shared/production database. Until applied, Telegram APIs return a sanitized storage error and the existing web cron can still proceed with a partial-error Telegram result.
+2. Configure server-only `TELEGRAM_ENCRYPTION_KEY`: exactly 64 hexadecimal characters (32 random bytes), stored in the platform secret manager. No default, derivation from public configuration or client exposure. Keep a secure backup. Replacing the key without re-encryption makes existing tokens unreadable; disconnect/reconnect affected bots through an authorized maintenance procedure. Never paste keys or tokens into chat, source code, task output or shell command arguments retained in history.
+3. Configure `TELEGRAM_WEBHOOK_BASE_URL` as a stable public HTTPS origin, with no path/query/fragment/userinfo. The app builds `/api/telegram/webhook?connection=...` from this trusted environment value, never from request `Origin`/`Host`. Use a valid public certificate, no redirects and preferably port 443. Ensure the route is reachable through deployment protection/firewalls and that `X-Telegram-Bot-Api-Secret-Token` reaches the application unchanged. Never disable verification to work around a proxy.
+4. Configure `TELEGRAM_ADMIN_ORIGIN` to the browser application's exact origin, or use the existing server `NEXTAUTH_URL` fallback. Configure server-only `CRON_SECRET` for Vercel scheduled scraping: Vercel sends `Authorization: Bearer <CRON_SECRET>`. The scraper also accepts configured legacy `CRON_SECRET_KEY`; both missing/empty denies all requests. The admin manual scraper proxy prefers `CRON_SECRET`, falls back to `CRON_SECRET_KEY`, and refuses to call the scraper without either. Other cron endpoints still require their existing legacy key. No new scheduler is introduced; the existing daily cron handles Telegram publication.
+5. Ensure the designated owner's persisted `User.role` or `User.type` is `admin`. The Telegram API intentionally does not grant administrator access via legacy email-prefix matching. No user/role was seeded or changed by this implementation.
+6. Confirm the existing centralized cloud AI provider configuration and quota (`AI_VISION_EXTRACTION_PROVIDERS`/`AI_VISION_PROVIDERS` and the selected server provider keys). Verified cover cropping uses `AI_VISION_CROP_PROVIDERS`, default `groq,nvidia`. Do not enable a paid provider, add secrets or change quotas without approval. Authorized source text and original photos may be sent to these cloud services; consent to public republication is not an anonymity guarantee.
+7. Obtain a bot token through the organization's authorized Telegram administrator. Enter it only in the protected Cron Admin password field. The app verifies `getMe` before official `setWebhook` registration. An unconfirmed registration is not active and requires remote cleanup before reconnect; its encrypted token is retained solely for that cleanup. This flow connects a bot, not the operator's personal Telegram account. Use a dedicated bot not shared with another webhook consumer. `getUpdates` must not run while the webhook is active.
+8. Add the bot to each channel/group with the necessary rights, obtain its exact negative numeric chat ID through an authorized Telegram admin, and confirm public-republication rights separately. In groups, the bot must be an administrator or officially report `can_read_all_group_messages=true`; limited privacy-mode membership is not supported. Protected-content chats, direct personal chats and forwarded messages are refused. Do not claim arbitrary public channels work without adding/verifying the bot. Source activation always invokes official `getMe`, `getChat` and `getChatMember`.
+
+Operational limits and handling:
+
+- At most 50 nonremoved sources per bot, including paused sources, and two messages per cron lot across active connections. Removal frees a slot without reconnect and has stable `removedAt` state independent of error text. Telegram receives an explicit parallel slot so slow web sources cannot consume its entire opportunity; web retains its oldest-first ordering, 120-second minimum and global 260-second cooperative budget. API/AI work reserves 17 seconds for transaction acquisition/commit and refuses publication without that reserve. This is intentionally bounded throughput, not a bulk-history importer. Busy sources may leave backlog; monitor `deferred` and retention rather than promising every post will be published.
+- Lease: 60 seconds; maximum three attempts with exponential retry delay. Cursor is persisted per source. A crashed worker's job becomes retryable when its lease expires; edits invalidate the old version/lease, including newer video-without-caption, protected or forwarded content. Published events are never rewritten. Publication and destructive error handling compare source identity/revision, consent, connection generation and job version/lease. Remote bot membership/privacy is rechecked both before extraction and before publication. Already-running external requests cannot be recalled by disconnection, but their results cannot pass the final local publication guard.
+- Text/caption limit: 8,192 characters; webhook maximum: 64 KiB; photos maximum: 4 MiB and bounded pixels. Raw text/file IDs stop being eligible after 72 hours; deletion occurs at the next successful non-dry cron cleanup (so cleanup is delayed if cron is down). Completion, terminal failure, pause/revocation and disconnection erase pending raw payloads immediately. Retain only internal identities, counters, timestamps and dedupe receipts afterward. Audit database backups/observability retention separately.
+- Required event title/date/location must have coherent source evidence, with an explicit date year, including `DD-MM-YYYY`. Normalized title/location need at least two characters. Relative dates, omitted years, ambiguous mixed-event paragraphs, unsupported time/fields, expired dates and private invitations are discarded instead of guessed. Cancellation is scoped to its evidence paragraph unless an explicit all-events/whole-program notice applies. Web and Telegram recheck duplicate fields under the same ordered canonical-date advisory locks. Calendar deliveries, events and Telegram receipts commit atomically; web geocoding happens before the transaction, never while holding the lock.
+- Original photos are never fallback covers. Safe crops may be saved as bounded JPEG data URLs (960x960, maximum 256 KiB before base64), increasing database size but requiring no extra storage writes. Large/unverified crops and all covers for multi-event extractions are omitted; review `imageOmitted`. A bad photo/getFile 400 can still use a valid caption without a photo; without text only that job fails. HTTP 5xx/network/rate limits retry rather than suspending sources or deleting unrelated messages. Only current auth401 or source access/membership/privacy revocations trigger the matching generation's stop/purge. Only verified public channels get public t.me provenance. Private chat IDs/raw messages/file URLs are not put into public event fields.
+- GET management responses are owner-scoped and credential-free. The token field is never saved in localStorage. Server errors are stable sanitized codes. Sentry hooks redact token-bearing Telegram URL segments, webhook secret headers and Telegram request bodies. Keep proxy/APM/access log capture of Bot API URLs, webhook headers and management POST bodies disabled or equivalently redacted; never log raw provider exceptions or unredacted traces while diagnosing this feature.
+- Pause/revoke immediately clears pending payloads, increments the source revision, and resuming requires renewed consent/verification. Old saves/errors cannot override a newer authorization. `remove-source` retains an internal identity for sequencing while hiding the source and freeing its slot. Opaque fingerprint receipts survive deletion of connection/source/message history and event deletion, including reconnect with a different bot.
+- Disconnection persists `disconnecting` and clears webhook authentication/consent/pending payloads before remote `deleteWebhook`, without keeping a database transaction open over network. Connecting/overlapping disconnects are blocked while a remote operation is in flight. Confirmed deletion becomes `disconnected` and erases the encrypted token. Failure/timeout becomes `disconnect_unknown`, keeps the encrypted token solely for retry, and returns `remoteRemoved=false`; use **Disconnetti** again, not reconnect. The UI refreshes lifecycle after errors and disables reconnect until confirmed cleanup. A process interrupted before finalization can remain `connecting`/`disconnecting`: investigate the outstanding operation through an authorized maintenance workflow; do not force `active` or reconnect while an old remote request may still complete. Revoked tokens automatically disable the connection and clear credentials; disconnect before reconnecting.
+- A dedicated live verification remains blocked until bot, authorized source, migration, server encryption key and reachable HTTPS are configured. Do not test by publishing sample events. An operator-approved dry-run may perform real provider calls, but does not publish or advance the Telegram queue. Inspect the dry-run summary; local mock tests do not establish live membership, quota, webhook reachability or database locking behavior on the deployed PostgreSQL instance.
+
+Focused local checks (all providers simulated; no database mutations):
+
+```bash
+node --experimental-strip-types --test lib/telegram-event-scanning.test.mjs lib/cron-execution.test.mjs lib/google-calendar.test.mjs lib/event-media.test.mjs lib/event-scan-agents.test.mjs
+DOTENV_CONFIG_PATH=/dev/null DATABASE_URL=postgresql://fixture:fixture@127.0.0.1:5432/fixture npx prisma validate
+DOTENV_CONFIG_PATH=/dev/null DATABASE_URL=postgresql://fixture:fixture@127.0.0.1:5432/fixture npx prisma generate
+npx tsc --noEmit --incremental false
+npx eslint lib/telegram-connection.ts lib/telegram-store.ts lib/telegram-event-scanning.ts lib/telegram-event-scanning.test.mjs lib/cron-execution.test.mjs app/api/admin/telegram/route.ts app/api/telegram/webhook/route.ts app/api/cron/scrape-visitpedemontana/route.ts app/api/admin/run-cron/instagram-story/route.ts app/cron/TelegramAdmin.tsx app/cron/CronAdminClient.tsx app/lib/google-calendar.ts lib/event-duplicates.ts lib/vision-ai.ts sentry.server.config.ts cypress/e2e/telegram-connections.cy.ts
+npx cypress run --spec cypress/e2e/telegram-connections.cy.ts --config trashAssetsBeforeRuns=false
+```
+
+Cypress mounts the real component in an isolated HTML document using the app stylesheet and simulated management responses; only anonymous rejection checks reach real routes. It creates no users, bots or events. Keep `trashAssetsBeforeRuns=false` so existing repository screenshots are not deleted. The existing local server at `http://localhost:3000` can be reused. The official Figma skill index was consulted during final review; no Figma file/project or other remote design resource was requested or created. Styling remains the existing Cron Admin styling.
+
+Review patch verification: 216 Node tests passed across Telegram/cron, Google Calendar, ICS/view, media, cover/network/image and scan agents; Prisma validate/generate, scoped ESLint and TypeScript passed; Cypress 9/9 including lifecycle timeout/retry and desktop/mobile. The review run used `--config-file /tmp/events-telegram-review.cypress.config.cjs` with a minimal config that imports neither dotenv nor DB tasks, and `trashAssetsBeforeRuns=false`; the normal config above loads local environment configuration. Snapshot transaction mocks exercise injected failure before calendar/receipt creation and restore all rows, with serialized CAS sequencing and a unique fingerprint check. Prepared SQL and transaction-client use were inspected, but no real PostgreSQL locks, contention or rollback were exercised. Mock tests do not certify live Telegram/AI behavior. See the [review patch handoff](../{output_folder}/implementation-artifacts/spec-admin-social-event-scanning.md#review-patch-handoff-2026-10-29).
+
+Official sources: [Bot API](https://core.telegram.org/bots/api), [setWebhook](https://core.telegram.org/bots/api/methods/setwebhook), [getMe](https://core.telegram.org/bots/api/methods/getme), [getChatMember](https://core.telegram.org/bots/api/methods/getchatmember), [getFile](https://core.telegram.org/bots/api/methods/getfile), [privacy and delivery FAQ](https://core.telegram.org/bots/faq), verified 2026-10-29. No promises of account-level access, past history, stories, Facebook, Instagram or WhatsApp are made.
+
 ## 2) Environments
 
 Define at least:
@@ -27,7 +71,8 @@ From [.env.example](../.env.example) and runtime code:
 - SUPABASE_SERVICE_ROLE_SECRET_KEY
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
-- CRON_SECRET_KEY
+- CRON_SECRET (Vercel scheduled scraper; manual proxy prefers it)
+- CRON_SECRET_KEY (legacy scraper fallback and existing other cron targets)
 
 If Instagram publishing is enabled:
 - INSTAGRAM_IG_USER_ID
@@ -41,7 +86,7 @@ If Instagram publishing is enabled:
 2. Run lint and tests where applicable.
 3. Validate API changes against [API_REFERENCE.md](./API_REFERENCE.md).
 4. Confirm all required environment variables exist in target environment.
-5. If cron/auth changes were made, test protected endpoints with CRON_SECRET_KEY.
+5. If cron/auth changes were made, validate scheduled scraping with CRON_SECRET and legacy fallback with CRON_SECRET_KEY using mocks; authorize any live calls separately.
 
 ## 5) Build and deploy
 
@@ -133,8 +178,7 @@ Run smoke checks:
 
 ## 7) Cron operations
 
-Protected cron endpoints require:
-- Authorization: Bearer <CRON_SECRET_KEY>
+Daily scraping requires `Authorization: Bearer <CRON_SECRET>` for Vercel scheduling, or configured legacy `CRON_SECRET_KEY`. Both absent/empty fails closed. The admin scraper proxy prefers CRON_SECRET then KEY. Other cron endpoints retain `Authorization: Bearer <CRON_SECRET_KEY>`.
 
 Endpoints:
 - GET /api/cron/scrape-visitpedemontana
@@ -145,7 +189,7 @@ Manual trigger example:
 
 ```bash
 curl -X GET "https://<your-domain>/api/cron/scrape-visitpedemontana" \
-  -H "Authorization: Bearer <CRON_SECRET_KEY>"
+  -H "Authorization: Bearer <CRON_SECRET>"
 ```
 
 Admin trigger example (target override):

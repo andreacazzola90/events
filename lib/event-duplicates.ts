@@ -1,4 +1,5 @@
 import { prisma } from '../app/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import type { DuplicateMatch } from '../app/types/event';
 import { sameEventStartTime } from './event-display';
 import { generateUniqueSlug } from './slug-utils';
@@ -8,6 +9,12 @@ export interface DuplicateCandidate {
   date?: string | null;
   time?: string | null;
   sourceUrl?: string | null;
+}
+
+export async function lockEventDates(tx: Prisma.TransactionClient, dates: string[]): Promise<void> {
+  for (const date of [...new Set(dates.map(value => dateVariants(value)[0] || value))].sort()) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`event-publication:${date}`})::bigint)`;
+  }
 }
 
 // Users save DD/MM/YYYY, scrapers save YYYY-MM-DD: match against both.
@@ -55,11 +62,11 @@ function titlesMatch(a: string, b: string): boolean {
 }
 
 /** Same date, similar title, and start time as an existing event. */
-export async function findDuplicateEvent(candidate: DuplicateCandidate): Promise<DuplicateMatch | null> {
+export async function findDuplicateEvent(candidate: DuplicateCandidate, client: Pick<Prisma.TransactionClient, 'event'> = prisma): Promise<DuplicateMatch | null> {
   const dates = dateVariants(candidate.date);
   if (dates.length === 0 || !candidate.title?.trim()) return null;
 
-  const sameDay = await prisma.event.findMany({
+  const sameDay = await client.event.findMany({
     where: { date: { in: dates } },
     select: { id: true, title: true, date: true, time: true, location: true, sourceUrl: true },
   });

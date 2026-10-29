@@ -109,8 +109,8 @@ export async function disconnectGoogleCalendar(userId: number) {
   }
 }
 
-export async function createEventWithCalendar(args: Prisma.EventCreateArgs) {
-  const event = await prisma.$transaction(async (tx) => {
+export async function createEventWithCalendar(args: Prisma.EventCreateArgs, transaction?: Prisma.TransactionClient) {
+  const save = async (tx: Prisma.TransactionClient) => {
     const saved = await tx.event.create(args);
     if (!isUpcomingCalendarEvent(saved)) return saved;
     const users = await tx.user.findMany({
@@ -126,8 +126,8 @@ export async function createEventWithCalendar(args: Prisma.EventCreateArgs) {
       });
     }
     return saved;
-  });
-  return event;
+  };
+  return transaction ? save(transaction) : prisma.$transaction(save);
 }
 
 export function scheduleCalendarDeliveries() {

@@ -16,7 +16,6 @@ export default function HomeMotion({ children }: { children: React.ReactNode }) 
     const context = gsap.context(() => {
       gsap.from("[data-hero-reveal]", {
         y: 28,
-        opacity: 0,
         duration: 0.9,
         stagger: 0.12,
         ease: "power3.out",

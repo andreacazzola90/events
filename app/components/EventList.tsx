@@ -143,6 +143,7 @@ function formatApiDate(date: Date): string {
 export default function EventList({ mode = "full", initialEvents, initialToday }: { mode?: EventListMode; initialEvents?: Event[]; initialToday?: string }) {
   const { settings } = useSiteSettings();
   const hasLoadedEventsRef = useRef(initialEvents !== undefined);
+  const canUseInitialSeedRef = useRef(initialEvents !== undefined);
   const [events, setEvents] = useState<Event[]>(initialEvents ?? []);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>(() => {
     const { start, end } = getQuickRange("today", initialToday);
@@ -191,8 +192,16 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
   }, [mode, quickDateFilter]);
 
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    if (
+      canUseInitialSeedRef.current &&
+      initialToday === calendarToday() &&
+      (mode !== "quick" || quickDateFilter === "today") &&
+      !new URLSearchParams(window.location.search).has("refresh")
+    ) return;
+
+    canUseInitialSeedRef.current = false;
+    void fetchEvents();
+  }, [fetchEvents, initialToday, mode, quickDateFilter]);
 
   useEffect(() => {
     // Carica i preferiti iniziali per l'utente loggato (se presente)
@@ -518,7 +527,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
                   </p>
                 </div>
               ) : (
-                displayedEvents.map((event) => {
+                displayedEvents.map((event, index) => {
                   const category = getCategoryLabel(event.category);
                   const categoryPresentation = category ? getCategoryPresentation(category, settings.categories) : undefined;
                   const priceLabel = getPriceLabel(event.price);
@@ -594,7 +603,15 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
                           width={400}
                           height={400}
                           className="event-card-image absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 47vw, 44vw"
+                          loading={index < 2 ? "eager" : "lazy"}
+                          sizes={[
+                            "(min-width: 1280px) calc((100vw - clamp(2.5rem, 8vw, 8rem) - 4.5rem) / 4)",
+                            "(min-width: 1024px) calc((92vw - 3rem) / 3)",
+                            "(min-width: 640px) calc((92vw - 1.25rem) / 2)",
+                            mode === "full"
+                              ? "calc((100vw - 1.75rem) / 2)"
+                              : "calc((100vw - clamp(2.5rem, 8vw, 8rem) - 0.75rem) / 2)",
+                          ].join(", ")}
                         />
                       ) : (
                         <div className="event-card-placeholder absolute inset-0 flex items-center justify-center">

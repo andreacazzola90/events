@@ -20,9 +20,17 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 ## Motion and visual language
 
-The homepage uses an editorial industrial palette and GSAP for its entrance and scroll reveals. Page transitions and event-card entrances also use GSAP; interactive controls use CSS hover and focus states. Motion respects the operating system's `prefers-reduced-motion` setting, and content remains visible before hydration. The event list requires the project's database and Supabase environment configuration to display live events.
+The homepage uses an editorial industrial palette. Page content and event cards are visible immediately, without entrance animations delaying the first paint. Interactive controls retain CSS hover and focus states. Motion respects the operating system's `prefers-reduced-motion` setting. The event list requires the project's database and Supabase environment configuration to display live events.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to self-host Inter, including its metric-adjusted fallback through `--font-inter`.
+
+## Public-page loading
+
+- Public event lists use their server-rendered seed on the initial visit instead of immediately requesting the same events again. Missing seeds, seeds from a previous calendar day, explicit `?refresh=1` visits and changes to quick date filters still fetch events. The server cache remains 60 seconds.
+- Event-card image sizes follow the grid's columns, gutters and container padding. Only the first two cards load images eagerly; subsequent images remain lazy-loaded.
+- React Toastify 11 injects its own styles when the container mounts. Avoid importing its CSS globally as well: that duplicates styles and adds a render-blocking stylesheet to every page.
+
+Validate changes with `node --test lib/public-event-list.test.mjs`, `npx tsc --noEmit` and `npm run build`. After deploying, rerun PageSpeed Insights on the production URL using the same mobile settings; local browser timings are not directly comparable to Lighthouse's throttled results.
 
 ## Learn More
 

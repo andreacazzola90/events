@@ -36,7 +36,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 100vh;
   font-size: 16px;
   line-height: 1.6;
@@ -1144,15 +1144,6 @@ button {
     min-height: 0;
   }
 }
-
-.event-list-grid > .event-card {
-  animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.event-list-grid > .event-card:nth-child(4n + 1) { animation-delay: 0ms; }
-.event-list-grid > .event-card:nth-child(4n + 2) { animation-delay: 55ms; }
-.event-list-grid > .event-card:nth-child(4n + 3) { animation-delay: 110ms; }
-.event-list-grid > .event-card:nth-child(4n + 4) { animation-delay: 165ms; }
 
 .event-calendar {
   padding: 1.25rem;

@@ -243,11 +243,13 @@ async function publishInstagramStory(
 }
 
 export async function GET(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET || process.env.CRON_SECRET_KEY;
+  if (!cronSecret) {
+    return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 503 });
+  }
+
   const authHeader = request.headers.get("authorization");
-  if (
-    process.env.CRON_SECRET_KEY &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET_KEY}`
-  ) {
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

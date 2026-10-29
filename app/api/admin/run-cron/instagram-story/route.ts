@@ -22,10 +22,8 @@ export async function POST(request: NextRequest) {
         // Body opzionale: default instagram-story
       }
 
-      const secret = target === "visitpedemontana"
-        ? process.env.CRON_SECRET || process.env.CRON_SECRET_KEY
-        : process.env.CRON_SECRET_KEY;
-      if (target === "visitpedemontana" && !secret) {
+      const secret = process.env.CRON_SECRET || process.env.CRON_SECRET_KEY;
+      if (!secret) {
         return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 503 });
       }
 
@@ -36,10 +34,7 @@ export async function POST(request: NextRequest) {
         create: { jobKey: target, status: "running", startedAt },
       });
 
-      const headers: HeadersInit = {};
-      if (secret) {
-        headers["authorization"] = `Bearer ${secret}`;
-      }
+      const headers: HeadersInit = { authorization: `Bearer ${secret}` };
 
       const targetPath =
         target === "visitpedemontana"

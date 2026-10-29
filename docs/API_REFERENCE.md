@@ -407,7 +407,8 @@ curl -X GET "http://localhost:3000/api/cron/scrape-visitpedemontana" \
 ### GET /api/cron/generate-instagram-story
 - File: [app/api/cron/generate-instagram-story/route.ts](../app/api/cron/generate-instagram-story/route.ts)
 - Purpose: build weekly story image and publish to Instagram Graph API
-- Protected by CRON_SECRET_KEY bearer token when configured
+- Scheduled every Wednesday at 18:00 UTC by [vercel.json](../vercel.json).
+- Requires a bearer token matching `CRON_SECRET` or legacy `CRON_SECRET_KEY`; returns 503 when neither is configured and 401 for an invalid token.
 
 Example request:
 
@@ -419,7 +420,7 @@ curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
 ### POST /api/admin/run-cron/instagram-story
 - File: [app/api/admin/run-cron/instagram-story/route.ts](../app/api/admin/run-cron/instagram-story/route.ts)
 - Purpose: admin-triggered proxy endpoint to run cron targets
-- For `visitpedemontana`, uses `CRON_SECRET` first, then legacy `CRON_SECRET_KEY`; without either, returns 503. Instagram target auth remains unchanged.
+- Uses `CRON_SECRET` first, then legacy `CRON_SECRET_KEY`; without either, returns 503.
 - target values:
   - instagram-story
   - visitpedemontana

@@ -180,6 +180,8 @@ Run smoke checks:
 
 Daily scraping requires `Authorization: Bearer <CRON_SECRET>` for Vercel scheduling, or configured legacy `CRON_SECRET_KEY`. Both absent/empty fails closed. The admin scraper proxy prefers CRON_SECRET then KEY. Other cron endpoints retain `Authorization: Bearer <CRON_SECRET_KEY>`.
 
+The Instagram story cron is the exception: it accepts `CRON_SECRET` (preferred by Vercel) or legacy `CRON_SECRET_KEY`, and runs every Wednesday at 18:00 UTC. Configure at least one of these server-side secrets.
+
 Endpoints:
 - GET /api/cron/scrape-visitpedemontana
 - GET /api/cron/generate-instagram-story

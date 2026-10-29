@@ -59,7 +59,7 @@ The platform includes:
 ### 3.4 Scheduled automation
 
 - GET /api/cron/scrape-visitpedemontana: scrape events from visitpedemontana.com.
-- GET /api/cron/generate-instagram-story: generate/publish weekly story image.
+- GET /api/cron/generate-instagram-story: generate/publish the weekly story image every Wednesday at 18:00 UTC.
 - POST /api/admin/run-cron/instagram-story: admin trigger endpoint.
 
 ## 4) Data model (Prisma)

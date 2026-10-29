@@ -1,20 +1,7 @@
 'use client';
-
-import { useEffect } from 'react';
+import Script from 'next/script';
 
 export const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
-
-// Initialize Google Tag Manager
-export const initGTM = () => {
-    if (!GTM_ID) return;
-
-    // Initialize dataLayer for GTM
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({
-        'gtm.start': new Date().getTime(),
-        event: 'gtm.js'
-    });
-};
 
 // Push events to GTM dataLayer
 export const pushToDataLayer = (data: Record<string, any>) => {
@@ -76,18 +63,15 @@ export const trackUserAction = (action: string, target?: string) => {
 
 // GTM Component
 export function GoogleTagManager() {
-    useEffect(() => {
-        if (!GTM_ID) return;
-        initGTM();
-    }, []);
-
     // Don't render anything if no GTM_ID
     if (!GTM_ID) return null;
 
     return (
         <>
             {/* Google Tag Manager Script */}
-            <script
+            <Script
+                id="google-tag-manager"
+                strategy="lazyOnload"
                 dangerouslySetInnerHTML={{
                     __html: `
             (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':

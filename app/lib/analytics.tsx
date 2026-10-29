@@ -2,6 +2,7 @@
 
 import { useEffect, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import Script from 'next/script';
 
 // Google Analytics 4
 declare global {
@@ -92,10 +93,13 @@ export function GoogleAnalytics() {
     return (
         <>
             {/* Google Analytics Script */}
-            <script
-                async
-                src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-            />
+            {!process.env.NEXT_PUBLIC_GTM_ID && (
+                <Script
+                    id="google-analytics"
+                    src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+                    strategy="lazyOnload"
+                />
+            )}
             <script
                 defer
                 dangerouslySetInnerHTML={{

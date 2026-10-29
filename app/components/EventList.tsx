@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { gsap } from "gsap";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { getEventStartTime } from "../../lib/event-display";
 import { TransitionLink } from "./TransitionLink";
@@ -143,7 +142,6 @@ function formatApiDate(date: Date): string {
 
 export default function EventList({ mode = "full", initialEvents, initialToday }: { mode?: EventListMode; initialEvents?: Event[]; initialToday?: string }) {
   const { settings } = useSiteSettings();
-  const gridRef = useRef<HTMLDivElement>(null);
   const hasLoadedEventsRef = useRef(initialEvents !== undefined);
   const [events, setEvents] = useState<Event[]>(initialEvents ?? []);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>(() => {
@@ -167,21 +165,6 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
   const [quickDateFilter, setQuickDateFilter] =
     useState<QuickDateFilter>("today");
   const [visibleCount, setVisibleCount] = useState(12);
-  useEffect(() => {
-    const grid = gridRef.current;
-    if (loading || !grid || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    const context = gsap.context(() => {
-      const cards = Array.from(grid.querySelectorAll(".event-card")).slice(0, 12);
-      if (cards.length === 0) return;
-      gsap.fromTo(
-        cards,
-        { y: 18 },
-        { y: 0, duration: 0.48, stagger: 0.035, ease: "power2.out", clearProps: "all" },
-      );
-    }, grid);
-    return () => context.revert();
-  }, [filteredEvents, visibleCount, loading]);
 
   const fetchEvents = useCallback(async () => {
     if (!hasLoadedEventsRef.current) setLoading(true);
@@ -524,7 +507,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
 
         return (
           <>
-            <div ref={gridRef} className={gridClasses}>
+            <div className={gridClasses}>
               {filteredEvents.length === 0 ? (
                 <div className="col-span-full text-center py-16">
                   <h3 className="text-2xl font-bold text-black mb-2">
@@ -611,7 +594,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
                           width={400}
                           height={400}
                           className="event-card-image absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 50vw"
+                          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 47vw, 44vw"
                         />
                       ) : (
                         <div className="event-card-placeholder absolute inset-0 flex items-center justify-center">

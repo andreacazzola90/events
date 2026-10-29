@@ -360,7 +360,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
     <div className="space-y-8">
       {mode === "quick" ? (
         <div className="quick-filters">
-          <div className="flex gap-2 overflow-x-auto" role="group" aria-label="Filtra per periodo">
+          <div className="quick-filters-scroll flex gap-2 overflow-x-auto" role="group" aria-label="Filtra per periodo">
             {[
               { value: "today" as const, label: "oggi" },
               { value: "tomorrow" as const, label: "domani" },
@@ -370,6 +370,11 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
               <button
                 key={option.value}
                 onClick={() => setQuickDateFilter(option.value)}
+                onFocus={(event) => {
+                  if (event.currentTarget.matches(":focus-visible")) {
+                    event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+                  }
+                }}
                 aria-pressed={quickDateFilter === option.value}
                 className={`quick-filter whitespace-nowrap px-4 py-2 text-[11px] uppercase tracking-[0.12em] font-bold border transition-colors ${
                   quickDateFilter === option.value

@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { ReactNode } from 'react';
+import { ReactNode, type AriaAttributes } from 'react';
 
-interface TransitionLinkProps {
+interface TransitionLinkProps extends AriaAttributes {
     href: string;
     children: ReactNode;
     className?: string;
@@ -21,6 +21,7 @@ export function TransitionLink({
     replace = false,
     style,
     title,
+    ...ariaAttributes
 }: TransitionLinkProps) {
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         // Esegui callback personalizzato se presente
@@ -31,6 +32,7 @@ export function TransitionLink({
 
     return (
         <Link
+            {...ariaAttributes}
             href={href}
             className={className}
             onClick={handleClick}

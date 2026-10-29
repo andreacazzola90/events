@@ -19,7 +19,7 @@ export default function Header() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     const displayMode = window.matchMedia("(display-mode: standalone)");
@@ -53,20 +53,30 @@ export default function Header() {
   useEffect(() => {
     if (!isMobileMenuOpen) return;
 
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!mobileMenuRef.current?.contains(event.target as Node)) {
-        setIsMobileMenuOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMobileMenuOpen(false);
-    };
+    const dialog = mobileMenuRef.current;
+    if (!dialog) return;
 
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    const previousFocus = document.activeElement;
+    dialog.showModal();
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setIsMobileMenuOpen(false);
+    };
+    closeOnDesktop();
+    desktop.addEventListener("change", closeOnDesktop);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
+      desktop.removeEventListener("change", closeOnDesktop);
+      dialog.close();
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus({ preventScroll: true });
+      }
     };
   }, [isMobileMenuOpen]);
 
@@ -166,45 +176,18 @@ export default function Header() {
             </TransitionLink>
           </div>
 
-          <div className="absolute left-0 z-30 flex items-center lg:hidden" ref={mobileMenuRef}>
+          <div className="mobile-menu-trigger absolute z-30 flex items-center lg:hidden">
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen((open) => !open)}
               aria-label={isMobileMenuOpen ? "Chiudi menu" : "Apri menu"}
               aria-expanded={isMobileMenuOpen}
               aria-controls="mobile-navigation-menu"
+              aria-haspopup="dialog"
               className="header-icon-control flex h-11 w-11 items-center justify-center border border-black/15 bg-white text-[#1d1d1b] transition-colors"
             >
               {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            {isMobileMenuOpen && (
-              <nav
-                id="mobile-navigation-menu"
-                aria-label="Navigazione mobile"
-                className="absolute left-0 top-[calc(100%+0.5rem)] z-[60] flex w-[min(18rem,calc(100vw-2rem))] flex-col gap-1 border border-black/10 bg-white p-2 shadow-xl"
-              >
-                {navLinks.filter((link) => !link.primary).map((link) => {
-                  const active = isActive(link.href);
-                  return (
-                    <TransitionLink
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      aria-current={active ? "page" : undefined}
-                      className={`flex min-h-11 items-center gap-3 px-3 text-sm font-semibold no-underline transition-colors hover:no-underline ${link.primary ? "bg-[#1d1d1b] text-white hover:bg-[#d65a38]" : active ? "bg-[#f5e7e2] text-[#a33f24]" : "text-[#1d1d1b] hover:bg-[#faf5f1]"}`}
-                    >
-                      {link.icon === "series" ? <Layers3 className="h-5 w-5" aria-hidden="true" /> : <AppIcon name={link.icon} className="h-5 w-5" />}
-                      <span>{link.label}</span>
-                    </TransitionLink>
-                  );
-                })}
-                <div className="mt-1 flex items-center gap-3 border-t border-black/10 px-3 pt-2">
-                  <SiteFeedbackWidget />
-                  <span className="text-sm font-semibold text-[#1d1d1b]">Invia una segnalazione</span>
-                </div>
-                {!isInstalled && <div className="mt-1 border-t border-black/10 pt-2">{renderInstallControl(true)}</div>}
-              </nav>
-            )}
           </div>
           <TransitionLink
             href="/crea"
@@ -212,12 +195,76 @@ export default function Header() {
             aria-current={isActive("/crea") ? "page" : undefined}
             aria-label="Crea evento"
             title="Crea evento"
-            className="header-icon-control absolute right-0 z-20 inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b] no-underline transition-colors hover:no-underline lg:hidden"
+            className="header-icon-control mobile-create-control absolute z-20 inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b] no-underline transition-colors hover:no-underline lg:hidden"
           >
             <Plus className="h-5 w-5" aria-hidden="true" />
           </TransitionLink>
         </div>
       </header>
+      {isMobileMenuOpen && (
+        <dialog
+          ref={mobileMenuRef}
+          id="mobile-navigation-menu"
+          aria-label="Menu di navigazione"
+          className="mobile-navigation-dialog"
+          onCancel={() => setIsMobileMenuOpen(false)}
+          onClose={() => setIsMobileMenuOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setIsMobileMenuOpen(false);
+            }
+          }}
+        >
+          <div className="mobile-navigation-toolbar">
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Chiudi menu"
+              className="header-icon-control flex h-11 w-11 items-center justify-center border border-black/15 bg-white text-[#1d1d1b]"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+            <TransitionLink
+              href="/"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="justify-self-center text-base font-semibold text-black no-underline hover:no-underline"
+            >
+              Event<span className="site-brand-accent">/</span>Scanner
+            </TransitionLink>
+            <TransitionLink
+              href="/crea"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Crea evento"
+              className="header-icon-control flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b]"
+            >
+              <Plus className="h-5 w-5" aria-hidden="true" />
+            </TransitionLink>
+          </div>
+          <nav aria-label="Navigazione mobile" className="mobile-navigation-content">
+            {navLinks.filter((link) => !link.primary).map((link) => {
+              const active = isActive(link.href);
+              return (
+                <TransitionLink
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-h-16 items-center gap-4 border-b border-black/10 py-4 text-2xl font-bold no-underline hover:no-underline ${active ? "text-[#a33f24]" : "text-[#1d1d1b]"}`}
+                >
+                  {link.icon === "series" ? <Layers3 className="h-6 w-6" aria-hidden="true" /> : <AppIcon name={link.icon} className="h-6 w-6" />}
+                  <span>{link.label}</span>
+                </TransitionLink>
+              );
+            })}
+            <div className="mt-6 flex items-center gap-3">
+              <SiteFeedbackWidget />
+              <span className="text-sm font-semibold text-[#1d1d1b]">Invia una segnalazione</span>
+            </div>
+            {!isInstalled && <div className="mt-4">{renderInstallControl(true)}</div>}
+          </nav>
+        </dialog>
+      )}
     </>
   );
 }

@@ -613,6 +613,52 @@ button {
   min-height: 4rem;
 }
 
+.mobile-menu-trigger {
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.mobile-create-control {
+  right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+.mobile-navigation-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.mobile-navigation-dialog::backdrop {
+  background: var(--background);
+}
+
+.mobile-navigation-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+  align-items: center;
+  min-height: calc(4rem + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) max(1rem, env(safe-area-inset-right, 0px)) 0 max(1rem, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--line);
+  background: var(--background);
+}
+
+.mobile-navigation-content {
+  padding: 1.5rem max(1.25rem, env(safe-area-inset-right, 0px)) max(2rem, env(safe-area-inset-bottom, 0px)) max(1.25rem, env(safe-area-inset-left, 0px));
+}
+
 .map-control-spinner {
   width: 1.1rem;
   height: 1.1rem;
@@ -1019,7 +1065,16 @@ button {
   padding: 0 0 1.5rem;
 }
 
+.quick-filters-scroll {
+  scrollbar-width: none;
+}
+
+.quick-filters-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .quick-filter {
+  flex-shrink: 0;
   background: transparent;
   border-color: var(--line);
   color: var(--foreground);
@@ -1118,6 +1173,17 @@ button {
 }
 
 @media (max-width: 1023px) {
+  .quick-filters-scroll {
+    margin-right: calc(-1 * clamp(1.25rem, 4vw, 4rem));
+    padding-right: 1.25rem;
+    scroll-padding-right: 1.25rem;
+  }
+
+  .quick-filters-scroll .quick-filter {
+    flex: 0 0 calc((100% - 1.5rem) / 3.35);
+    min-width: max-content;
+  }
+
   .event-list-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 1.25rem;

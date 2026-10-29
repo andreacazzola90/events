@@ -32,6 +32,12 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 Validate changes with `node --test lib/public-event-list.test.mjs`, `npx tsc --noEmit` and `npm run build`. After deploying, rerun PageSpeed Insights on the production URL using the same mobile settings; local browser timings are not directly comparable to Lighthouse's throttled results.
 
+## Mobile navigation
+
+Header controls keep at least 16 px of clearance from the viewport edges, including safe areas. The mobile menu opens as a full-screen native dialog, confines keyboard focus, and locks background scrolling. Close it with the close button, Escape, or a navigation link; switching to desktop also closes it.
+
+Quick date filters remain horizontally scrollable without a visible scrollbar. On mobile, the next option is partially clipped at the right edge to indicate more content. Swipe or focus the next button to reach all filters. Run the focused browser checks with `npx cypress run --spec cypress/e2e/header-mobile.cy.ts` against the local app.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

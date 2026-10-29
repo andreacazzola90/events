@@ -23,6 +23,7 @@ import "leaflet/dist/leaflet.css";
 import type { DbEvent } from "../../app/types/event";
 import { AppIcon } from "./EventIcons";
 import EventCategoryIcon from "./EventCategoryIcon";
+import EventCategoryBadge from "./EventCategoryBadge";
 import { STANDARD_CATEGORIES } from "../../lib/constants";
 import { parseEventDate } from "../../lib/calendar-ics";
 import { calendarToday } from "../../lib/calendar-view";
@@ -900,10 +901,7 @@ export default function EventMap() {
                     {event.time && <span className="inline-flex shrink-0 items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{event.time}</span>}
                     <span className="min-w-0 truncate">{event.location}</span>
                   </span>
-                  <span className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase text-[#8f3823]">
-                    <EventCategoryIcon category={event.category} className="h-3 w-3" />
-                    {event.category}
-                  </span>
+                  <EventCategoryBadge category={event.category} className="mt-1 px-2 py-0.5 text-[9px]" iconClassName="h-3 w-3" />
                 </span>
               </button>
               <Link

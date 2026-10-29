@@ -6,11 +6,11 @@ import { parseEventDate } from "./calendar-ics";
 import { DateTime } from "luxon";
 import type { DbEvent } from "../app/types/event";
 
-export type PublicCalendarEvent = Pick<DbEvent, "id" | "title" | "date" | "time" | "location" | "imageUrl">;
+export type PublicCalendarEvent = Pick<DbEvent, "id" | "title" | "date" | "time" | "location" | "imageUrl" | "category">;
 export type PublicListEvent = PublicCalendarEvent & Pick<DbEvent, "description" | "organizer" | "category" | "price">;
 
 const calendarSelect = {
-  id: true, title: true, date: true, time: true, location: true, imageUrl: true,
+  id: true, title: true, date: true, time: true, location: true, imageUrl: true, category: true,
 } as const;
 
 function normalizePublicEvents<Event extends PublicCalendarEvent>(events: Event[], today: string, range: "today" | "upcoming" = "upcoming"): Event[] {

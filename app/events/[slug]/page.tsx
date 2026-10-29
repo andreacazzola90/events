@@ -6,6 +6,7 @@ import { generateUniqueSlug, getPrimaryLocationToken } from '../../../lib/slug-u
 import { getEventBreadcrumbJsonLd, getEventIdFromSlug, getEventJsonLd, getEventMetadata, getEventPath, getEventStartDate } from '../../../lib/event-seo';
 import { publicPageMetadata, serializeJsonLd } from '../../../lib/seo-metadata';
 import { TransitionLink } from '../../components/TransitionLink';
+import EventCategoryBadge from '../../components/EventCategoryBadge';
 import { prisma } from '../../lib/prisma';
 import FavoriteButton from '../../components/FavoriteButton';
 import { notFound, permanentRedirect } from 'next/navigation';
@@ -214,7 +215,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                             </p>
                                         </div>
                                         <div className="space-y-4">
-                                            {event.category && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">🏷️</span> <span>{event.category}</span></p>}
+                                            {event.category && <EventCategoryBadge category={event.category} />}
                                             {event.organizer && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">👤</span> <span>{event.organizer}</span></p>}
                                             {event.price && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">💰</span> <span>{event.price}</span></p>}
                                         </div>

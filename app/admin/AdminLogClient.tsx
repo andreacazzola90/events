@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import SiteSettingsTab from "./SiteSettingsTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -367,7 +368,7 @@ function EventLogTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-type Tab = "cron" | "events";
+type Tab = "cron" | "events" | "appearance";
 
 export default function AdminLogClient() {
   const [tab, setTab] = useState<Tab>("cron");
@@ -399,17 +400,21 @@ export default function AdminLogClient() {
 
         {/* Tabs */}
         <div className="border-b border-white/10">
-          <div className="flex gap-0">
+          <div className="flex gap-0 overflow-x-auto" role="tablist" aria-label="Sezioni amministrazione">
             {(
               [
                 { id: "cron" as Tab, label: "Cronologia cron" },
                 { id: "events" as Tab, label: "Log eventi trovati" },
+                { id: "appearance" as Tab, label: "Categorie e citazioni" },
               ] as const
             ).map(({ id, label }) => (
               <button
                 key={id}
+                type="button"
                 onClick={() => setTab(id)}
-                className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                role="tab"
+                aria-selected={tab === id}
+                className={`shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition-colors sm:px-5 ${
                   tab === id
                     ? "border-white text-white"
                     : "border-transparent text-gray-400 hover:text-gray-200"
@@ -422,8 +427,8 @@ export default function AdminLogClient() {
         </div>
 
         {/* Tab content */}
-        <div className="glass-effect p-4 sm:p-6">
-          {tab === "cron" ? <CronHistoryTab /> : <EventLogTab />}
+        <div className="glass-effect p-4 sm:p-6" role="tabpanel">
+          {tab === "cron" ? <CronHistoryTab /> : tab === "events" ? <EventLogTab /> : <SiteSettingsTab />}
         </div>
 
       </div>

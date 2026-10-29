@@ -4,7 +4,9 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
 import { TransitionLink } from "../components/TransitionLink";
+import { useSiteSettings } from "../components/SiteSettingsProvider";
 import { generateUniqueSlug } from "../../lib/slug-utils";
+import { getCategoryPresentation } from "../../lib/site-presentation";
 import { parseEventDate, parseEventTime } from "../../lib/calendar-ics";
 import { calendarDateLabel, calendarDays, calendarPeriodLabel, calendarToday, moveCalendarDate, type CalendarView } from "../../lib/calendar-view";
 import type { PublicCalendarEvent } from "../../lib/public-event-list";
@@ -19,9 +21,12 @@ const views: { value: CalendarView; label: string }[] = [
 
 function CalendarEventLink({ event, compact = false }: { event: PublicCalendarEvent; compact?: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const { settings } = useSiteSettings();
+  const category = getCategoryPresentation(event.category, settings.categories);
   return (
     <TransitionLink href={`/events/${generateUniqueSlug(event.title, event.id)}`}
       className={`calendar-event-link ${compact ? "is-compact" : ""}`} title={event.title}
+      style={{ borderInlineStart: `3px solid ${category.color}`, backgroundColor: `color-mix(in srgb, ${category.color} 10%, white)` }}
       aria-label={`${event.time || "Tutto il giorno"}, ${event.title}`}>
       <span className="calendar-thumbnail" aria-hidden="true">
         {event.imageUrl && !imageFailed ? (

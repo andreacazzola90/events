@@ -7,7 +7,7 @@ import EventCoverPicker from './EventCoverPicker';
 import { DuplicateMatch, EventData } from '../types/event';
 import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
-import EventCategoryIcon from './EventCategoryIcon';
+import EventCategoryBadge from './EventCategoryBadge';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
@@ -428,7 +428,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                         : imageCropStatus === 'processing' ? 'Immagine in elaborazione'
                                             : imageCropStatus === 'completed' ? 'Ritaglio completato' : 'Ritaglio non riuscito'}</span>
                                     {!manualImageOverride && imageCropStatus === 'failed' && (
-                                        <span className="mt-1 block">{imageCropFailure && DRAFT_CROP_FAILURE_MESSAGES[imageCropFailure]}{imageCropFailure ? ' ' : ''}Originale escluso dalla pubblicazione.</span>
+                                        <span className="mt-1 block">{imageCropFailure && DRAFT_CROP_FAILURE_MESSAGES[imageCropFailure]}{imageCropFailure ? ' ' : ''}Puoi ritagliare l’immagine o cercare una copertina dal web.</span>
                                     )}
                                 </div>
                             </div>
@@ -442,8 +442,13 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                         ) : (
                             <div className={`event-image-placeholder w-full ${imageCropStatus === 'failed' ? 'h-24' : 'h-55'} flex items-center justify-center text-[#5f5b56]`}>Nessuna immagine</div>
                         )}
-                        {imageCropStatus === 'failed' && !manualImageOverride && (
-                            <EventCoverPicker title={eventData.title || ''} date={eventData.date || ''} location={eventData.location || ''}
+                        {imageCropStatus !== 'processing' && (imageUrl || eventData.originalImageUrl) && (
+                            <button type="button" onClick={() => handleOpenCropper(imageUrl || eventData.originalImageUrl)} className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-sm font-semibold text-[#8f3823]">
+                                <Crop className="h-4 w-4" aria-hidden="true" />{imageUrl ? 'Ritaglia immagine' : 'Ritaglia originale'}
+                            </button>
+                        )}
+                        {imageCropStatus !== 'processing' && !manualImageOverride && eventData.title?.trim() && (
+                            <EventCoverPicker title={eventData.title} date={eventData.date || ''} location={eventData.location || ''}
                                 onSelect={blob => {
                                     const previewUrl = URL.createObjectURL(blob);
                                     cropPreviewUrls.current.push(previewUrl);
@@ -453,11 +458,6 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                     currentImageUrl.current = previewUrl;
                                     onImageChange?.(previewUrl, originalCropSource.current);
                                 }} />
-                        )}
-                        {imageCropStatus === 'failed' && eventData.originalImageUrl && (
-                            <button type="button" onClick={() => handleOpenCropper(eventData.originalImageUrl)} className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-sm font-semibold text-[#8f3823]">
-                                <Crop className="h-4 w-4" aria-hidden="true" />Ritaglia originale
-                            </button>
                         )}
                         {isEditing && (
                             <div className="block p-4 border-t border-black/10 text-sm text-[#5f5b56]">
@@ -483,11 +483,6 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                     }}
                                 />
                                 </label>
-                                {imageUrl && (
-                                    <button type="button" onClick={() => handleOpenCropper()} className="mt-3 block text-sm font-semibold text-red-700 underline underline-offset-4">
-                                        Ritaglia immagine
-                                    </button>
-                                )}
                             </div>
                         )}
                     </div>
@@ -501,10 +496,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                     {renderInput('category')}
                                 </label>
                             ) : !isMissing(eventData.category) && (
-                                <span className="event-category inline-flex items-center gap-1.5 bg-[#f4d9d3] text-[#8f3823] px-3 py-1 text-xs font-bold uppercase tracking-wider">
-                                    <EventCategoryIcon category={eventData.category} className="w-3.5 h-3.5" />
-                                    {eventData.category}
-                                </span>
+                                <EventCategoryBadge category={eventData.category} className="event-category tracking-wider" />
                             )}
                             <h2 className="event-title text-3xl md:text-4xl font-black leading-tight tracking-tight">
                                 {isEditing ? (

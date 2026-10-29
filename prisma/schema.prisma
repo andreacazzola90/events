@@ -50,6 +50,13 @@ model EventSeries {
   @@index([isPublished, updatedAt])
 }
 
+model SiteSettings {
+  id         String   @id @default("global")
+  categories Json     @default("[]")
+  quotes     Json     @default("[]")
+  updatedAt  DateTime @updatedAt
+}
+
 model EventMedia {
   id          Int      @id @default(autoincrement())
   eventId     Int

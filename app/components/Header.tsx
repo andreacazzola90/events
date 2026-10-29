@@ -129,7 +129,7 @@ export default function Header() {
         <div className="editorial-container app-header-inner relative flex h-16 items-center justify-between gap-4">
           <TransitionLink
             href="/"
-            className="site-brand flex items-baseline gap-2 no-underline hover:no-underline"
+            className="site-brand absolute left-[50vw] z-10 flex -translate-x-1/2 items-baseline gap-2 no-underline hover:no-underline lg:static lg:translate-x-0"
           >
             <span className="text-base font-semibold text-black">
               Event<span className="site-brand-accent">/</span>Scanner
@@ -166,18 +166,7 @@ export default function Header() {
             </TransitionLink>
           </div>
 
-          <div className="relative flex items-center gap-2 lg:hidden" ref={mobileMenuRef}>
-            <SiteFeedbackWidget />
-            <TransitionLink
-              href="/crea"
-              onClick={() => setIsMobileMenuOpen(false)}
-              aria-current={isActive("/crea") ? "page" : undefined}
-              aria-label="Crea evento"
-              title="Crea evento"
-              className="header-icon-control inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b] no-underline transition-colors hover:no-underline"
-            >
-              <Plus className="h-5 w-5" aria-hidden="true" />
-            </TransitionLink>
+          <div className="absolute left-0 z-30 flex items-center lg:hidden" ref={mobileMenuRef}>
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen((open) => !open)}
@@ -192,7 +181,7 @@ export default function Header() {
               <nav
                 id="mobile-navigation-menu"
                 aria-label="Navigazione mobile"
-                className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] flex w-[min(18rem,calc(100vw-2rem))] flex-col gap-1 border border-black/10 bg-white p-2 shadow-xl"
+                className="absolute left-0 top-[calc(100%+0.5rem)] z-[60] flex w-[min(18rem,calc(100vw-2rem))] flex-col gap-1 border border-black/10 bg-white p-2 shadow-xl"
               >
                 {navLinks.filter((link) => !link.primary).map((link) => {
                   const active = isActive(link.href);
@@ -209,10 +198,24 @@ export default function Header() {
                     </TransitionLink>
                   );
                 })}
+                <div className="mt-1 flex items-center gap-3 border-t border-black/10 px-3 pt-2">
+                  <SiteFeedbackWidget />
+                  <span className="text-sm font-semibold text-[#1d1d1b]">Invia una segnalazione</span>
+                </div>
                 {!isInstalled && <div className="mt-1 border-t border-black/10 pt-2">{renderInstallControl(true)}</div>}
               </nav>
             )}
           </div>
+          <TransitionLink
+            href="/crea"
+            onClick={() => setIsMobileMenuOpen(false)}
+            aria-current={isActive("/crea") ? "page" : undefined}
+            aria-label="Crea evento"
+            title="Crea evento"
+            className="header-icon-control absolute right-0 z-20 inline-flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-[#1d1d1b] no-underline transition-colors hover:no-underline lg:hidden"
+          >
+            <Plus className="h-5 w-5" aria-hidden="true" />
+          </TransitionLink>
         </div>
       </header>
     </>

@@ -12,6 +12,9 @@ import { STANDARD_CATEGORIES } from "../../lib/constants";
 import FavoriteButton from "./FavoriteButton";
 import { AppIcon, CalendarIcon, MapPinIcon } from "./EventIcons";
 import EventCategoryIcon from "./EventCategoryIcon";
+import EventCategoryBadge from "./EventCategoryBadge";
+import { getCategoryPresentation } from "../../lib/site-presentation";
+import { useSiteSettings } from "./SiteSettingsProvider";
 import { calendarToday } from "../../lib/calendar-view";
 import type { PublicListEvent } from "../../lib/public-event-list";
 
@@ -43,15 +46,22 @@ function cleanText(text: string): string {
 }
 
 type Event = PublicListEvent;
-type PriceLabel = "gratis" | "pagamento" | "non definito";
+type PriceLabel = "gratis" | "pagamento";
 
-function getPriceLabel(rawPrice: string | null | undefined): PriceLabel {
-  if (!rawPrice) return "non definito";
-  const price = rawPrice.toLowerCase();
+function getDisplayValue(rawValue: string | null | undefined): string | null {
+  const value = cleanText(rawValue ?? "");
+  if (!value || /^(undefined|null|non definito|non specificato|non trovato|not defined|not specified|not found)$/i.test(value)) return null;
+  return value;
+}
+
+function getPriceLabel(rawPrice: string | null | undefined): PriceLabel | null {
+  const value = getDisplayValue(rawPrice);
+  if (!value) return null;
+  const price = value.toLowerCase();
   if (price.includes("gratis") || price.includes("ingresso libero") || price.includes("ingresso gratuito") || price.includes("free")) return "gratis";
-  if (price.includes("non definito")) return "non definito";
+  if (price.includes("non definito")) return null;
   if (/\d/.test(price) || price.includes("€") || price.includes("euro") || price.includes("bigliett") || price.includes("prevendita") || price.includes("ticket") || price.includes("vivaticket") || price.includes("ticketone")) return "pagamento";
-  return "non definito";
+  return null;
 }
 
 function getPriceBadgeClasses(label: PriceLabel): string {
@@ -62,16 +72,8 @@ function getPriceBadgeClasses(label: PriceLabel): string {
   }
 }
 
-function getCategoryBadgeClasses(rawCategory: string): string {
-  const cat = rawCategory.toLowerCase();
-  switch (cat) {
-    case "musica": case "music": case "nightlife": case "cultura": case "culture":
-    case "cibo": case "food": case "sport": case "famiglia": case "family":
-    case "teatro": case "theater": case "festa": case "party": case "passeggiata": case "walk":
-      return "bg-black";
-    default:
-      return "bg-black";
-  }
+function getCategoryLabel(rawCategory: string | null | undefined): string | null {
+  return getDisplayValue(rawCategory);
 }
 
 function parseEventDate(value: string): Date | null {
@@ -140,6 +142,7 @@ function formatApiDate(date: Date): string {
 }
 
 export default function EventList({ mode = "full", initialEvents, initialToday }: { mode?: EventListMode; initialEvents?: Event[]; initialToday?: string }) {
+  const { settings } = useSiteSettings();
   const gridRef = useRef<HTMLDivElement>(null);
   const hasLoadedEventsRef = useRef(initialEvents !== undefined);
   const [events, setEvents] = useState<Event[]>(initialEvents ?? []);
@@ -388,7 +391,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
           </div>
         </div>
       ) : (
-        <div className="space-y-3 border border-black/10 bg-white p-3 md:p-4">
+        <div className="space-y-4 bg-transparent py-2 md:py-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(190px,0.8fr)]">
             <label className="flex min-w-0 items-center gap-2 border border-black/20 px-3 focus-within:border-black">
               <AppIcon name="search" className="h-5 w-5 shrink-0 text-[var(--accent)]" />
@@ -517,7 +520,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
           mode === "quick"
             ? filteredEvents.slice(0, visibleCount)
             : filteredEvents;
-        const gridClasses = "event-list-grid grid gap-4 md:gap-5";
+        const gridClasses = "event-list-grid grid";
 
         return (
           <>
@@ -532,11 +535,18 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
                   </p>
                 </div>
               ) : (
-                displayedEvents.map((event) => (
+                displayedEvents.map((event) => {
+                  const category = getCategoryLabel(event.category);
+                  const categoryPresentation = category ? getCategoryPresentation(category, settings.categories) : undefined;
+                  const priceLabel = getPriceLabel(event.price);
+                  const location = getDisplayValue(event.location);
+                  const organizer = getDisplayValue(event.organizer);
+                  return (
                   <TransitionLink
                     key={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="event-card group flex items-stretch no-underline hover:no-underline bg-white transition-colors"
+                    className="event-card group flex items-stretch no-underline hover:no-underline"
+                    style={categoryPresentation ? { borderInlineStart: `4px solid ${categoryPresentation.color}` } : undefined}
                   >
                     <div className="event-card-body flex flex-1 min-w-0 flex-col gap-3 p-4 md:p-5">
                       <div className="space-y-2">
@@ -569,17 +579,17 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
                           )}
                         </div>
 
-                        {event.location && (
+                        {location && (
                           <div className="flex items-center gap-2 text-black/80 min-w-0">
                             <MapPinIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
-                            <span className="truncate">{event.location}</span>
+                            <span className="truncate">{location}</span>
                           </div>
                         )}
 
-                        {event.organizer && (
+                        {organizer && (
                           <div className="event-card-organizer flex items-center gap-2 text-black/80 min-w-0">
                             <span className="w-4 shrink-0">•</span>
-                            <span className="truncate">{event.organizer}</span>
+                            <span className="truncate">{organizer}</span>
                           </div>
                         )}
                       </div>
@@ -612,28 +622,25 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
                       )}
 
                       <div className="absolute bottom-2 inset-x-2 z-10 flex items-end justify-between gap-1 sm:gap-2">
-                        {event.category && (
-                          <span
-                            className={`inline-flex min-w-0 items-center gap-1 break-words px-1.5 sm:px-2.5 py-1 text-[9px] sm:text-[10px] uppercase font-bold text-white ${getCategoryBadgeClasses(event.category)}`}
-                          >
-                            <EventCategoryIcon category={event.category} className="h-3 w-3 shrink-0" />
-                            {event.category}
-                          </span>
+                        {category && (
+                          <EventCategoryBadge
+                            category={category}
+                            className="max-w-[75%] break-words px-1.5 py-1 text-[9px] sm:px-2.5 sm:text-[10px]"
+                            iconClassName="h-3 w-3 shrink-0"
+                          />
                         )}
-                        {(() => {
-                          const label = getPriceLabel(event.price);
-                          return (
+                        {priceLabel && (
                             <div
-                              className={`ml-auto shrink-0 px-1.5 sm:px-2 py-1 text-[9px] sm:text-[10px] uppercase sm:tracking-[0.11em] font-bold ${getPriceBadgeClasses(label)}`}
+                              className={`ml-auto shrink-0 px-1.5 sm:px-2 py-1 text-[9px] sm:text-[10px] uppercase sm:tracking-[0.11em] font-bold ${getPriceBadgeClasses(priceLabel)}`}
                             >
-                              {label}
+                              {priceLabel}
                             </div>
-                          );
-                        })()}
+                        )}
                       </div>
                     </div>
                   </TransitionLink>
-                ))
+                  );
+                })
               )}
             </div>
 

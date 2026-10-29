@@ -1,6 +1,7 @@
 "use client";
 import { TransitionLink } from "./TransitionLink";
 import { useSession } from "next-auth/react";
+import SiteQuote from "./SiteQuote";
 
 export default function Footer({ version, builtAt, builtAtLabel = "Data build non disponibile" }: {
   version: string;
@@ -101,6 +102,8 @@ export default function Footer({ version, builtAt, builtAtLabel = "Data build no
             </ul>
           </div>
         </div>
+
+        <SiteQuote />
 
         <div className="pt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <p className="text-black/55 text-xs uppercase tracking-widest m-0">

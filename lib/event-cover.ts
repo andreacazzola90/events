@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import sharp from 'sharp';
-import { isWebSearchConfigured, webSearch } from './google-search';
+import { isWebSearchConfigured, webImageSearch, webSearch } from './google-search';
 import { extractEventImageFromHtml } from './event-image';
 import { coverUrl, fetchCoverResource, withCoverAbort } from './event-cover-network';
 
@@ -17,9 +17,10 @@ type CoverPayload = { v: 1; imageUrl: string; sourceUrl: string; title: string; 
 type CoverDependencies = {
   configured: typeof isWebSearchConfigured;
   search: typeof webSearch;
+  imageSearch?: typeof webImageSearch;
   fetch: typeof fetchCoverResource;
 };
-const dependencies: CoverDependencies = { configured: isWebSearchConfigured, search: webSearch, fetch: fetchCoverResource };
+const dependencies: CoverDependencies = { configured: isWebSearchConfigured, search: webSearch, imageSearch: webImageSearch, fetch: fetchCoverResource };
 
 const stateKey = Symbol.for('events.safe-event-cover.v1');
 type CoverState = {
@@ -110,16 +111,21 @@ export async function searchEventCovers(
   try {
     const fields = parseCoverSearchInput(input);
     const query = [fields.title, fields.date, fields.location, 'evento locandina'].filter(Boolean).join(' ');
-    const results = await withCoverAbort(providers.search(query, { signal: budget, throwOnFailure: true }), budget);
+    const search = providers.imageSearch ?? providers.search;
+    const results = await withCoverAbort(search(query, { signal: budget, throwOnFailure: true }), budget);
     for (const result of results.slice(0, 5)) {
       budget.throwIfAborted();
       try {
-        const pageUrl = coverUrl(result.link).href;
-        if (seenPages.has(pageUrl)) continue;
-        seenPages.add(pageUrl);
-        const page = await providers.fetch(pageUrl, { signal: budget, maxBytes: 512 * 1024, kind: 'page' });
-        const image = extractEventImageFromHtml(page.bytes.toString('utf8'), page.url);
-        if (!image) continue;
+        let sourceUrl = coverUrl(result.link).href;
+        let image = result.imageUrl;
+        if (!image) {
+          if (seenPages.has(sourceUrl)) continue;
+          seenPages.add(sourceUrl);
+          const page = await providers.fetch(sourceUrl, { signal: budget, maxBytes: 512 * 1024, kind: 'page' });
+          sourceUrl = coverUrl(page.url).href;
+          image = extractEventImageFromHtml(page.bytes.toString('utf8'), page.url) ?? undefined;
+          if (!image) continue;
+        }
         const imageUrl = coverUrl(image).href;
         if (seenImages.has(imageUrl)) continue;
         seenImages.add(imageUrl);
@@ -128,7 +134,7 @@ export async function searchEventCovers(
         const hash = createHash('sha256').update(jpeg).digest('hex');
         if (seenPixels.has(hash)) continue;
         seenPixels.add(hash);
-        const candidate = { imageUrl: bitmap.url, sourceUrl: coverUrl(page.url).href, title: fields.title };
+        const candidate = { imageUrl: bitmap.url, sourceUrl, title: fields.title };
         const token = signCoverCandidate(candidate);
         candidates.push({ id: hash.slice(0, 24), title: candidate.title, sourceUrl: candidate.sourceUrl,
           previewUrl: `/api/event-cover-image?token=${token}` });

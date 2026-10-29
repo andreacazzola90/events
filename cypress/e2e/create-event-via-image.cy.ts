@@ -7,6 +7,30 @@ describe('Parallel event cover', () => {
     cy.wait(2000);
   });
 
+  it('searches web covers and keeps manual cropping available after a successful automatic crop', () => {
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      cy.intercept('POST', '/api/process-image', {
+        statusCode: 200,
+        body: {
+          events: [{ title: 'Clean poster event', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' }],
+          previewImageDataUrl: `data:image/png;base64,${image}`,
+        },
+      }).as('cleanPosterExtraction');
+    });
+    cy.intercept('POST', '/api/crop-image', {
+      statusCode: 200,
+      fixture: 'event-poster.jpg,null',
+      headers: { 'Content-Type': 'image/jpeg' },
+    }).as('cleanPosterCrop');
+
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait('@cleanPosterExtraction');
+    cy.wait('@cleanPosterCrop');
+    cy.wait('@coverSearch');
+    cy.contains('button', 'Ritaglia immagine').scrollIntoView().should('be.visible');
+  });
+
   it('keeps the failed crop status visible when cropping finishes before extraction', () => {
     cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'rate-limited' } }).as('earlyCrop');
     cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
@@ -23,7 +47,7 @@ describe('Parallel event cover', () => {
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
     cy.wait(['@earlyCrop', '@laterExtraction']);
     cy.contains('Early crop fallback').should('be.visible');
-    cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Originale escluso dalla pubblicazione.');
+    cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Puoi ritagliare l’immagine o cercare una copertina dal web.');
     cy.get('[data-image-crop-status="failed"]').should('contain', 'Quota gratuita AI temporaneamente esaurita.');
     cy.get('img.event-image').should('not.exist');
     cy.contains('Nessuna immagine trovata.').scrollIntoView().should('be.visible');
@@ -106,7 +130,7 @@ describe('Parallel event cover', () => {
         if (outcome === 'manual') {
           cy.get('[data-image-crop-status="manual"]').should('contain', 'Immagine modificata manualmente');
         } else if (outcome === 'original') {
-          cy.get('[data-image-crop-status="failed"]').should('contain', 'Ritaglio non riuscito').and('contain', 'Originale escluso dalla pubblicazione.');
+          cy.get('[data-image-crop-status="failed"]').should('contain', 'Ritaglio non riuscito').and('contain', 'Puoi ritagliare l’immagine o cercare una copertina dal web.');
         } else {
           cy.get('[data-image-crop-status="completed"]').first().should('contain', 'Ritaglio completato');
         }

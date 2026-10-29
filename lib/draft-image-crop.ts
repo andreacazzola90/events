@@ -3,7 +3,7 @@ export const DRAFT_CROP_FAILURE_MESSAGES = {
   'timeout': 'Il servizio AI non ha risposto in tempo.',
   'not-configured': 'Servizio AI non configurato.',
   'bounds-rejected': 'La locandina non e stata individuata con sufficiente certezza.',
-  'verification-rejected': 'Il ritaglio non ha superato il controllo privacy.',
+  'verification-rejected': 'Il ritaglio automatico non ha prodotto un’immagine pulita.',
   'image-invalid': 'Formato o dimensioni immagine non supportati.',
   'service-unavailable': 'Servizio AI temporaneamente non disponibile.',
 } as const;

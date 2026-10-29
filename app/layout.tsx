@@ -113,7 +113,6 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(getWebSiteJsonLd()) }}
         />
-        <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
         {/* Google Search Console Verification */}

@@ -16,6 +16,19 @@ const groq = new Groq({
     apiKey: process.env.GROQ_API_SECRET_KEY,
 });
 
+/** Shared by every step; below the 55s maxDuration of /api/process-link to leave time for the response. */
+const LINK_BUDGET_MS = 50_000;
+const BROWSER_BUDGET_MS = 28_000;
+const MIN_HTTP_TEXT_LENGTH = 200;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    return Promise.race([
+        promise,
+        new Promise<T>(resolve => { timer = setTimeout(() => resolve(fallback), Math.max(0, ms)); }),
+    ]).finally(() => clearTimeout(timer));
+}
+
 type ProcessEventLinkOptions = {
     verbose?: boolean;
 };
@@ -95,6 +108,19 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
         throw new Error('API non configurata correttamente. Aggiungi GROQ_API_SECRET_KEY alle variabili d\'ambiente.');
     }
 
+    // Vercel stops the function at 55s (vercel.json): every step below shares this budget.
+    const startedAt = Date.now();
+    const remainingMs = () => LINK_BUDGET_MS - (Date.now() - startedAt);
+    const budgetSignal = (maxMs: number, reserveMs = 0) => AbortSignal.timeout(Math.max(1_000, Math.min(maxMs, remainingMs() - reserveMs)));
+
+    // Static pages are read in a fraction of a second over HTTP; kept as a fallback when the browser is slow or fails.
+    const httpResult = import('./http-scraper')
+        .then(({ httpScraper }) => httpScraper(url))
+        .catch(error => {
+            logger.warn('HTTP scraping unavailable:', error instanceof Error ? error.message : error);
+            return null;
+        });
+
     // 1. Scrape della pagina con Puppeteer
     logger.log('Launching browser...');
     let browser = null;
@@ -104,7 +130,7 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
 
     // Create a timeout promise for the entire scraping operation
     const scrapingTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Scraping operation timed out after 50 seconds')), 50000);
+        setTimeout(() => reject(new Error(`Scraping operation timed out after ${BROWSER_BUDGET_MS / 1000} seconds`)), BROWSER_BUDGET_MS);
     });
 
     try {
@@ -118,6 +144,17 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                 });
 
                 const page = await browser.newPage();
+                // Images, fonts and media are not needed: image URLs are read from the DOM attributes.
+                try {
+                    await page.setRequestInterception(true);
+                    page.on('request', (request: { isInterceptResolutionHandled(): boolean; resourceType(): string; abort(): Promise<void>; continue(): Promise<void> }) => {
+                        if (request.isInterceptResolutionHandled()) return;
+                        if (['image', 'font', 'media'].includes(request.resourceType())) void request.abort();
+                        else void request.continue();
+                    });
+                } catch (interceptionError) {
+                    logger.warn('Could not block heavy resources:', interceptionError);
+                }
                 
                 try {
                     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
@@ -141,22 +178,16 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                 
                 let navigationSuccess = false;
                 let lastError = null;
-                const maxRetries = 3;
+                const maxRetries = 2;
                 
                 for (let retry = 0; retry < maxRetries; retry++) {
                     try {
                         logger.log(`Navigation attempt ${retry + 1}/${maxRetries}`);
                         
-                        const waitOptions = retry === 0 
+                        const waitOptions = retry === 0
                             ? { waitUntil: 'domcontentloaded' as const, timeout: 15000 }
-                            : retry === 1 
-                            ? { waitUntil: 'load' as const, timeout: 20000 }
-                            : { waitUntil: 'networkidle2' as const, timeout: 30000 };
-                        
-                        logger.log('🔄 Navigating with human-like behavior...');
-                        const preNavDelay = Math.floor(Math.random() * 1500) + 500;
-                        await new Promise(resolve => setTimeout(resolve, preNavDelay));
-                        
+                            : { waitUntil: 'load' as const, timeout: 12000 };
+
                         await page.goto(url, waitOptions);
 
                         // The Deskline widget (Angular SPA) used on visitschio.it hash-route
@@ -181,16 +212,15 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                             }
                         }
 
-                        logger.log('📖 Simulating human reading behavior...');
-                        const postNavDelay = Math.floor(Math.random() * 2000) + 2000;
-                        await new Promise(resolve => setTimeout(resolve, postNavDelay));
+                        // Short settle time for client-rendered widgets.
+                        await new Promise(resolve => setTimeout(resolve, 800));
                     
                         try {
                             await page.evaluate(() => {
                                 const scrollAmount = Math.floor(Math.random() * 500) + 200;
                                 window.scrollTo(0, scrollAmount);
                             });
-                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            await new Promise(resolve => setTimeout(resolve, 300));
                         } catch (scrollError) {
                             logger.warn('⚠️ Could not simulate scrolling:', scrollError);
                         }
@@ -487,27 +517,23 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
     } catch (browserError) {
         logger.error('Errore durante lo scraping con browser:', browserError);
         await closeBrowser(browser);
-        
-        if (browserError instanceof Error && browserError.message.includes('timed out')) {
-            throw new Error('La richiesta ha impiegato troppo tempo. Riprova più tardi.');
-        }
-        
-        if (browserError instanceof Error && (
-            browserError.message.includes('libnss3.so') || 
+
+        const browserUnavailable = browserError instanceof Error && (
+            browserError.message.includes('libnss3.so') ||
             browserError.message.includes('Code: 127') ||
             browserError.message.includes('shared libraries')
-        )) {
-            logger.log('🔄 Browser failed due to missing libraries, trying HTTP fallback...');
-            try {
-                const { httpScraper } = await import('./http-scraper');
-                const fallbackResult = await httpScraper(url);
-                pageText = fallbackResult.pageText;
-                finalImageUrl = fallbackResult.finalImageUrl;
-                logger.log('✅ HTTP fallback scraping successful');
-            } catch (fallbackError) {
-                logger.error('❌ HTTP fallback also failed:', fallbackError);
-                throw new Error('Impossibile accedere alla pagina web. Il sito potrebbe non essere accessibile o avere restrizioni.');
-            }
+        );
+        const fallback = await httpResult;
+        const fallbackLength = fallback?.pageText.trim().length || 0;
+        if (fallback && (fallbackLength >= MIN_HTTP_TEXT_LENGTH || (browserUnavailable && fallbackLength > 0))) {
+            logger.log('🔄 Using HTTP scraping result instead of the browser');
+            pageText = fallback.pageText;
+            finalImageUrl = fallback.finalImageUrl;
+            pageScreenshotForOcr = null;
+        } else if (browserError instanceof Error && browserError.message.includes('timed out')) {
+            throw new Error('La richiesta ha impiegato troppo tempo. Riprova più tardi.');
+        } else if (browserUnavailable) {
+            throw new Error('Impossibile accedere alla pagina web. Il sito potrebbe non essere accessibile o avere restrizioni.');
         } else {
             throw new Error('Errore durante l\'accesso alla pagina web: ' + (browserError instanceof Error ? browserError.message : 'Errore sconosciuto'));
         }
@@ -525,22 +551,26 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                 const buffer = Buffer.from(base64Data, 'base64');
                 imageBlob = new Blob([buffer], { type: 'image/jpeg' });
             } else {
-                const imageResponse = await fetch(imageForOcr);
+                const imageResponse = await fetch(imageForOcr, { signal: budgetSignal(8_000) });
                 imageBlob = await imageResponse.blob();
             }
 
             const rawImageFile = new File([imageBlob], 'event-image.jpg', { type: imageBlob.type });
             const imageFile = await compressImage(rawImageFile, 1024 * 1024);
 
+            // OCR only adds detail to the page text: never let it consume the extraction budget.
+            const ocrBudgetMs = Math.min(12_000, remainingMs() - 25_000);
             try {
                 logger.log('🔄 Trying simplified OCR on webpage image...');
-                imageText = await extractTextFromImageSimple(imageFile);
+                imageText = await withTimeout(extractTextFromImageSimple(imageFile), ocrBudgetMs, '');
             } catch {
-                logger.log('⚠️ OCR semplificato fallito, provo Tesseract...');
-                try {
-                    imageText = await extractTextFromImage(imageFile);
-                } catch {
-                    logger.warn('⚠️ OCR fallito su entrambi i metodi');
+                if (remainingMs() > 35_000) {
+                    logger.log('⚠️ OCR semplificato fallito, provo Tesseract...');
+                    try {
+                        imageText = await withTimeout(extractTextFromImage(imageFile), Math.min(10_000, remainingMs() - 25_000), '');
+                    } catch {
+                        logger.warn('⚠️ OCR fallito su entrambi i metodi');
+                    }
                 }
             }
         } catch (ocrError) {
@@ -664,7 +694,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         // emitting any JSON (json_validate_failed with empty failed_generation).
         max_tokens: 4000,
         reasoning_effort: 'low',
-    });
+    }, { timeout: Math.max(8_000, Math.min(25_000, remainingMs() - 4_000)), maxRetries: 1 });
 
     const responseText = completion.choices[0]?.message?.content || '';
     let first = responseText.indexOf('{');
@@ -707,7 +737,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         return result.choices[0]?.message?.content || '';
     };
     const completionReports: ScanAgentReport[] = [];
-    const completionDeadline = AbortSignal.timeout(12_000);
+    const completionDeadline = budgetSignal(12_000, 8_000);
     for (let i = 0; i < events.length; i++) {
         const result = await completeMissingEventFields(events[i], combinedText, completeScanAgent, completionDeadline);
         events[i] = result.event;
@@ -726,6 +756,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         const verificationResults = await verifyScannedEvents(events, {
             complete: completeScanAgent,
             search: (query, signal) => webSearch(query, { signal }),
+            deadline: budgetSignal(25_000, 2_000),
         });
         events = verificationResults.map(r => r.verifiedEvent);
         verificationReports = verificationResults.map(r => r.agent);

@@ -164,10 +164,16 @@ export async function completeMissingEventFields(event: EventData, text: string,
 type VerificationDependencies = {
   complete: ScanAgentCompletion;
   search: (query: string, signal: AbortSignal) => Promise<SearchResult[]>;
+  /** Caller deadline, e.g. the remaining serverless function budget. */
+  deadline?: AbortSignal;
 };
 
 export async function verifyScannedEvents(events: EventData[], dependencies: VerificationDependencies) {
-  const deadline = AbortSignal.timeout(25_000);
+  const deadline = dependencies.deadline
+    ? AbortSignal.any([AbortSignal.timeout(25_000), dependencies.deadline])
+    : AbortSignal.timeout(25_000);
+  // Sessions of the same event share title/location/date: search once per distinct query.
+  const searches = new Map<string, Promise<SearchResult[]>>();
   const results = events.map(event => ({
     verifiedEvent: event,
     searchResults: [] as SearchResult[],
@@ -186,7 +192,12 @@ export async function verifyScannedEvents(events: EventData[], dependencies: Ver
       const signal = AbortSignal.any([deadline, AbortSignal.timeout(12_000)]);
       try {
         const query = [event.title, event.location, event.date].filter(value => !isMissing(value)).join(' ').slice(0, 400);
-        const searchResults = (await dependencies.search(query, signal)).slice(0, 5);
+        let search = searches.get(query);
+        if (!search) {
+          search = dependencies.search(query, signal);
+          searches.set(query, search);
+        }
+        const searchResults = (await search).slice(0, 5);
         results[index].searchResults = searchResults;
         if (signal.aborted) throw new Error('deadline');
         const sources = searchResults.map((item, sourceIndex) => ({

@@ -25,13 +25,7 @@ export async function httpScraper(url: string): Promise<{ pageText: string; fina
 
     const html = await response.text();
     
-    // Extract text content from HTML (basic extraction)
-    const textContent = html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
-      .replace(/<[^>]+>/g, ' ') // Remove HTML tags
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
+    const textContent = htmlToEventText(html);
 
     const imageUrl = extractEventImageFromHtml(html, url);
 
@@ -45,4 +39,40 @@ export async function httpScraper(url: string): Promise<{ pageText: string; fina
     console.error('❌ HTTP fallback scraping failed:', error);
     throw new Error(`HTTP scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+}
+const NAMED_ENTITIES: Record<string, string> = {
+  agrave: 'à', egrave: 'è', eacute: 'é', igrave: 'ì', ograve: 'ò', ugrave: 'ù', Agrave: 'À', Egrave: 'È', Eacute: 'É',
+  rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»', hellip: '…', ndash: '–', mdash: '—', euro: '€', deg: '°',
+};
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&([a-z]+);/gi, (entity, name: string) => NAMED_ENTITIES[name] ?? entity)
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+function stripTags(html: string): string {
+  return decodeEntities(html.replace(/<(br|\/p|\/div|\/li|\/h\d)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+}
+
+/** Readable event text from static HTML: metadata and structured data first, then the page body without menus. */
+export function htmlToEventText(html: string): string {
+  const meta = (name: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${name}["'][^>]+content=["']([^"']*)`, 'i'))?.[1]
+    || html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${name}["']`, 'i'))?.[1];
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  const header = [meta('og:title') || title, meta('og:description') || meta('description')]
+    .filter(Boolean).map(value => decodeEntities(String(value)).trim());
+  const structured = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi))
+    .map(match => match[1].trim())
+    .filter(json => /"@type"\s*:\s*"[^"]*Event"/i.test(json))
+    .map(json => `DATI STRUTTURATI: ${json.replace(/\s+/g, ' ').slice(0, 2500)}`);
+  const body = (html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] || html)
+    .replace(/<(script|style|noscript|svg|template|iframe)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<(header|nav|footer|aside|form)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  return [...header, ...structured, stripTags(body)].filter(Boolean).join('\n\n');
 }

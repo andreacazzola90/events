@@ -5,15 +5,19 @@ import { Check, ExternalLink, RefreshCw, X } from 'lucide-react';
 import type { CoverCandidate } from '../../lib/event-cover';
 import { MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
 import { fetchDraftCover } from '../../lib/draft-image-crop';
+import { normalizeFacebookEventUrl } from '../../lib/event-image';
 
 type Props = {
     title: string;
     date: string;
     location: string;
+    sourceUrl?: string;
+    preferFacebook?: boolean;
     onSelect: (image: Blob) => void;
 };
 
-export default function EventCoverPicker({ title, date, location, onSelect }: Props) {
+export default function EventCoverPicker({ title, date, location, sourceUrl, preferFacebook = false, onSelect }: Props) {
+    const facebookSourceUrl = preferFacebook ? normalizeFacebookEventUrl(sourceUrl) : undefined;
     const [candidates, setCandidates] = useState<Array<CoverCandidate & { displayUrl?: string; ready?: boolean; failed?: boolean }>>([]);
     const [status, setStatus] = useState('loading');
     const [selected, setSelected] = useState<string>();
@@ -36,7 +40,11 @@ export default function EventCoverPicker({ title, date, location, onSelect }: Pr
                 const response = await fetchDraftCover('/api/event-cover-search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: title.slice(0, 160), date: date.slice(0, 40), location: location.slice(0, 160) }),
+                    body: JSON.stringify({
+                        title: title.slice(0, 160), date: date.slice(0, 40), location: location.slice(0, 160),
+                        ...(preferFacebook ? { preferFacebook: true } : {}),
+                        ...(facebookSourceUrl ? { sourceUrl: facebookSourceUrl } : {}),
+                    }),
                     signal: controller.signal,
                 }, 25_000);
                 if (!response.ok) throw new Error('Search unavailable');
@@ -71,7 +79,7 @@ export default function EventCoverPicker({ title, date, location, onSelect }: Pr
             previewUrls.forEach(url => URL.revokeObjectURL(url));
             previews.current.clear();
         };
-    }, [title, date, location, attempt]);
+    }, [title, date, location, facebookSourceUrl, preferFacebook, attempt]);
 
     const applySelection = () => {
         const blob = selected && candidates.find(candidate => candidate.id === selected && candidate.ready)

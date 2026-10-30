@@ -13,6 +13,19 @@ const SOURCE_PRIORITY: Record<EventImageCandidate['source'], number> = {
 
 const GENERIC_IMAGE_PATH = /(?:^|[\/_-])(logo|favicon|sprite|avatar|placeholder|no[-_]?image|default)(?:[\/_.-]|$)/i;
 
+export function normalizeFacebookEventUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 512) return;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+        !/^(?:(?:www|m|mbasic|web)\.)?facebook\.com$/.test(url.hostname)) return;
+    const eventId = url.pathname.match(/^\/events\/(?:[^/]+\/)?(\d{1,30})\/?$/)?.[1];
+    if (eventId) return `https://www.facebook.com/events/${eventId}/`;
+  } catch {
+    return;
+  }
+}
+
 export function extractEventImageFromHtml(html: string, pageUrl: string): string | null {
   const candidates: { url: string; source: 'og-image' | 'twitter-image' }[] = [];
   const getAttribute = (tag: string, name: string) => {

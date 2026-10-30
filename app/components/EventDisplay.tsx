@@ -469,6 +469,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                         )}
                         {imageCropStatus !== 'processing' && !manualImageOverride && eventData.title?.trim() && (
                             <EventCoverPicker title={eventData.title} date={eventData.date || ''} location={eventData.location || ''}
+                                sourceUrl={eventData.sourceUrl} preferFacebook={imageCropStatus === 'failed'}
                                 onSelect={blob => {
                                     const previewUrl = URL.createObjectURL(blob);
                                     cropPreviewUrls.current.push(previewUrl);

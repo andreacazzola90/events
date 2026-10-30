@@ -50,11 +50,12 @@ export async function createVerifiedPosterCrop(
       const right = Math.min(sourceWidth, Math.floor((box.x + box.width) * side + 1e-6));
       const bottom = Math.min(sourceHeight, Math.floor((box.y + box.height) * side + 1e-6));
       if (right - left < 16 || bottom - top < 16) return null;
-      const poster = await sharp(source.data).extract({ left, top, width: right - left, height: bottom - top }).jpeg({ quality: 95 }).toBuffer();
-      const trimmed = hasScreenshotUI ? await trimScreenshotBands(poster) : { image: poster, top: 0, bottom: 0 };
+      const poster = await sharp(source.data).extract({ left, top, width: right - left, height: bottom - top }).png().toBuffer();
+      const trimmed = hasScreenshotUI ? await trimScreenshotBands(poster) : { image: poster, left: 0, right: 0, top: 0, bottom: 0 };
       return {
-        image: trimmed.image,
-        box: { x: left / sourceWidth, y: (top + trimmed.top) / sourceHeight, width: (right - left) / sourceWidth,
+        image: await sharp(trimmed.image).jpeg({ quality: 95 }).toBuffer(),
+        box: { x: (left + trimmed.left) / sourceWidth, y: (top + trimmed.top) / sourceHeight,
+          width: (right - left - trimmed.left - trimmed.right) / sourceWidth,
           height: (bottom - top - trimmed.top - trimmed.bottom) / sourceHeight },
       };
     };
@@ -85,7 +86,7 @@ Return only a JSON object with fields safe (boolean) and confidence (number from
     // 1. The same screen size was cropped consistently by hand before: reuse it and skip the slow bounds request.
     const learned = options.learned;
     if (learned?.consistent) {
-      const crop = await cropSquareBox(toSquare(learned.box), false);
+      const crop = await cropSquareBox(toSquare(learned.box), true);
       if (crop) {
         const verdict = await verify(crop.image);
         if (verdict === 'safe') return succeed(crop, 'learned', true);
@@ -154,7 +155,7 @@ Coordinates refer to the entire square image, including white padding, normalize
         if (!parsePosterBounds(JSON.stringify(bounds))) {
           console.warn('[poster-crop] Original retained: bounds do not contain enough original image pixels');
         } else {
-          const hasScreenshotUI = bounds.socialHeaderBottom != null || bounds.socialFooterTop != null;
+          const hasScreenshotUI = bounds.socialHeaderBottom != null || bounds.socialFooterTop != null || content?.strong === true;
           const raw: CropBox = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
           const snapped = content ? toSquare(snapBoxToContent(toSource(raw), content.box)) : raw;
           const attempts = boxOverlap(snapped, raw) > 0.999 || !parsePosterBounds(JSON.stringify({ ...snapped, confidence: bounds.confidence }))
@@ -180,7 +181,7 @@ Coordinates refer to the entire square image, including white padding, normalize
 
     // 3. Fallback: unambiguous screen bars around the poster, detected locally without AI.
     if (content?.strong) {
-      const crop = await cropSquareBox(toSquare(content.box), false);
+      const crop = await cropSquareBox(toSquare(content.box), true);
       if (crop) {
         if (boundsError) return succeed(crop, 'heuristic', false);
         const verdict = await verify(crop.image);
@@ -195,31 +196,64 @@ Coordinates refer to the entire square image, including white padding, normalize
   }
 }
 
-async function trimScreenshotBands(image: Buffer): Promise<{ image: Buffer; top: number; bottom: number }> {
+async function trimScreenshotBands(image: Buffer): Promise<{ image: Buffer; left: number; right: number; top: number; bottom: number }> {
   const { data, info } = await sharp(image).removeAlpha().toColourspace('srgb').raw().toBuffer({ resolveWithObject: true });
-  const limit = Math.floor(info.height * 0.2);
-  const isBlackRow = (row: number) => {
-    const start = row * info.width * info.channels;
-    const end = start + info.width * info.channels;
-    for (let offset = start; offset < end; offset += info.channels) {
-      if (Math.max(data[offset], data[offset + 1], data[offset + 2]) > 24) return false;
-    }
-    return true;
-  };
-  const edgeBand = (fromBottom: boolean) => {
-    const rowAt = (offset: number) => fromBottom ? info.height - offset - 1 : offset;
+  const raster: Raster = { data, width: info.width, height: info.height, channels: info.channels };
+  const edges = { left: 0, right: 0, top: 0, bottom: 0 };
+  const edgeBand = (edge: keyof typeof edges) => {
+    const vertical = edge === 'top' || edge === 'bottom';
+    const reverse = edge === 'bottom' || edge === 'right';
+    const depth = vertical ? info.height : info.width;
+    const limit = Math.floor(depth * 0.2);
+    const from = vertical ? edges.left : edges.top;
+    const to = vertical ? info.width - edges.right : info.height - edges.bottom;
+    const offsetAt = (line: number, along: number) => {
+      const across = reverse ? depth - 1 - line : line;
+      return (vertical ? across * info.width + along : along * info.width + across) * info.channels;
+    };
+    const colorAt = (line: number) => {
+      const offset = offsetAt(line, Math.floor((from + to) / 2));
+      return [data[offset], data[offset + 1], data[offset + 2]];
+    };
+    const share = (line: number, color: number[]) => {
+      let hits = 0;
+      for (let along = from; along < to; along++) {
+        if (matches(raster, offsetAt(line, along), color)) hits++;
+      }
+      return hits / (to - from);
+    };
     let start = 0;
-    while (start < Math.min(8, limit) && !isBlackRow(rowAt(start))) start++;
+    let color = colorAt(start);
+    // Keep the existing allowance for a few noisy black navigation rows at the edge.
+    while (vertical && start < Math.min(8, limit) && share(start, color) < 0.995) color = colorAt(++start);
+    if (start > 0 && Math.max(...color) > 24) return 0;
+    if (Math.max(...color) - Math.min(...color) > 16 || share(start, color) < 0.995) return 0;
     let end = start;
-    while (end <= limit && isBlackRow(rowAt(end))) end++;
-    return end - start >= 8 && end <= limit ? end : 0;
+    while (end <= limit && share(end, color) >= 0.995) end++;
+    // JPEG chroma subsampling can smear an otherwise sharp boundary across two pixels.
+    const lastColor = colorAt(Math.max(start, end - 1));
+    const sharpBoundary = [0, 1, 2].some(offset => end + offset < depth &&
+      share(end + offset, color) <= 0.1 && share(end + offset, lastColor) <= 0.1);
+    return end - start >= 2 && end <= limit && sharpBoundary ? end : 0;
   };
-  const top = edgeBand(false);
-  const bottom = edgeBand(true);
-  if (!top && !bottom) return { image, top: 0, bottom: 0 };
+  // Removing one band exposes the next edge when adjacent bands have different colours.
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (const edge of ['top', 'bottom', 'left', 'right'] as const) {
+      if (edges[edge]) continue;
+      const band = edgeBand(edge);
+      if (band) {
+        edges[edge] = band;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const { left, right, top, bottom } = edges;
+  if (!left && !right && !top && !bottom) return { image, ...edges };
   return {
-    image: await sharp(image).extract({ left: 0, top, width: info.width, height: info.height - top - bottom }).jpeg({ quality: 95 }).toBuffer(),
-    top, bottom,
+    image: await sharp(image).extract({ left, top, width: info.width - left - right, height: info.height - top - bottom }).png().toBuffer(),
+    ...edges,
   };
 }
 

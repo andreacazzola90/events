@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import sharp from 'sharp';
 import { isWebSearchConfigured, webImageSearch, webSearch } from './google-search';
-import { extractEventImageFromHtml } from './event-image';
+import { extractEventImageFromHtml, normalizeFacebookEventUrl } from './event-image';
 import { coverUrl, fetchCoverResource, withCoverAbort } from './event-cover-network';
 
 export const MAX_COVER_BYTES = 4 * 1024 * 1024;
@@ -11,7 +11,7 @@ const MAX_SCRAPED_PAGES = 5;
 const TOKEN_TTL_MS = 5 * 60_000;
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 
-export type CoverSearchInput = { title: string; date: string; location: string };
+export type CoverSearchInput = { title: string; date: string; location: string; sourceUrl?: string; preferFacebook?: boolean };
 export type CoverCandidate = { id: string; title: string; sourceUrl: string; previewUrl: string };
 type SearchReply = { candidates: CoverCandidate[]; status: 'completed' | 'not-configured' | 'failed' };
 type CoverPayload = { v: 1; imageUrl: string; sourceUrl: string; title: string; exp: number };
@@ -69,7 +69,7 @@ export function parseCoverSearchInput(value: unknown): CoverSearchInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid event fields');
   const fields = value as Record<string, unknown>;
   const limits = { title: 160, date: 40, location: 160 };
-  if (Object.keys(fields).some(key => !Object.prototype.hasOwnProperty.call(limits, key))) throw new Error('Unexpected event field');
+  if (Object.keys(fields).some(key => !Object.prototype.hasOwnProperty.call(limits, key) && key !== 'sourceUrl' && key !== 'preferFacebook')) throw new Error('Unexpected event field');
   const result = {} as CoverSearchInput;
   for (const key of ['title', 'date', 'location'] as const) {
     const field = fields[key];
@@ -77,6 +77,15 @@ export function parseCoverSearchInput(value: unknown): CoverSearchInput {
     result[key] = sanitizeField(field).slice(0, limits[key]);
   }
   if (result.title.length < 2) throw new Error('Missing event title');
+  if (Object.prototype.hasOwnProperty.call(fields, 'sourceUrl')) {
+    const sourceUrl = normalizeFacebookEventUrl(fields.sourceUrl);
+    if (!sourceUrl) throw new Error('Invalid Facebook event URL');
+    result.sourceUrl = sourceUrl;
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'preferFacebook')) {
+    if (typeof fields.preferFacebook !== 'boolean') throw new Error('Invalid cover priority');
+    result.preferFacebook = fields.preferFacebook;
+  }
   return result;
 }
 
@@ -197,7 +206,6 @@ export async function searchEventCovers(
   providers: CoverDependencies = dependencies,
 ): Promise<SearchReply> {
   const candidates: CoverCandidate[] = [];
-  if (!providers.configured()) return { candidates, status: 'not-configured' };
   const budget = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
   const seenPages = new Set<string>();
   const seenImages = new Set<string>();
@@ -210,22 +218,25 @@ export async function searchEventCovers(
     // Without place or date nothing can prove that a picture belongs to this event.
     if (!mentionsEventContext(fields, fields.location, dateVariants(fields.date).join(' '))) return { candidates, status: 'completed' };
     const query = [`"${fields.title}"`, fields.location, 'locandina'].filter(Boolean).join(' ');
-    const addCandidate = async (result: Awaited<ReturnType<typeof providers.search>>[number]) => {
-      let sourceUrl = coverUrl(result.link).href;
-      let image = result.imageUrl;
+    const addCandidate = async (result: Awaited<ReturnType<typeof providers.search>>[number], facebookOnly = false, candidateSignal = budget) => {
+      const facebookUrl = normalizeFacebookEventUrl(result.link);
+      if (facebookOnly && !facebookUrl) return;
+      let sourceUrl = facebookUrl || coverUrl(result.link).href;
+      let image = facebookUrl ? undefined : result.imageUrl;
       if (STOCK_HOSTS.test(new URL(sourceUrl).hostname) || (image && STOCK_HOSTS.test(new URL(image).hostname))) return;
       const resultText = [result.title, result.snippet, sourceUrl, image];
-      if (mentionsOtherEdition(fields.date, result.title, sourceUrl)) return;
-      let sameTitle = mentionsEventTitle(fields.title, ...resultText);
-      let sameContext = mentionsEventContext(fields, ...resultText);
+      if (!facebookUrl && mentionsOtherEdition(fields.date, result.title, sourceUrl)) return;
+      let sameTitle = !facebookUrl && mentionsEventTitle(fields.title, ...resultText);
+      let sameContext = !facebookUrl && mentionsEventContext(fields, ...resultText);
       if (!image || !sameTitle || !sameContext) {
         if (seenPages.has(sourceUrl) || seenPages.size >= MAX_SCRAPED_PAGES) return;
         seenPages.add(sourceUrl);
-        const page = await providers.fetch(sourceUrl, { signal: budget, maxBytes: 512 * 1024, kind: 'page' });
+        const page = await withCoverAbort(providers.fetch(sourceUrl, { signal: candidateSignal, maxBytes: 512 * 1024, kind: 'page' }), candidateSignal);
+        if (facebookUrl && normalizeFacebookEventUrl(page.url) !== facebookUrl) return;
         sourceUrl = coverUrl(page.url).href;
         const html = page.bytes.toString('utf8');
         sameTitle ||= mentionsEventTitle(fields.title, pageHeadline(html), sourceUrl);
-        sameContext ||= sameTitle && mentionsEventContext(fields, pageText(html), sourceUrl);
+        sameContext ||= sameTitle && mentionsEventContext(fields, pageText(html), pageHeadline(html), sourceUrl);
         if (!sameTitle || !sameContext || mentionsOtherEdition(fields.date, pageHeadline(html), sourceUrl)) return;
         image ??= extractEventImageFromHtml(html, page.url) ?? undefined;
         if (!image) return;
@@ -233,8 +244,8 @@ export async function searchEventCovers(
       const imageUrl = coverUrl(image).href;
       if (seenImages.has(imageUrl)) return;
       seenImages.add(imageUrl);
-      const bitmap = await providers.fetch(imageUrl, { signal: budget, maxBytes: MAX_COVER_BYTES, kind: 'image' });
-      const jpeg = await normalizeCoverImage(bitmap.bytes, budget);
+      const bitmap = await withCoverAbort(providers.fetch(imageUrl, { signal: candidateSignal, maxBytes: MAX_COVER_BYTES, kind: 'image' }), candidateSignal);
+      const jpeg = await normalizeCoverImage(bitmap.bytes, candidateSignal);
       const hash = createHash('sha256').update(jpeg).digest('hex');
       if (seenPixels.has(hash)) return;
       seenPixels.add(hash);
@@ -243,6 +254,26 @@ export async function searchEventCovers(
       candidates.push({ id: hash.slice(0, 24), title: candidate.title, sourceUrl: candidate.sourceUrl,
         previewUrl: `/api/event-cover-image?token=${token}` });
     };
+    if (fields.sourceUrl || fields.preferFacebook) {
+      const facebookBudget = AbortSignal.any([budget, AbortSignal.timeout(8000)]);
+      if (fields.sourceUrl) {
+        try { await addCandidate({ link: fields.sourceUrl, title: fields.title }, true, facebookBudget); }
+        catch { failed = true; }
+      }
+      if (!candidates.length && providers.configured() && !facebookBudget.aborted) {
+        try {
+          const facebookQuery = [`"${fields.title}"`, fields.location, fields.date, 'site:facebook.com/events'].filter(Boolean).join(' ');
+          const results = await withCoverAbort(providers.search(facebookQuery, { signal: facebookBudget, throwOnFailure: true }), facebookBudget);
+          for (const result of results.filter(result => normalizeFacebookEventUrl(result.link)).slice(0, 2)) {
+            if (candidates.length || facebookBudget.aborted) break;
+            try { await addCandidate(result, true, facebookBudget); }
+            catch { failed = true; }
+          }
+        } catch { failed = true; }
+      }
+      if (candidates.length) return { candidates, status: 'completed' };
+    }
+    if (!providers.configured()) return { candidates, status: failed ? 'failed' : 'not-configured' };
     // Direct image results first; when none of them can be downloaded, fall back to og:image of web pages.
     const searches = providers.imageSearch ? [providers.imageSearch, providers.search] : [providers.search];
     for (const [searchIndex, search] of searches.entries()) {

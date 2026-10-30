@@ -7,6 +7,114 @@ describe('Parallel event cover', () => {
     cy.wait(2000);
   });
 
+  for (const source of ['Fotocamera', 'Galleria']) {
+    it(`closes the mobile ${source} picker before selection and keeps it closed through the draft`, () => {
+      cy.viewport(390, 844);
+      cy.intercept('POST', '/api/crop-image', { statusCode: 204 }).as('mobileCrop');
+      cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } }).as('mobileDuplicates');
+      cy.intercept('POST', '/api/process-image', {
+        statusCode: 200,
+        delay: 1000,
+        body: { events: [{ title: 'Mobile picker draft', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' }] },
+      }).as('mobileExtraction');
+      cy.visit('/crea', {
+        failOnStatusCode: false,
+        onBeforeLoad(window) {
+          Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' });
+        },
+      });
+      cy.get('.image-upload-zone').click();
+      cy.get('.image-source-overlay').should('be.visible').contains('button', source).click();
+      cy.get('.image-source-overlay').should('not.exist');
+      cy.get(source === 'Fotocamera' ? 'input[capture="environment"]' : '.image-upload-zone input[type="file"]:not([capture])').last()
+        .selectFile('cypress/fixtures/event-poster.png', { force: true });
+      cy.contains('Immagine ricevuta!').should('be.visible');
+      cy.get('.image-source-overlay').should('not.exist');
+      cy.wait(['@mobileExtraction', '@mobileCrop', '@mobileDuplicates']);
+      cy.contains('Mobile picker draft').should('be.visible');
+      cy.get('.image-source-overlay').should('not.exist');
+    });
+  }
+
+  it('keeps the mobile picker closed after an extraction error', () => {
+    cy.viewport(390, 844);
+    cy.intercept('POST', '/api/crop-image', { statusCode: 204 });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('POST', '/api/process-image', {
+      statusCode: 503,
+      body: { code: 'VISION_SERVICE_UNAVAILABLE', error: 'Scansione temporaneamente non disponibile' },
+    }).as('mobileError');
+    cy.visit('/crea', { failOnStatusCode: false, onBeforeLoad(window) {
+      Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' });
+    } });
+    cy.get('.image-upload-zone').click();
+    cy.contains('.image-source-overlay button', 'Galleria').click();
+    cy.get('.image-source-overlay').should('not.exist');
+    cy.get('.image-upload-zone input[type="file"]:not([capture])').last().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait('@mobileError');
+    cy.contains('Scansione temporaneamente non disponibile').should('be.visible');
+    cy.get('.image-source-overlay').should('not.exist');
+  });
+
+  it('allows reopening the mobile picker after cancelling without a file', () => {
+    cy.viewport(390, 844);
+    cy.visit('/crea', { failOnStatusCode: false, onBeforeLoad(window) {
+      Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' });
+    } });
+    for (const source of ['Fotocamera', 'Galleria']) {
+      cy.get('.image-upload-zone').click();
+      cy.contains('.image-source-overlay button', source).click();
+      cy.get('.image-source-overlay').should('not.exist');
+      cy.get(source === 'Fotocamera' ? 'input[capture="environment"]' : '.image-upload-zone input[type="file"]:not([capture])').last().trigger('cancel', { force: true });
+    }
+    cy.get('.image-upload-zone').click();
+    cy.contains('.image-source-overlay button', 'Annulla').click();
+    cy.get('.image-source-overlay').should('not.exist');
+    cy.get('.image-upload-zone').click();
+    cy.get('.image-source-overlay').should('be.visible');
+  });
+
+  for (const outcome of ['image', 'empty', 'denied']) {
+    it(`closes the mobile clipboard picker before reading ${outcome} clipboard content`, () => {
+      let finishRead: () => void;
+      cy.viewport(390, 844);
+      cy.intercept('POST', '/api/crop-image', { statusCode: 204 }).as('clipboardCrop');
+      cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+      cy.intercept('POST', '/api/process-image', { statusCode: 200, body: {
+        events: [{ title: 'Clipboard picker draft', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' }],
+      } }).as('clipboardExtraction');
+      cy.fixture('event-poster.png', 'base64').then(image => {
+        cy.visit('/crea', { failOnStatusCode: false, onBeforeLoad(window) {
+          Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' });
+          cy.stub(window.navigator.clipboard, 'read').callsFake(() => new Promise((resolve, reject) => {
+            finishRead = () => {
+              if (outcome === 'denied') reject(new Error('Permission denied'));
+              else resolve(outcome === 'empty' ? [] : [{
+                types: ['image/png'],
+                getType: async () => Cypress.Blob.base64StringToBlob(image, 'image/png'),
+              }]);
+            };
+          }));
+        } });
+      });
+      cy.get('.image-upload-zone').click();
+      cy.contains('.image-source-overlay button', 'Appunti').click();
+      cy.get('.image-source-overlay').should('not.exist');
+      cy.then(() => finishRead());
+      if (outcome === 'image') {
+        cy.wait(['@clipboardExtraction', '@clipboardCrop']);
+        cy.contains('Clipboard picker draft').should('be.visible');
+      } else {
+        cy.contains(outcome === 'empty' ? 'Nessuna immagine negli appunti' : 'Impossibile leggere gli appunti').should('be.visible');
+        cy.get('.image-upload-zone').click();
+        cy.get('.image-source-overlay').should('be.visible');
+        cy.contains('.image-source-overlay button', 'Annulla').click();
+      }
+      cy.get('.image-source-overlay').should('not.exist');
+    });
+  }
+
+  (Cypress.env('mobilePickerOnly') ? describe.skip : describe)('Existing cover workflows', () => {
   it('searches web covers and keeps manual cropping available after a successful automatic crop', () => {
     cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
     cy.fixture('event-poster.png', 'base64').then(image => {
@@ -225,7 +333,7 @@ describe('Parallel event cover', () => {
     cy.then(() => expect(saves).to.eq(3));
   });
 
-  const failedScan = (multiple = false, onPreview?: () => void) => {
+  const failedScan = (multiple = false, onPreview?: () => void, sourceUrl?: string) => {
     cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'verification-rejected' } });
     cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
     cy.intercept('GET', '/api/event-cover-image?*', request => {
@@ -233,7 +341,7 @@ describe('Parallel event cover', () => {
       request.reply({ statusCode: 200, fixture: 'event-poster.jpg,null', headers: { 'Content-Type': 'image/jpeg' } });
     }).as('coverPreview');
     cy.fixture('event-poster.png', 'base64').then(image => {
-      const event = { title: 'Concerto Schio', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music', rawText: 'PRIVATE SCREENSHOT @private-user 3331234567' };
+      const event = { title: 'Concerto Schio', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music', rawText: 'PRIVATE SCREENSHOT @private-user 3331234567', ...(sourceUrl ? { sourceUrl } : {}) };
       cy.intercept('POST', '/api/process-image', { statusCode: 200, body: {
         events: multiple ? [event, { ...event, title: 'Secondo concerto', time: '21:00' }] : [event],
         previewImageDataUrl: `data:image/png;base64,${image}`,
@@ -244,11 +352,43 @@ describe('Parallel event cover', () => {
     cy.get('[data-image-crop-status="failed"]').first().should('be.visible');
   };
 
+  for (const knownLink of [true, false]) {
+    it(`recommends a Facebook cover after failed cropping ${knownLink ? 'with a canonical event link' : 'without a known link'}`, () => {
+      cy.viewport(knownLink ? 390 : 1280, 844);
+      const facebookSource = 'https://www.facebook.com/events/123456789/';
+      cy.intercept('POST', '/api/event-cover-search', request => {
+        expect(request.body.preferFacebook).to.eq(true);
+        expect(request.body.sourceUrl).to.eq(knownLink ? facebookSource : undefined);
+        expect(Object.keys(request.body).sort()).to.deep.equal(knownLink
+          ? ['date', 'location', 'preferFacebook', 'sourceUrl', 'title']
+          : ['date', 'location', 'preferFacebook', 'title']);
+        expect(JSON.stringify(request.body)).not.to.match(/PRIVATE|private-user|tracking|3331234567/);
+        request.reply({ statusCode: 200, body: { status: 'completed', candidates: [{
+          id: 'facebook-cover', title: 'Concerto Schio', sourceUrl: facebookSource, previewUrl: '/api/event-cover-image?token=fixture-facebook',
+        }] } });
+      }).as('facebookCoverSearch');
+      failedScan(false, undefined, knownLink ? 'https://m.facebook.com/events/123456789/?ref=tracking#private' : undefined);
+      cy.wait('@facebookCoverSearch');
+      cy.get('[data-cover-picker]').should('be.visible').within(() => {
+        cy.get('a').should('have.attr', 'href', facebookSource);
+        cy.get('input[type="radio"]').should('not.be.checked');
+        cy.contains('button', 'Usa immagine').should('be.disabled');
+      });
+      cy.get('img.event-image').should('not.exist');
+      cy.get('[data-cover-picker] input[type="radio"]').check();
+      cy.get('[data-cover-picker]').contains('button', 'Usa immagine').click();
+      cy.get('[data-image-crop-status="web"]').should('contain', 'Immagine scelta dal web');
+      cy.get('img.event-image').should('be.visible');
+      cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(knownLink ? 390 : 1280));
+    });
+  }
+
   for (const multiple of [false, true]) {
     it(`selects a web cover explicitly and publishes ${multiple ? 'multiple events independently' : 'only the selected JPEG'}`, () => {
       cy.viewport(multiple ? 1280 : 390, multiple ? 900 : 844);
       cy.intercept('POST', '/api/event-cover-search', request => {
-        expect(Object.keys(request.body).sort()).to.deep.equal(['date', 'location', 'title']);
+        expect(Object.keys(request.body).sort()).to.deep.equal(['date', 'location', 'preferFacebook', 'title']);
+        expect(request.body.preferFacebook).to.eq(true);
         expect(JSON.stringify(request.body)).not.to.include('PRIVATE');
         expect(JSON.stringify(request.body)).not.to.include('private-user');
         request.reply({ statusCode: 200, body: { status: 'completed', candidates: searchCandidates } });
@@ -357,14 +497,15 @@ describe('Parallel event cover', () => {
       expect(request.body.originalImageUrl).to.be.undefined;
       request.reply({ statusCode: 201, body: { id: 999 } });
     }).as('noCoverSave');
-    cy.contains('button', 'Senza copertina').click();
     cy.get('img.event-image').should('not.exist');
     cy.contains('button', /^Pubblica$/).click();
     cy.wait('@noCoverSave');
   });
 });
 
-(Cypress.env('parallelCoverOnly') ? describe.skip : describe)('Event Creation via Image - OCR & AI Testing', () => {
+});
+
+(Cypress.env('parallelCoverOnly') || Cypress.env('mobilePickerOnly') ? describe.skip : describe)('Event Creation via Image - OCR & AI Testing', () => {
   beforeEach(() => {
     cy.visit('/crea', { failOnStatusCode: false });
     cy.wait(2000);

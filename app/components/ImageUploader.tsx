@@ -24,6 +24,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
     useEffect(() => () => cancelRequest.current?.(), []);
 
     const processFile = async (file: File) => {
+        setShowSourcePicker(false);
         if (file.size > 10 * 1024 * 1024) { // 10MB limit
             onError('La locandina deve pesare meno di 10 MB.');
             return;
@@ -213,6 +214,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
     }, [isProcessing]);
 
     const handleClipboardClick = async () => {
+        setShowSourcePicker(false);
         try {
             const items = await navigator.clipboard.read();
             for (const item of items) {
@@ -239,13 +241,14 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
             ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
             ${isProcessing ? 'pointer-events-none' : ''}`}
             >
-                <input {...getInputProps()} />
+                <input {...getInputProps({ onClick: event => event.stopPropagation() })} />
 
                 {/* Hidden file inputs */}
                 <input
                     ref={fileInputRef}
                     type="file"
                     accept="image/*,application/pdf,.pdf"
+                    onClick={event => event.stopPropagation()}
                     onChange={handleFileChange}
                     className="hidden"
                 />
@@ -254,6 +257,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    onClick={event => event.stopPropagation()}
                     onChange={handleFileChange}
                     className="hidden"
                 />

@@ -59,7 +59,8 @@ The platform includes:
 ### 3.4 Scheduled automation
 
 - GET /api/cron/scrape-visitpedemontana: scrape events from visitpedemontana.com.
-- GET /api/cron/generate-instagram-story: generate/publish the weekly story image with event thumbnails, on the days/hour configured in the admin "Story Instagram" tab (checked hourly).
+- GET /api/cron/generate-instagram-story: generate/publish the weekly story image with event thumbnails, on the weekdays configured in the admin "Story Instagram" tab.
+- GET /api/cron/daily: single daily Vercel cron (18:00 UTC, Hobby-compatible) that runs scraping, Google Calendar sync and the story job in parallel.
 - GET/PUT/POST /api/admin/instagram-story: Instagram credentials and schedule settings.
 - POST /api/admin/run-cron/instagram-story: admin trigger endpoint.
 

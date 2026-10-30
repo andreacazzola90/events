@@ -6,7 +6,6 @@ export const DEFAULT_GRAPH_API_VERSION = "v22.0";
 export type InstagramStorySchedule = {
   autoPublish: boolean;
   publishDays: number[];
-  publishHour: number;
 };
 
 export type InstagramStorySettingsRecord = InstagramStorySchedule & {
@@ -26,7 +25,6 @@ export type InstagramStorySettingsUpdate = InstagramStorySchedule & {
 export const DEFAULT_INSTAGRAM_STORY_SCHEDULE: InstagramStorySchedule = {
   autoPublish: false,
   publishDays: [3],
-  publishHour: 20,
 };
 
 function tokenKey(): Buffer {
@@ -76,11 +74,6 @@ export function parseInstagramSettingsPayload(payload: unknown): InstagramStoryS
   if (!body.publishDays.every(isWeekday)) return null;
   const publishDays = [...new Set(body.publishDays as number[])].sort((a, b) => a - b);
 
-  const publishHour = body.publishHour;
-  if (typeof publishHour !== "number" || !Number.isInteger(publishHour) || publishHour < 0 || publishHour > 23) {
-    return null;
-  }
-
   let accessToken: string | null | undefined;
   if (body.accessToken === null) {
     accessToken = null;
@@ -94,7 +87,6 @@ export function parseInstagramSettingsPayload(payload: unknown): InstagramStoryS
     graphApiVersion: graphApiVersionRaw,
     autoPublish: body.autoPublish,
     publishDays,
-    publishHour,
     accessToken,
   };
 }
@@ -105,32 +97,28 @@ function zonedParts(now: Date, timeZone: string) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
     weekday: "short",
   }).formatToParts(now);
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return {
     date: `${get("year")}-${get("month")}-${get("day")}`,
-    hour: parseInt(get("hour"), 10),
     weekday: weekdays.indexOf(get("weekday")),
   };
 }
 
 /**
  * Returns the slot key (local date) when a scheduled run is due, otherwise null.
- * A slot is due from the configured hour until the end of that day, once.
+ * The daily cron decides the time; a slot is due once on each configured weekday.
  */
 export function getDueStorySlot(
   now: Date,
-  schedule: Pick<InstagramStorySchedule, "publishDays" | "publishHour">,
+  schedule: Pick<InstagramStorySchedule, "publishDays">,
   lastRunSlot: string | null,
   timeZone = INSTAGRAM_STORY_TIMEZONE,
 ): string | null {
   const local = zonedParts(now, timeZone);
   if (!schedule.publishDays.includes(local.weekday)) return null;
-  if (local.hour < schedule.publishHour) return null;
   if (lastRunSlot === local.date) return null;
   return local.date;
 }

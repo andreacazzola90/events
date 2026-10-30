@@ -65,7 +65,6 @@ model InstagramStorySettings {
   graphApiVersion      String    @default("v22.0")
   autoPublish          Boolean   @default(false)
   publishDays          Int[]     @default([3])
-  publishHour          Int       @default(20)
   lastRunSlot          String?
   lastRunAt            DateTime?
   lastMediaId          String?

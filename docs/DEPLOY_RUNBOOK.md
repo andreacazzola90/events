@@ -185,9 +185,11 @@ Run smoke checks:
 
 Daily scraping requires `Authorization: Bearer <CRON_SECRET>` for Vercel scheduling, or configured legacy `CRON_SECRET_KEY`. Both absent/empty fails closed. The admin scraper proxy prefers CRON_SECRET then KEY. Other cron endpoints retain `Authorization: Bearer <CRON_SECRET_KEY>`.
 
-The Instagram story cron is the exception: it accepts `CRON_SECRET` (preferred by Vercel) or legacy `CRON_SECRET_KEY`, and is invoked hourly (requires the Vercel Pro plan); it only generates/publishes on the days and hour set in the admin tab (Europe/Rome, default Wednesday 20:00), once per day. Configure at least one of these server-side secrets.
+Vercel Hobby only allows daily cron jobs, so [vercel.json](../vercel.json) defines a single cron, `GET /api/cron/daily` at 18:00 UTC (Vercel may start it any time within that hour). It calls all jobs below in parallel with the same bearer token. The Instagram story cron, the Google Calendar sync and the dispatcher accept `CRON_SECRET` (sent by Vercel) or legacy `CRON_SECRET_KEY`. The story only generates/publishes on the weekdays set in the admin tab (Europe/Rome, default Wednesday), once per day. Configure at least one of these server-side secrets.
 
 Endpoints:
+- GET /api/cron/daily (Vercel scheduled entry point)
+- GET /api/cron/sync-google-calendar
 - GET /api/cron/scrape-visitpedemontana
 - GET /api/cron/generate-instagram-story
 - POST /api/admin/run-cron/instagram-story (admin session required)
@@ -279,8 +281,8 @@ The Google grant requests `openid`, `email`, `https://www.googleapis.com/auth/ca
 - Database uniqueness and stable Google event IDs prevent duplicates during retries. Temporary errors use backoff and persistent pending records. Expired or revoked grants preserve pending deliveries until reconnection; explicit disconnection cancels them.
 - The Profile selector displays each owned Google calendar's actual name and color. Selecting a different calendar affects future or undelivered events; already created events are not moved.
 - Disconnecting Google cancels pending deliveries and removes stored credentials; already inserted Google events remain in the user's calendar. Remote revocation is attempted after disconnect.
-- `GET /api/cron/sync-google-calendar` requires `Authorization: Bearer <CRON_SECRET_KEY>` and refuses to run if the secret is missing. Admins can also use same-origin `POST /api/cron/sync-google-calendar` with their session.
-- The Vercel retry job runs daily at 04:30 UTC, preserving daily cron compatibility. For timely recovery and higher volume, schedule the protected endpoint every five minutes using a supported Vercel plan or an external scheduler. Each run is time-bounded; remaining deliveries stay queued.
+- `GET /api/cron/sync-google-calendar` requires `Authorization: Bearer <CRON_SECRET or CRON_SECRET_KEY>` and refuses to run if the secret is missing. Admins can also use same-origin `POST /api/cron/sync-google-calendar` with their session.
+- The retry job runs once a day at 18:00 UTC through `GET /api/cron/daily`, preserving daily cron compatibility. For timely recovery and higher volume, schedule the protected endpoint every five minutes using a supported Vercel plan or an external scheduler. Each run is time-bounded; remaining deliveries stay queued.
 
 ### Verification
 

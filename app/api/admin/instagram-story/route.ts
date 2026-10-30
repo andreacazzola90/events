@@ -23,7 +23,6 @@ function serialize(record: StoredSettings) {
     graphApiVersion: record?.graphApiVersion ?? DEFAULT_GRAPH_API_VERSION,
     autoPublish: record?.autoPublish ?? DEFAULT_INSTAGRAM_STORY_SCHEDULE.autoPublish,
     publishDays: record?.publishDays ?? DEFAULT_INSTAGRAM_STORY_SCHEDULE.publishDays,
-    publishHour: record?.publishHour ?? DEFAULT_INSTAGRAM_STORY_SCHEDULE.publishHour,
     timeZone: INSTAGRAM_STORY_TIMEZONE,
     lastRunSlot: record?.lastRunSlot ?? null,
     lastRunAt: record?.lastRunAt ?? null,
@@ -86,7 +85,6 @@ export async function PUT(request: NextRequest) {
       graphApiVersion: settings.graphApiVersion,
       autoPublish: settings.autoPublish,
       publishDays: settings.publishDays,
-      publishHour: settings.publishHour,
       ...(accessTokenEncrypted !== undefined ? { accessTokenEncrypted } : {}),
     };
 

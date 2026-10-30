@@ -17,11 +17,16 @@ async function sync() {
 }
 
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET_KEY;
-  if (!secret) return NextResponse.json({ error: "Cron non configurato" }, { status: 503 });
-  const expected = Buffer.from(`Bearer ${secret}`);
+  const secrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_KEY].filter(
+    (value): value is string => Boolean(value),
+  );
+  if (!secrets.length) return NextResponse.json({ error: "Cron non configurato" }, { status: 503 });
   const received = Buffer.from(request.headers.get("authorization") || "");
-  if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+  const authorized = secrets.some((secret) => {
+    const expected = Buffer.from(`Bearer ${secret}`);
+    return received.length === expected.length && timingSafeEqual(received, expected);
+  });
+  if (!authorized) {
     return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
   }
   return sync();

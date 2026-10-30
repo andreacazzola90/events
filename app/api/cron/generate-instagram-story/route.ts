@@ -448,13 +448,13 @@ async function publishInstagramStory(
 }
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET || process.env.CRON_SECRET_KEY;
-  if (!cronSecret) {
+  const cronSecrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_KEY].filter(Boolean);
+  if (!cronSecrets.length) {
     return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 503 });
   }
 
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecrets.some((secret) => authHeader === `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -472,23 +472,13 @@ export async function GET(request: NextRequest) {
     let slot: string | null = null;
     if (!force) {
       slot = getDueStorySlot(now, schedule, record?.lastRunSlot ?? null);
-      // Without the settings table the slot cannot be persisted: only run in the exact hour.
-      const exactHour =
-        Number(
-          new Intl.DateTimeFormat("en-GB", {
-            timeZone: INSTAGRAM_STORY_TIMEZONE,
-            hour: "2-digit",
-            hourCycle: "h23",
-          }).format(now),
-        ) === schedule.publishHour;
-      const due = slot !== null && (available ? await claimStorySlot(slot, now, autoPublish) : exactHour);
+      const due = slot !== null && (available ? await claimStorySlot(slot, now, autoPublish) : true);
       if (!due) {
         return NextResponse.json({
           status: "skipped",
           reason: "not_scheduled",
           schedule: {
             publishDays: schedule.publishDays,
-            publishHour: schedule.publishHour,
             timeZone: INSTAGRAM_STORY_TIMEZONE,
           },
         });

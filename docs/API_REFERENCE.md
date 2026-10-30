@@ -392,6 +392,13 @@ curl -X POST "http://localhost:3000/api/process-link" \
 
 ## 5) Cron and admin
 
+### GET /api/cron/daily
+- File: [app/api/cron/daily/route.ts](../app/api/cron/daily/route.ts)
+- The only Vercel cron (`0 18 * * *` in [vercel.json](../vercel.json)), compatible with the Hobby plan's one-run-per-day limit.
+- Calls in parallel, forwarding the same bearer token: `scrape-visitpedemontana`, `sync-google-calendar`, `generate-instagram-story` (each runs in its own function with its own `maxDuration`).
+- Accepts `CRON_SECRET` or `CRON_SECRET_KEY`; 503 when neither is configured, 401 for an invalid token.
+- Returns `{ status: "success" | "partial-error", failed: [...], jobs: [{ key, ok, httpStatus, data }] }`; a failing job does not stop the others.
+
 ### GET /api/cron/scrape-visitpedemontana
 - File: [app/api/cron/scrape-visitpedemontana/route.ts](../app/api/cron/scrape-visitpedemontana/route.ts)
 - Purpose: scrape and ingest events from visitpedemontana source
@@ -407,7 +414,8 @@ curl -X GET "http://localhost:3000/api/cron/scrape-visitpedemontana" \
 ### GET /api/cron/generate-instagram-story
 - File: [app/api/cron/generate-instagram-story/route.ts](../app/api/cron/generate-instagram-story/route.ts)
 - Purpose: build the weekly story image (events Thursday → Wednesday, with poster thumbnails; events that do not fit are summarized as "+ altri N eventi") and optionally publish it to the Instagram Graph API
-- Vercel calls it every hour (`5 * * * *` in [vercel.json](../vercel.json)); it only runs on the days/hour (Europe/Rome) configured in the admin "Story Instagram" tab, once per day. Other calls return `{ "status": "skipped", "reason": "not_scheduled" }`.
+- Called once a day by [GET /api/cron/daily](#get-apicrondaily); it only runs on the weekdays (Europe/Rome) configured in the admin "Story Instagram" tab, once per day. Other calls return `{ "status": "skipped", "reason": "not_scheduled" }`.
+- Accepts `CRON_SECRET` or legacy `CRON_SECRET_KEY`.
 - Query params: `force=1` bypasses the schedule (manual runs); `publish=1` / `publish=0` overrides the saved auto-publish setting.
 - Credentials come from the admin tab (token stored AES-256-GCM encrypted) and fall back to the `INSTAGRAM_*` env vars.
 - Requires a bearer token matching `CRON_SECRET` or legacy `CRON_SECRET_KEY`; returns 503 when neither is configured and 401 for an invalid token.
@@ -422,7 +430,7 @@ curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
 ### GET | PUT | POST /api/admin/instagram-story
 - File: [app/api/admin/instagram-story/route.ts](../app/api/admin/instagram-story/route.ts)
 - Admin session required.
-- GET: current story settings (`igUserId`, `hasAccessToken`, `graphApiVersion`, `autoPublish`, `publishDays` 0=Sunday…6=Saturday, `publishHour`, last run/media/error). The token is never returned.
+- GET: current story settings (`igUserId`, `hasAccessToken`, `graphApiVersion`, `autoPublish`, `publishDays` 0=Sunday…6=Saturday, last run/media/error). The token is never returned.
 - PUT: saves settings. `accessToken` omitted keeps the stored token, `null` removes it, a string replaces it (encrypted with `INSTAGRAM_TOKEN_SECRET_KEY` or `NEXTAUTH_SECRET_KEY`).
 - POST: checks the saved credentials against the Graph API and returns `{ ok, username }`.
 - Returns 503 until the `InstagramStorySettings` migration is applied.
@@ -490,7 +498,7 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 - Existing Google events are not deleted.
 
 ### GET /api/cron/sync-google-calendar
-- Requires `CRON_SECRET_KEY` bearer authorization; missing configuration returns 503, invalid authorization returns 401.
+- Requires `CRON_SECRET` or `CRON_SECRET_KEY` bearer authorization; missing configuration returns 503, invalid authorization returns 401.
 - Drains eligible delivery records with concurrency leases and a bounded execution budget.
 - Returns `{ "delivered": 0, "skipped": 0, "retried": 0 }` counters.
 - Same-origin POST is also available to authenticated admins.

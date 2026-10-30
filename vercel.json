@@ -17,20 +17,15 @@
     },
     "app/api/cron/generate-instagram-story/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/daily/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
     {
-      "path": "/api/cron/scrape-visitpedemontana",
-      "schedule": "15 4 * * *"
-    },
-    {
-      "path": "/api/cron/sync-google-calendar",
-      "schedule": "30 4 * * *"
-    },
-    {
-      "path": "/api/cron/generate-instagram-story",
-      "schedule": "5 * * * *"
+      "path": "/api/cron/daily",
+      "schedule": "0 18 * * *"
     }
   ],
   "build": {

@@ -9,7 +9,6 @@ type InstagramSettings = {
   graphApiVersion: string;
   autoPublish: boolean;
   publishDays: number[];
-  publishHour: number;
   timeZone: string;
   lastRunSlot: string | null;
   lastRunAt: string | null;
@@ -42,7 +41,6 @@ export default function InstagramStoryTab() {
   const [graphApiVersion, setGraphApiVersion] = useState("v22.0");
   const [autoPublish, setAutoPublish] = useState(false);
   const [publishDays, setPublishDays] = useState<number[]>([3]);
-  const [publishHour, setPublishHour] = useState(20);
   const [busy, setBusy] = useState<"save" | "test" | "preview" | "publish" | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -53,7 +51,6 @@ export default function InstagramStoryTab() {
     setGraphApiVersion(data.graphApiVersion);
     setAutoPublish(data.autoPublish);
     setPublishDays(data.publishDays);
-    setPublishHour(data.publishHour);
     setAccessToken("");
     setRemoveToken(false);
   }, []);
@@ -92,7 +89,6 @@ export default function InstagramStoryTab() {
           graphApiVersion,
           autoPublish,
           publishDays,
-          publishHour,
           ...(removeToken ? { accessToken: null } : accessToken.trim() ? { accessToken } : {}),
         }),
       });
@@ -257,8 +253,9 @@ export default function InstagramStoryTab() {
       <section aria-labelledby="instagram-schedule-title" className="border-t border-white/10 pt-7">
         <h3 id="instagram-schedule-title" className="mb-1 text-lg font-bold">Programmazione</h3>
         <p className="mb-5 max-w-3xl text-sm text-gray-400">
-          Nei giorni e all’ora scelti ({settings.timeZone}) la story viene rigenerata con gli eventi da giovedì a
-          mercoledì. Se la pubblicazione automatica è attiva, viene anche pubblicata su Instagram.
+          Il cron giornaliero parte tra le 18:00 e le 19:00 UTC (19–20 in inverno, 20–21 in estate a Roma). Nei
+          giorni scelti la story viene rigenerata con gli eventi da giovedì a mercoledì e, se la pubblicazione
+          automatica è attiva, pubblicata su Instagram.
         </p>
         <label className="mb-5 flex items-center gap-3 text-sm font-semibold text-white">
           <input type="checkbox" checked={autoPublish} onChange={(event) => setAutoPublish(event.target.checked)} />
@@ -288,18 +285,6 @@ export default function InstagramStoryTab() {
             <p role="alert" className="mb-0 mt-2 text-sm text-red-300">Scegli almeno un giorno.</p>
           )}
         </fieldset>
-        <label className="block max-w-[12rem] text-xs font-semibold text-gray-300">
-          Ora
-          <select
-            value={publishHour}
-            onChange={(event) => setPublishHour(Number(event.target.value))}
-            className={inputClass}
-          >
-            {Array.from({ length: 24 }, (_, hour) => (
-              <option key={hour} value={hour}>{`${String(hour).padStart(2, "0")}:00`}</option>
-            ))}
-          </select>
-        </label>
         <dl className="mt-6 grid gap-2 text-sm sm:grid-cols-[12rem_minmax(0,1fr)]">
           <dt className="text-gray-400">Ultima esecuzione</dt>
           <dd className="mb-0 text-gray-200">

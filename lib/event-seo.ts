@@ -97,11 +97,14 @@ export function getEventJsonLd(event: EventSeoInput) {
     name,
     url: siteUrl(getEventPath(event)),
     startDate,
+    // Google's documented default; the model has no cancellation/postponement state.
+    eventStatus: 'https://schema.org/EventScheduled',
     ...(description ? { description } : {}),
     ...(image ? { image: [image] } : {}),
     location: {
       '@type': 'Place',
       name: location,
+      address: location,
       ...(hasCoordinates ? { geo: { '@type': 'GeoCoordinates', latitude: event.latitude, longitude: event.longitude } } : {}),
     },
     ...(organizer ? { organizer: { '@type': 'Organization', name: organizer } } : {}),

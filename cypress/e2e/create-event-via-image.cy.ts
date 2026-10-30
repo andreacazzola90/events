@@ -58,9 +58,11 @@ describe('Parallel event cover', () => {
 
   it('allows reopening the mobile picker after cancelling without a file', () => {
     cy.viewport(390, 844);
+    cy.intercept('GET', '/api/auth/session').as('mobileSessionReady');
     cy.visit('/crea', { failOnStatusCode: false, onBeforeLoad(window) {
       Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' });
     } });
+    cy.wait('@mobileSessionReady');
     for (const source of ['Fotocamera', 'Galleria']) {
       cy.get('.image-upload-zone').click();
       cy.contains('.image-source-overlay button', source).click();
@@ -267,6 +269,7 @@ describe('Parallel event cover', () => {
         cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(390));
         cy.screenshot('draft-image-fallback-mobile', { overwrite: true, capture: 'viewport' });
       }
+      if (outcome === 'manual') cy.contains('button', 'Salva modifiche').click();
       if (outcome !== 'original') cy.get('img.event-image').first().invoke('attr', 'src').then(source => { selectedCover = source; });
       cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.enabled').click();
       cy.wait('@parallelSave').its('response.statusCode').should('eq', 201);

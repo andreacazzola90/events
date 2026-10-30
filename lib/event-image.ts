@@ -36,7 +36,7 @@ export function extractEventImageFromHtml(html: string, pageUrl: string): string
   for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
     const key = (getAttribute(tag, 'property') ?? getAttribute(tag, 'name'))?.toLowerCase();
     const source = key === 'og:image' ? 'og-image' : key === 'twitter:image' ? 'twitter-image' : null;
-    const imageUrl = getAttribute(tag, 'content');
+    const imageUrl = getAttribute(tag, 'content')?.replace(/&(?:amp|#0*38|#x0*26);/gi, '&');
     if (source && imageUrl) candidates.push({ url: imageUrl, source });
   }
 

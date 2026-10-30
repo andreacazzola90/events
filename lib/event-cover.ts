@@ -200,6 +200,26 @@ function pageHeadline(html: string): string {
   return values.join(' ').slice(0, 2000);
 }
 
+function conflictsWithEventDate(date: string, html: string): boolean {
+  const expected = date.match(/^20\d{2}-\d{2}-\d{2}/)?.[0];
+  if (!expected) return false;
+  const text = pageText(html);
+  const dates = [...text.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map(match => match[1]);
+  for (const match of text.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/g)) {
+    dates.push(`${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`);
+  }
+  for (const tag of html.match(/<time\b[^>]*>/gi) ?? []) {
+    const value = tag.match(/\bdatetime\s*=\s*["'](20\d{2}-\d{2}-\d{2})/i)?.[1];
+    if (value) dates.push(value);
+  }
+  const writtenDate = new RegExp(`\\b(\\d{1,2})\\s+(${MONTHS.join('|')})\\s+(20\\d{2})\\b`, 'gi');
+  for (const match of text.matchAll(writtenDate)) {
+    const month = String(MONTHS.indexOf(match[2].toLowerCase()) + 1).padStart(2, '0');
+    dates.push(`${match[3]}-${month}-${match[1].padStart(2, '0')}`);
+  }
+  return dates.length > 0 && !dates.includes(expected);
+}
+
 export async function searchEventCovers(
   input: CoverSearchInput,
   signal: AbortSignal,
@@ -225,7 +245,7 @@ export async function searchEventCovers(
       let image = facebookUrl ? undefined : result.imageUrl;
       if (STOCK_HOSTS.test(new URL(sourceUrl).hostname) || (image && STOCK_HOSTS.test(new URL(image).hostname))) return;
       const resultText = [result.title, result.snippet, sourceUrl, image];
-      if (!facebookUrl && mentionsOtherEdition(fields.date, result.title, sourceUrl)) return;
+      if (mentionsOtherEdition(fields.date, result.title, sourceUrl)) return;
       let sameTitle = !facebookUrl && mentionsEventTitle(fields.title, ...resultText);
       let sameContext = !facebookUrl && mentionsEventContext(fields, ...resultText);
       if (!image || !sameTitle || !sameContext) {
@@ -235,6 +255,8 @@ export async function searchEventCovers(
         if (facebookUrl && normalizeFacebookEventUrl(page.url) !== facebookUrl) return;
         sourceUrl = coverUrl(page.url).href;
         const html = page.bytes.toString('utf8');
+        if (facebookUrl && (/<form\b[^>]*(?:\bid\s*=\s*["']login_form["']|\baction\s*=\s*["'][^"']*\/login(?:[/?#"']|\.php))/i.test(html) ||
+          conflictsWithEventDate(fields.date, html))) return;
         sameTitle ||= mentionsEventTitle(fields.title, pageHeadline(html), sourceUrl);
         sameContext ||= sameTitle && mentionsEventContext(fields, pageText(html), pageHeadline(html), sourceUrl);
         if (!sameTitle || !sameContext || mentionsOtherEdition(fields.date, pageHeadline(html), sourceUrl)) return;
@@ -243,9 +265,9 @@ export async function searchEventCovers(
       }
       const imageUrl = coverUrl(image).href;
       if (seenImages.has(imageUrl)) return;
-      seenImages.add(imageUrl);
       const bitmap = await withCoverAbort(providers.fetch(imageUrl, { signal: candidateSignal, maxBytes: MAX_COVER_BYTES, kind: 'image' }), candidateSignal);
       const jpeg = await normalizeCoverImage(bitmap.bytes, candidateSignal);
+      seenImages.add(imageUrl);
       const hash = createHash('sha256').update(jpeg).digest('hex');
       if (seenPixels.has(hash)) return;
       seenPixels.add(hash);
@@ -257,7 +279,7 @@ export async function searchEventCovers(
     if (fields.sourceUrl || fields.preferFacebook) {
       const facebookBudget = AbortSignal.any([budget, AbortSignal.timeout(8000)]);
       if (fields.sourceUrl) {
-        try { await addCandidate({ link: fields.sourceUrl, title: fields.title }, true, facebookBudget); }
+        try { await addCandidate({ link: fields.sourceUrl, title: fields.title, snippet: '' }, true, facebookBudget); }
         catch { failed = true; }
       }
       if (!candidates.length && providers.configured() && !facebookBudget.aborted) {

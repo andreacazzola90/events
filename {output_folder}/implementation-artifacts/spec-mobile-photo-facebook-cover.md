@@ -2,7 +2,7 @@
 title: 'Creazione da foto mobile e copertina Facebook consigliata'
 type: 'bugfix'
 created: '2026-10-30'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '98d679df763bd51af6de817de62634eba0bd414f'
 context: []
 ---
@@ -51,12 +51,12 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `cypress/e2e/create-event-via-image.cy.ts` -- aggiungere regressione mobile che riproduca il click reale dell'input nascosto e verifichi chiusura immediata e dopo estrazione, senza chiamate reali ai modelli.
-- [ ] `app/components/ImageUploader.tsx` -- impedire propagazione dei click degli input e chiudere il selettore all'ingresso del flusso di elaborazione; verificare anche gli appunti.
-- [ ] `lib/event-cover.test.mjs` -- coprire ordine Facebook/priorita, input sourceUrl limitato e opzionale, pagina non pertinente, errore di rete e fallback senza provider configurato.
-- [ ] `lib/event-cover.ts` -- accettare solo un link pubblico Facebook events validato e limitato come campo opzionale; provare pagina diretta prima della ricerca, poi risultati Facebook pertinenti prima della ricerca generica, mantenendo corrispondenza evento e protezioni di rete.
-- [ ] `app/components/EventCoverPicker.tsx`, `app/components/EventDisplay.tsx` -- inoltrare solo il link evento ammissibile e includerlo nelle dipendenze della ricerca, senza testo privato e senza sostituire automaticamente immagini confermate.
-- [ ] `cypress/e2e/create-event-via-image.cy.ts` -- adeguare asserzioni sui campi consentiti e verificare proposta Facebook dopo crop fallito, conferma manuale e indipendenza di eventi multipli.
+- [x] `cypress/e2e/create-event-via-image.cy.ts` -- aggiungere regressione mobile che riproduca il click reale dell'input nascosto e verifichi chiusura immediata e dopo estrazione, senza chiamate reali ai modelli.
+- [x] `app/components/ImageUploader.tsx` -- impedire propagazione dei click degli input e chiudere il selettore all'ingresso del flusso di elaborazione; verificare anche gli appunti.
+- [x] `lib/event-cover.test.mjs` -- coprire ordine Facebook/priorita, input sourceUrl limitato e opzionale, pagina non pertinente, errore di rete e fallback senza provider configurato.
+- [x] `lib/event-cover.ts` -- accettare solo un link pubblico Facebook events validato e limitato come campo opzionale; provare pagina diretta prima della ricerca, poi risultati Facebook pertinenti prima della ricerca generica, mantenendo corrispondenza evento e protezioni di rete.
+- [x] `app/components/EventCoverPicker.tsx`, `app/components/EventDisplay.tsx` -- inoltrare solo il link evento ammissibile e includerlo nelle dipendenze della ricerca, senza testo privato e senza sostituire automaticamente immagini confermate.
+- [x] `cypress/e2e/create-event-via-image.cy.ts` -- adeguare asserzioni sui campi consentiti e verificare proposta Facebook dopo crop fallito, conferma manuale e indipendenza di eventi multipli.
 
 **Acceptance Criteria:**
 - Given una creazione da foto su mobile, when viene selezionata la foto, then la barra fotocamera/galleria scompare e non ricompare durante elaborazione o bozza.
@@ -79,4 +79,33 @@ La pagina Facebook va letta lato server attraverso fetchCoverResource, senza dip
 - `npx eslint app/components/ImageUploader.tsx app/components/EventCoverPicker.tsx app/components/EventDisplay.tsx lib/event-cover.ts` -- nessun nuovo errore.
 - `npx tsc --noEmit` -- nessun errore introdotto.
 
-Controllare anche il viewport mobile 390x844 e desktop, senza pubblicare eventi o richiedere inferenze reali. Lo stato attuale e pianificazione: nessuna correzione applicata e nessun test comportamentale ancora eseguito.
+Esiti: 46 test Node e 24 test Cypress isolati passati; 4 test legacy esclusi intenzionalmente. Cypress finale usa anche `requestTimeout=10000`. ESLint e TypeScript passati. Viewport mobile 390x844 e desktop verificati, con conferma esplicita e nessuna immagine originale dopo il fallimento. Nessuna inferenza reale o pubblicazione reale. La pagina Facebook pubblica effettiva non e stata verificata: login, rate limit e markup non accessibile possono impedire il recupero e attivare il fallback.
+
+La priorita e inoltrata come booleano opzionale `preferFacebook`, solo dopo crop fallito; `sourceUrl` e opzionale e viene ridotto al link canonico senza parametri. Il tentativo Facebook usa al massimo 8 secondi del budget totale di 20 secondi. I test attendono l'inizializzazione client nel caso annullamento e salvano i dettagli manuali prima della pubblicazione simulata. Avvisi di hydration nel layout preesistenti non modificati.
+
+Revisione completata con controlli indipendenti di difetti, casi limite e criteri approvati. Risolti con regressioni: separatori HTML-escaped nelle immagini firmate, titoli di ricerca di altra edizione, date esplicitamente incompatibili e moduli login nelle pagine Facebook, retry nel fallback dopo download fallito. Riconosciuta la data italiana con slash per non confonderla con un timestamp di pubblicazione diverso. La verifica della corrispondenza resta euristica e non sostituisce la conferma dell'utente.
+
+## Suggested Review Order
+
+**Flusso da foto**
+
+- Chiude il selettore prima dell'elaborazione e isola i click degli input.
+	[ImageUploader.tsx:26](../../app/components/ImageUploader.tsx#L26)
+- Attiva la priorita Facebook soltanto dopo un ritaglio fallito.
+	[EventDisplay.tsx:472](../../app/components/EventDisplay.tsx#L472)
+- Inoltra campi limitati e conserva conferma esplicita e annullamento.
+	[EventCoverPicker.tsx:19](../../app/components/EventCoverPicker.tsx#L19)
+
+**Ricerca E Validazione**
+
+- Prova la pagina Facebook prima della ricerca generica, senza credenziali personali.
+	[event-cover.ts:223](../../lib/event-cover.ts#L223)
+- Accetta soltanto link evento canonici e rimuove parametri di tracciamento.
+	[event-image.ts:16](../../lib/event-image.ts#L16)
+
+**Regressioni**
+
+- Copre selezione mobile, conferma delle copertine e conservazione delle modifiche manuali.
+	[create-event-via-image.cy.ts:10](../../cypress/e2e/create-event-via-image.cy.ts#L10)
+- Verifica candidati, fallback, login, date e confine di rete.
+	[event-cover.test.mjs:1](../../lib/event-cover.test.mjs#L1)

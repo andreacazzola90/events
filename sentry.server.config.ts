@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import { redactTelegramTelemetry } from './lib/telegram-connection';
+import { redactInstagramTelemetry } from './lib/instagram-scan-connection';
 
 const environment = process.env.VERCEL_ENV || process.env.NODE_ENV;
 
@@ -12,9 +13,9 @@ Sentry.init({
   environment,
   release,
   tracesSampleRate: 0.0,
-  beforeBreadcrumb: breadcrumb => redactTelegramTelemetry(breadcrumb),
-  beforeSend: event => redactTelegramTelemetry(event),
-  beforeSendTransaction: event => redactTelegramTelemetry(event),
+  beforeBreadcrumb: breadcrumb => redactInstagramTelemetry(redactTelegramTelemetry(breadcrumb)),
+  beforeSend: event => redactInstagramTelemetry(redactTelegramTelemetry(event)),
+  beforeSendTransaction: event => redactInstagramTelemetry(redactTelegramTelemetry(event)),
 });
 
 Sentry.setTag('runtime', 'node');

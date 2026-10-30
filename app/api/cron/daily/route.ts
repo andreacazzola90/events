@@ -10,6 +10,7 @@ const DAILY_CRON_JOBS = [
   { key: "visitpedemontana", path: "/api/cron/scrape-visitpedemontana" },
   { key: "google-calendar", path: "/api/cron/sync-google-calendar" },
   { key: "instagram-story", path: "/api/cron/generate-instagram-story" },
+  { key: "instagram-scan", path: "/api/cron/scan-instagram" },
 ] as const;
 
 const JOB_TIMEOUT_MS = 295_000;

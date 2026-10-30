@@ -50,6 +50,35 @@ Review patch verification: 216 Node tests passed across Telegram/cron, Google Ca
 
 Official sources: [Bot API](https://core.telegram.org/bots/api), [setWebhook](https://core.telegram.org/bots/api/methods/setwebhook), [getMe](https://core.telegram.org/bots/api/methods/getme), [getChatMember](https://core.telegram.org/bots/api/methods/getchatmember), [getFile](https://core.telegram.org/bots/api/methods/getfile), [privacy and delivery FAQ](https://core.telegram.org/bots/faq), verified 2026-10-29. No promises of account-level access, past history, stories, Facebook, Instagram or WhatsApp are made.
 
+### Scansione Instagram: configurazione e limiti (2026-10-30)
+
+Integrazione implementata e testata con mock, non attivata ne certificata live. Le stories di account di terzi non sono disponibili tramite API ufficiali Meta: si scansionano solo le stories dell'account collegato e i post pubblici di account professionali tramite Business Discovery.
+
+Prerequisiti manuali:
+
+1. Rivedere e applicare [la migrazione preparata](../prisma/migrations/20261030170000_add_instagram_scanning/migration.sql) (`InstagramScanConnection`, `InstagramScanSource`, `InstagramScanItem`, `InstagramPublication`). Non e applicata a nessun database.
+2. Creare un'app Meta (tipo Business) con prodotto Facebook Login for Business. Redirect URI OAuth valido: `<origine>/api/admin/instagram-scan/oauth/callback`, dove l'origine e `INSTAGRAM_SCAN_REDIRECT_ORIGIN` oppure `NEXTAUTH_URL` (HTTPS; HTTP solo per localhost). L'header Host non viene mai usato.
+3. Permessi: `instagram_basic`, `pages_show_list`, `pages_read_engagement`, `business_management`. Per Business Discovery su account non gestiti servono App Review e accesso avanzato (Advanced Access) di `instagram_basic`/`pages_read_engagement`; fino ad allora funziona solo con utenti con ruolo nell'app.
+4. L'account Instagram dell'admin deve essere professionale (Business/Creator) e collegato a una Pagina Facebook gestita.
+5. Variabili d'ambiente server-only: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_SCAN_ENCRYPTION_KEY` (esattamente 64 caratteri esadecimali, es. `openssl rand -hex 32`; nessun default, fail closed). Opzionali: `INSTAGRAM_SCAN_REDIRECT_ORIGIN`, `INSTAGRAM_GRAPH_API_VERSION` (default `v22.0`). Servono anche `CRON_SECRET` (o `CRON_SECRET_KEY`) e la configurazione AI esistente.
+6. Da `/cron` (sessione admin) premere "Collega Instagram", poi aggiungere le fonti indicando username e consenso esplicito.
+
+Limiti e comportamento:
+
+- Token long-lived ~60 giorni, senza refresh automatico: alla scadenza (o errore Graph 190) la connessione passa a `expired` e serve ricollegarla. La UI segnala la scadenza imminente.
+- Max 12 media per esecuzione, max 20 fonti, post degli ultimi 7 giorni (10 piu recenti per fonte), stories delle ultime 24 h, media max 4 MiB solo da host `*.cdninstagram.com`/`*.fbcdn.net`, budget 260 s.
+- Ogni media e registrato una sola volta (`connectionId + mediaId`); i fallimenti transitori sono ritentati nei run successivi fino a 3 tentativi, poi chiusi come `failed`. Caroselli di soli video senza thumbnail sono scartati. Stories oltre il limite possono scadere prima dell'esecuzione successiva.
+- Pubblicazione solo di eventi con evidenza coerente (stessa validazione di Telegram), deduplica con ricevute e `findDuplicateEvent`; copertina solo da crop verificato e solo per post con un singolo evento.
+- Lo scambio OAuth invia `client_secret` in query verso Graph (come documentato da Meta); Sentry redige token e segreti. `lastError` contiene solo codici stabili.
+- Gli errori di una fonte rendono `partial-error` il risultato del cron giornaliero.
+
+Verifica locale (provider simulati):
+
+```bash
+node --experimental-strip-types --test lib/instagram-event-scanning.test.mjs lib/telegram-event-scanning.test.mjs lib/cron-execution.test.mjs lib/daily-cron.test.mjs
+curl "https://<dominio>/api/cron/scan-instagram?dryRun=1" -H "Authorization: Bearer <CRON_SECRET>"
+```
+
 ## 2) Environments
 
 Define at least:
@@ -199,6 +228,7 @@ Endpoints:
 - GET /api/cron/sync-google-calendar
 - GET /api/cron/scrape-visitpedemontana
 - GET /api/cron/generate-instagram-story
+- GET /api/cron/scan-instagram (`?dryRun=1` per simulazione)
 - POST /api/admin/run-cron/instagram-story (admin session required)
 
 Manual trigger example:

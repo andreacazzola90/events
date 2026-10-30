@@ -20,6 +20,9 @@
     },
     "app/api/cron/daily/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/scan-instagram/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TelegramAdmin from "./TelegramAdmin";
+import InstagramScanAdmin from "./InstagramScanAdmin";
 
 type CronSource = {
   id: number;
@@ -807,6 +808,8 @@ export default function CronAdminClient() {
         </div>
 
         <TelegramAdmin />
+
+        <InstagramScanAdmin />
 
         {/* Form */}
         <div className="glass-effect rounded-2xl p-6 sm:p-8">

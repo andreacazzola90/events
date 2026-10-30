@@ -34,6 +34,7 @@ model Event {
   calendarDeliveries GoogleCalendarDelivery[]
   media       EventMedia[]
   telegramPublications TelegramPublication[]
+  instagramPublications InstagramPublication[]
 
   @@index([eventSeriesId, date, time])
 }
@@ -106,6 +107,7 @@ model User {
   googleCalendar  GoogleCalendarConnection?
   calendarDeliveries GoogleCalendarDelivery[]
   telegramConnection TelegramConnection?
+  instagramScanConnection InstagramScanConnection?
 }
 
 model TelegramConnection {
@@ -182,6 +184,75 @@ model TelegramPublication {
   event       Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
   @@index([messageId])
+}
+
+model InstagramScanConnection {
+  id              String    @id @default(cuid())
+  userId          Int       @unique
+  igUserId        String
+  username        String
+  encryptedToken  String?
+  tokenExpiresAt  DateTime?
+  status          String    @default("active")
+  lastError       String?
+  lastRunAt       DateTime?
+  lastVisited     Int       @default(0)
+  lastPublished   Int       @default(0)
+  lastDuplicates  Int       @default(0)
+  lastDiscarded   Int       @default(0)
+  lastFailed      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sources         InstagramScanSource[]
+  items           InstagramScanItem[]
+}
+
+model InstagramScanSource {
+  id            String    @id @default(cuid())
+  connectionId  String
+  username      String
+  isActive      Boolean   @default(true)
+  consentedAt   DateTime?
+  lastError     String?
+  lastScannedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  connection    InstagramScanConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, username])
+  @@index([isActive, lastScannedAt])
+}
+
+model InstagramScanItem {
+  id             String   @id @default(cuid())
+  connectionId   String
+  mediaId        String
+  kind           String
+  sourceUsername String?
+  status         String   @default("processing")
+  attempts       Int      @default(1)
+  publishedCount Int      @default(0)
+  discardedCount Int      @default(0)
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  connection     InstagramScanConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  publications   InstagramPublication[]
+
+  @@unique([connectionId, mediaId])
+  @@index([status])
+}
+
+model InstagramPublication {
+  fingerprint String   @id
+  itemId      String?
+  eventId     Int?
+  createdAt   DateTime @default(now())
+  item        InstagramScanItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  event       Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
 }
 
 model GoogleCalendarConnection {

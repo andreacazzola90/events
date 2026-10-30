@@ -54,6 +54,33 @@ HTTP 5xx, network failures and rate limits are retryable, not source revocations
 
 Official references verified on 2026-10-29: [Bot API](https://core.telegram.org/bots/api), [getMe](https://core.telegram.org/bots/api/methods/getme), [getChatMember](https://core.telegram.org/bots/api/methods/getchatmember), [setWebhook](https://core.telegram.org/bots/api/methods/setwebhook), [getFile](https://core.telegram.org/bots/api/methods/getfile), [privacy FAQ](https://core.telegram.org/bots/faq). Telegram documents a 20 MB cloud download limit; this application deliberately uses the stricter 4 MiB limit.
 
+## Scansione Instagram (2026-10-30)
+
+Implementazione: [connessione Graph/OAuth](../lib/instagram-scan-connection.ts), [store admin](../lib/instagram-scan-store.ts), [job](../lib/instagram-event-scanning.ts), [estrazione condivisa](../lib/social-event-extraction.ts). Tutte le risposte sono prive di token; gli errori sono codici stabili sanificati.
+
+### GET /api/admin/instagram-scan
+- Sessione admin (ruolo/tipo `admin` persistito). Restituisce `{ configured, connected, status, username, tokenExpiresAt, tokenExpiresSoon, lastError, lastRunAt, lastRun: { visited, published, duplicates, discarded, failed }, sources: [...] }`. Mai il token.
+
+### POST /api/admin/instagram-scan
+- Sessione admin + controllo same-origin (`Origin` deve corrispondere all'origine configurata). Body JSON `{ action, ... }`:
+  - `save-source` `{ username, consent: true }`: username `^[A-Za-z0-9._]{1,30}$` (la `@` iniziale viene rimossa); verifica via Business Discovery prima del salvataggio; consenso obbligatorio. Max 20 fonti.
+  - `pause-source` / `remove-source` `{ id }`: limitati alle fonti della connessione dell'admin. La pausa azzera il consenso.
+  - `disconnect`: elimina token e fonti; elementi elaborati e ricevute restano per la deduplica.
+
+### GET /api/admin/instagram-scan/oauth/start
+- Sessione admin. 503 se `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`/`INSTAGRAM_SCAN_ENCRYPTION_KEY` o l'origine non sono configurati. Imposta un cookie `state` httpOnly, SameSite=Lax (10 minuti) e reindirizza al dialog OAuth di Facebook Login con scope `instagram_basic,pages_show_list,pages_read_engagement,business_management`.
+
+### GET /api/admin/instagram-scan/oauth/callback
+- Sessione admin e `state` coincidente con il cookie (stesso utente). Scambia il codice in token long-lived (~60 giorni), individua il primo account Instagram professionale collegato a una Pagina, cifra il token (AES-256-GCM) e salva la connessione.
+- Reindirizza sempre a `/cron?instagram=connected|state_invalid|denied|oauth_failed|no_business_account|not_configured`, senza segreti nell'URL.
+
+### GET /api/cron/scan-instagram
+- Auth: `Authorization: Bearer <CRON_SECRET|CRON_SECRET_KEY>`; 503 se nessun segreto configurato, 401 se errato. `maxDuration` 300 s, budget interno 260 s.
+- `?dryRun=1`: nessuna scrittura (elementi, eventi, ricevute, calendario, stato connessione); restituisce `wouldPublish`.
+- Risultato: `{ status: "success"|"partial"|"partial-error"|"dry-run"|"skipped", dryRun, reason?, connections, visited, published, duplicates, discarded, failed, wouldPublish, skipped, deferred, sourceErrors, expired, imageOmitted }`.
+- Legge le stories proprie (ultime 24 h) e i post delle fonti attive con consenso via Business Discovery (ultimi 7 giorni), max 12 media per esecuzione; ogni media e registrato in `InstagramScanItem`: gli errori transitori (AI, download, budget esaurito, run interrotto da oltre 10 minuti) vengono ritentati fino a 3 tentativi totali, gli esiti deterministici (estrazione non valida, media rifiutato) sono definitivi. Un media viene avviato solo se restano almeno 77 s di budget. Lo scambio OAuth usa POST con body form, mai segreti nella query. Errore Graph 190 => connessione `expired`, job interrotto; errore su una fonte => solo quella fonte in errore.
+- Eventi creati con `origin: "instagram"`, `sourceUrl` = permalink del post oppure `https://www.instagram.com/<username>/` per le stories.
+
 ## 1) Auth
 
 ### POST /api/auth/register
@@ -407,7 +434,7 @@ curl -X POST "http://localhost:3000/api/process-link" \
 ### GET /api/cron/daily
 - File: [app/api/cron/daily/route.ts](../app/api/cron/daily/route.ts)
 - The only Vercel cron (`0 18 * * *` in [vercel.json](../vercel.json)), compatible with the Hobby plan's one-run-per-day limit.
-- Calls in parallel, forwarding the same bearer token: `scrape-visitpedemontana`, `sync-google-calendar`, `generate-instagram-story` (each runs in its own function with its own `maxDuration`).
+- Calls in parallel, forwarding the same bearer token: `scrape-visitpedemontana`, `sync-google-calendar`, `generate-instagram-story`, `scan-instagram` (each runs in its own function with its own `maxDuration`).
 - Accepts `CRON_SECRET` or `CRON_SECRET_KEY`; 503 when neither is configured, 401 for an invalid token.
 - Returns `{ status: "success" | "partial-error", failed: [...], jobs: [{ key, ok, httpStatus, data }] }`; a failing job does not stop the others.
 

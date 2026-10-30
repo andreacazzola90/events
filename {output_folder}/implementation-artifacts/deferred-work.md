@@ -14,7 +14,7 @@
 
 - Scelta S dell'utente: iniziare da Telegram con pubblicazione automatica; specifica corrente in spec-admin-social-event-scanning.md. La scelta non costituisce ancora approvazione della specifica per l'implementazione.
 - Facebook: rinviati collegamento account e scansione autorizzata di pagine, gruppi e post, anche di terzi; verificare capacita API e app review prima di promettere accesso.
-- Instagram: rinviati collegamento account, lettura di post e stories accessibili; mantenere distinta la pubblicazione di stories gia esistente.
+- Instagram: implementata (spec-admin-instagram-event-scanning.md) la scansione delle stories proprie dell'account collegato e dei post di account professionali tramite Business Discovery, con consenso per fonte; le stories di terzi non sono disponibili tramite API ufficiali e restano fuori ambito. Attivazione richiede app Meta, App Review/accesso avanzato e migrazione. Pubblicazione di stories esistente invariata e distinta.
 - WhatsApp: rinviata acquisizione autorizzata tramite API ufficiali; Business/webhook non equivalgono all'accesso universale alle chat e ai gruppi dell'account personale.
 - Telegram: sessione personale, storico e stories fuori dalla prima fase basata su bot; richiedono valutazione tecnica e autorizzazione separate. Non sostituire silenziosamente la richiesta originaria di collegare l'account personale.
 - Per tutte le fasi conservare pubblicazione automatica dei soli eventi validi, tracciabilita, privacy e prevenzione dei duplicati; nessuna ripubblicazione privata solo perche visibile all'admin.

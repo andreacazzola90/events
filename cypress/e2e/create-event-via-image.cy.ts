@@ -50,7 +50,7 @@ describe('Parallel event cover', () => {
     cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Puoi ritagliare l’immagine o cercare una copertina dal web.');
     cy.get('[data-image-crop-status="failed"]').should('contain', 'Quota gratuita AI temporaneamente esaurita.');
     cy.get('img.event-image').should('not.exist');
-    cy.contains('Nessuna immagine trovata.').scrollIntoView().should('be.visible');
+    cy.get('[data-cover-picker]').should('not.exist');
     cy.contains('button', /^Pubblica$/).should('be.enabled');
   });
 
@@ -290,7 +290,7 @@ describe('Parallel event cover', () => {
       finishSearch = () => { request.reply({ statusCode: 200, body: { status: 'completed', candidates: searchCandidates } }); resolve(); };
     }));
     failedScan();
-    cy.contains('Ricerca immagini...').scrollIntoView().should('be.visible');
+    cy.get('[data-cover-picker]').should('not.exist');
     cy.contains('button', 'Ritaglia originale').click();
     cy.contains('button', 'Applica ritaglio').should('be.enabled').click();
     cy.get('[data-image-crop-status="manual"]').should('be.visible');
@@ -329,7 +329,7 @@ describe('Parallel event cover', () => {
     });
   });
 
-  it('cancels the search when the user chooses no cover', () => {
+  it('keeps the web cover section hidden while the same-event search is running', () => {
     let searchSignal: AbortSignal | undefined;
     cy.window().then(win => {
       const originalFetch = win.fetch.bind(win);
@@ -342,15 +342,14 @@ describe('Parallel event cover', () => {
       });
     });
     failedScan();
-    cy.contains('Ricerca immagini...').scrollIntoView().should('be.visible');
-    cy.contains('button', 'Senza copertina').click();
-    cy.get('[data-cover-picker]').should('not.exist').then(() => expect(searchSignal?.aborted).to.eq(true));
+    cy.wrap(null).should(() => expect(searchSignal).to.exist);
+    cy.get('[data-cover-picker]').should('not.exist');
   });
 
   it('allows publication without an image when web search fails', () => {
     cy.intercept('POST', '/api/event-cover-search', { statusCode: 503, body: { status: 'failed', candidates: [] } });
     failedScan();
-    cy.contains('Ricerca immagini non disponibile.').scrollIntoView().should('be.visible');
+    cy.get('[data-cover-picker]').should('not.exist');
     cy.contains('button', 'Ritaglia originale').scrollIntoView().should('be.visible');
     cy.intercept('POST', '/api/events', request => {
       expect(request.headers['content-type']).to.include('application/json');

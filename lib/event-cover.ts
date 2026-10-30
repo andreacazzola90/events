@@ -97,6 +97,100 @@ export async function normalizeCoverImage(bytes: Buffer, signal: AbortSignal): P
   return jpeg;
 }
 
+const TITLE_STOPWORDS = new Set([
+  'del', 'della', 'delle', 'dei', 'degli', 'dello', 'dal', 'dalla', 'nel', 'nella', 'con', 'per', 'tra', 'fra', 'sul', 'sulla',
+  'gli', 'una', 'uno', 'the', 'and', 'for', 'with', 'evento', 'eventi', 'event', 'edizione', 'presenta', 'presentano',
+]);
+
+function relevanceText(value: string): string {
+  return ` ${value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+}
+
+function titleTokens(title: string): string[] {
+  return [...new Set(relevanceText(title).trim().split(' ').filter(token => token.length >= 3 && !TITLE_STOPWORDS.has(token)))];
+}
+
+/** True when the text clearly refers to the event title (not just a similar topic). */
+export function mentionsEventTitle(title: string, ...texts: Array<string | undefined>): boolean {
+  const haystack = relevanceText(texts.filter(Boolean).map(text => {
+    try {
+      const url = new URL(text!);
+      return `${url.hostname} ${decodeURIComponent(url.pathname)}`;
+    } catch {
+      return text!;
+    }
+  }).join(' '));
+  const tokens = titleTokens(title);
+  if (!tokens.length) {
+    const phrase = relevanceText(title).trim();
+    return phrase.length >= 2 && haystack.includes(` ${phrase} `);
+  }
+  const matched = tokens.filter(token => haystack.includes(` ${token} `)).length;
+  return tokens.length === 1 ? matched === 1 : matched >= Math.max(2, Math.ceil(tokens.length * 0.75));
+}
+
+const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+const STOCK_HOSTS = /(^|\.)(freepik|magnific|shutterstock|istockphoto|gettyimages|adobe|dreamstime|alamy|depositphotos|123rf|vecteezy|pngtree|canva|unsplash|pexels|pixabay|pinterest|etsy|amazon|ebay|aliexpress|templatemonster|envato)\./i;
+
+function dateVariants(date: string): string[] {
+  const match = date.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return [];
+  const [, year, mm, dd] = match;
+  const day = String(Number(dd));
+  const month = Number(mm);
+  if (month < 1 || month > 12) return [];
+  return [`${day} ${MONTHS[month - 1]}`, `${dd} ${MONTHS[month - 1]}`, `${dd} ${mm} ${year}`, `${day} ${month} ${year}`, `${year} ${mm} ${dd}`]
+    .map(value => relevanceText(value).trim());
+}
+
+/** True when the text also refers to the event's place or date, so homonymous events elsewhere are discarded. */
+export function mentionsEventContext(fields: Pick<CoverSearchInput, 'date' | 'location'>, ...texts: Array<string | undefined>): boolean {
+  const places = relevanceText(fields.location).trim().split(' ')
+    .filter(token => token.length >= 3 && !TITLE_STOPWORDS.has(token) && !/^\d+$/.test(token) && !['via', 'piazza', 'viale', 'corso'].includes(token));
+  const dates = dateVariants(fields.date);
+  if (!places.length && !dates.length) return false;
+  const haystack = relevanceText(texts.filter(Boolean).map(text => {
+    try {
+      const url = new URL(text!);
+      return `${url.hostname} ${decodeURIComponent(url.pathname)}`;
+    } catch {
+      return text!;
+    }
+  }).join(' '));
+  // A known place is decisive: the same title on the same day in another city is a different event.
+  if (places.length) return places.some(token => haystack.includes(` ${token} `));
+  return dates.some(value => haystack.includes(` ${value} `));
+}
+
+/** True when the text names only other years, i.e. a past or future edition of the same event. */
+export function mentionsOtherEdition(date: string, ...texts: Array<string | undefined>): boolean {
+  const year = date.match(/\b(20\d{2})-\d{2}-\d{2}\b/)?.[1];
+  if (!year) return false;
+  const years = new Set(texts.filter(Boolean).join(' ').match(/(?<![\p{L}\p{N}_])20[0-3]\d(?![\p{L}\p{N}_])/gu) ?? []);
+  return years.size > 0 && !years.has(year);
+}
+
+function pageText(html: string): string {
+  return html.slice(0, 400_000).replace(/<(script|style|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').slice(0, 60_000);
+}
+
+function pageHeadline(html: string): string {
+  const head = html.slice(0, 200_000);
+  const values: string[] = [];
+  for (const pattern of [
+    /<title[^>]*>([\s\S]*?)<\/title>/i,
+    /<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]*content=["']([^"']*)["']/i,
+    /<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["'](?:og:title|twitter:title)["']/i,
+    /<meta[^>]+(?:property|name)=["'](?:og:description|description)["'][^>]*content=["']([^"']*)["']/i,
+    /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+  ]) {
+    const match = head.match(pattern);
+    if (match?.[1]) values.push(match[1].replace(/<[^>]+>/g, ' '));
+  }
+  return values.join(' ').slice(0, 2000);
+}
+
 export async function searchEventCovers(
   input: CoverSearchInput,
   signal: AbortSignal,
@@ -111,16 +205,29 @@ export async function searchEventCovers(
   let failed = false;
   try {
     const fields = parseCoverSearchInput(input);
-    const query = [fields.title, fields.date, fields.location, 'evento locandina'].filter(Boolean).join(' ');
+    // Only images that belong to this very event (e.g. its official poster) are useful, so the query targets the
+    // exact title and every result must mention it; generic look-alike pictures are discarded.
+    // Without place or date nothing can prove that a picture belongs to this event.
+    if (!mentionsEventContext(fields, fields.location, dateVariants(fields.date).join(' '))) return { candidates, status: 'completed' };
+    const query = [`"${fields.title}"`, fields.location, 'locandina'].filter(Boolean).join(' ');
     const addCandidate = async (result: Awaited<ReturnType<typeof providers.search>>[number]) => {
       let sourceUrl = coverUrl(result.link).href;
       let image = result.imageUrl;
-      if (!image) {
+      if (STOCK_HOSTS.test(new URL(sourceUrl).hostname) || (image && STOCK_HOSTS.test(new URL(image).hostname))) return;
+      const resultText = [result.title, result.snippet, sourceUrl, image];
+      if (mentionsOtherEdition(fields.date, result.title, sourceUrl)) return;
+      let sameTitle = mentionsEventTitle(fields.title, ...resultText);
+      let sameContext = mentionsEventContext(fields, ...resultText);
+      if (!image || !sameTitle || !sameContext) {
         if (seenPages.has(sourceUrl) || seenPages.size >= MAX_SCRAPED_PAGES) return;
         seenPages.add(sourceUrl);
         const page = await providers.fetch(sourceUrl, { signal: budget, maxBytes: 512 * 1024, kind: 'page' });
         sourceUrl = coverUrl(page.url).href;
-        image = extractEventImageFromHtml(page.bytes.toString('utf8'), page.url) ?? undefined;
+        const html = page.bytes.toString('utf8');
+        sameTitle ||= mentionsEventTitle(fields.title, pageHeadline(html), sourceUrl);
+        sameContext ||= sameTitle && mentionsEventContext(fields, pageText(html), sourceUrl);
+        if (!sameTitle || !sameContext || mentionsOtherEdition(fields.date, pageHeadline(html), sourceUrl)) return;
+        image ??= extractEventImageFromHtml(html, page.url) ?? undefined;
         if (!image) return;
       }
       const imageUrl = coverUrl(image).href;

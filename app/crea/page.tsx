@@ -99,7 +99,7 @@ export default function CreaEvento() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    events: list.map(({ title, date, sourceUrl }) => ({ title, date, sourceUrl })),
+                    events: list.map(({ title, date, time, sourceUrl }) => ({ title, date, time, sourceUrl })),
                 }),
             });
             if (!response.ok || checkId !== duplicateCheckId.current) return;

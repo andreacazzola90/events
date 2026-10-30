@@ -61,7 +61,28 @@ function titlesMatch(a: string, b: string): boolean {
   return shared / new Set([...tokensA, ...tokensB]).size >= 0.6;
 }
 
-/** Same date, similar title, and start time as an existing event. */
+function sourceKey(raw?: string | null): string {
+  const value = (raw || '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    url.hostname = url.hostname.replace(/^www\./, '');
+    url.search = '';
+    return `${url.hostname.toLowerCase()}${url.pathname.replace(/\/+$/, '')}${url.hash}`;
+  } catch {
+    return value.replace(/\/+$/, '');
+  }
+}
+
+function sameStartOrUnknown(existing?: string | null, candidate?: string | null): boolean {
+  // A draft without a time (e.g. extracted without it) still duplicates a same-day event with a time.
+  return !(candidate || '').trim() || sameEventStartTime(existing, candidate);
+}
+
+/**
+ * Same date and start time as an existing event, with a similar title or the same source page
+ * (multi-session pages like "Hallovin 26" are re-extracted with slightly different titles).
+ */
 export async function findDuplicateEvent(candidate: DuplicateCandidate, client: Pick<Prisma.TransactionClient, 'event'> = prisma): Promise<DuplicateMatch | null> {
   const dates = dateVariants(candidate.date);
   if (dates.length === 0 || !candidate.title?.trim()) return null;
@@ -71,10 +92,10 @@ export async function findDuplicateEvent(candidate: DuplicateCandidate, client: 
     select: { id: true, title: true, date: true, time: true, location: true, sourceUrl: true },
   });
 
-  const match = sameDay.find(
-    (ev) =>
-      titlesMatch(ev.title, candidate.title!) && sameEventStartTime(ev.time, candidate.time),
-  );
+  const source = sourceKey(candidate.sourceUrl);
+  const sameStart = sameDay.filter((ev) => sameStartOrUnknown(ev.time, candidate.time));
+  const match = sameStart.find((ev) => titlesMatch(ev.title, candidate.title!)) ??
+    (source ? sameStart.find((ev) => sourceKey(ev.sourceUrl) === source) : undefined);
 
   if (!match) return null;
   return {

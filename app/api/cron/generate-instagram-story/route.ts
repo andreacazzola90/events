@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ImageResponse } from "next/og";
+import { createElement } from "react";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { getSupabaseClient } from "@/lib/supabase";
@@ -19,15 +21,6 @@ type InstagramPublishResult = {
   containerId: string;
   mediaId: string;
 };
-
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
 
 function parseEventDate(value: string): Date | null {
   if (!value) return null;
@@ -91,13 +84,12 @@ function formatDateLabel(date: Date): string {
   }).format(date);
 }
 
-function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
-  const width = 1080;
-  const height = 1920;
-  const topY = 260;
-  const bottomPadding = 120;
-  const maxTextHeight = height - topY - bottomPadding;
+const STORY_WIDTH = 1080;
+const STORY_HEIGHT = 1920;
 
+type StoryLine = { text: string; heading?: boolean };
+
+function buildStoryLines(events: StoryEvent[]): StoryLine[] {
   const eventsByDate = new Map<string, StoryEvent[]>();
   for (const event of events) {
     const key = event.date;
@@ -107,7 +99,7 @@ function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
     eventsByDate.get(key)!.push(event);
   }
 
-  const lines: Array<{ text: string; heading?: boolean }> = [];
+  const lines: StoryLine[] = [];
   for (const [dateStr, dateEvents] of eventsByDate.entries()) {
     const dateObj = parseEventDate(dateStr);
     const dateLabel = dateObj ? formatDateLabel(dateObj) : dateStr;
@@ -122,56 +114,118 @@ function buildStorySvg(events: StoryEvent[], start: Date, end: Date): string {
       lines.push({ text: `• ${eventLabel}` });
     }
   }
+  return lines;
+}
+
+// Rendered with next/og (satori + bundled font) because serverless runtimes
+// have no system fonts, so SVG <text> rasterized by sharp/librsvg is blank.
+async function renderStoryJpeg(
+  events: StoryEvent[],
+  start: Date,
+  end: Date,
+): Promise<Buffer> {
+  const topY = 260;
+  const bottomPadding = 120;
+  const maxTextHeight = STORY_HEIGHT - topY - bottomPadding;
+  const lines = buildStoryLines(events);
 
   const rawLineHeight = Math.floor(maxTextHeight / Math.max(lines.length, 1));
   const lineHeight = Math.max(14, Math.min(34, rawLineHeight));
   const headingSize = Math.max(18, Math.min(30, lineHeight + 4));
   const textSize = Math.max(13, Math.min(24, lineHeight - 1));
 
-  let currentY = topY;
-  const textNodes: string[] = [];
-
-  for (const line of lines) {
-    const size = line.heading ? headingSize : textSize;
-    const weight = line.heading ? 700 : 500;
-    const color = line.heading ? "#FDE68A" : "#FFFFFF";
-
-    textNodes.push(
-      `<text x="64" y="${currentY}" font-family="Arial, Helvetica, sans-serif" font-size="${size}" font-weight="${weight}" fill="${color}">${escapeXml(line.text)}</text>`,
-    );
-
-    currentY += lineHeight;
-  }
-
-  const rangeText = `${new Intl.DateTimeFormat("it-IT", {
+  const shortDate = new Intl.DateTimeFormat("it-IT", {
     day: "2-digit",
     month: "2-digit",
-  }).format(start)} → ${new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-  }).format(end)}`;
+  });
+  const rangeText = `${shortDate.format(start)} → ${shortDate.format(end)}`;
 
-  return `
-  <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#111827" />
-        <stop offset="50%" stop-color="#1F2937" />
-        <stop offset="100%" stop-color="#312E81" />
-      </linearGradient>
-    </defs>
+  const h = createElement;
+  const text = (content: string, style: Record<string, unknown>) =>
+    h("div", { style: { display: "flex", whiteSpace: "nowrap", ...style } }, content);
 
-    <rect x="0" y="0" width="${width}" height="${height}" fill="url(#bg)" />
-    <rect x="40" y="40" width="${width - 80}" height="${height - 80}" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="2" rx="28" />
+  const element = h(
+    "div",
+    {
+      style: {
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+        background: "linear-gradient(135deg, #111827 0%, #1F2937 50%, #312E81 100%)",
+        color: "#FFFFFF",
+        fontFamily: "sans-serif",
+      },
+    },
+    h("div", {
+      style: {
+        position: "absolute",
+        left: 40,
+        top: 40,
+        width: STORY_WIDTH - 80,
+        height: STORY_HEIGHT - 80,
+        border: "2px solid rgba(255,255,255,0.25)",
+        borderRadius: 28,
+      },
+    }),
+    h(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          paddingLeft: 64,
+          paddingRight: 64,
+          paddingTop: 52,
+        },
+      },
+      text("EVENTI SETTIMANA", { fontSize: 58, fontWeight: 800, height: 70 }),
+      text(rangeText, { fontSize: 42, color: "#93C5FD", height: 52 }),
+      text("Dal giovedì al mercoledì successivo", {
+        fontSize: 26,
+        color: "#E5E7EB",
+        height: 50,
+      }),
+    ),
+    h(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          position: "absolute",
+          left: 64,
+          right: 64,
+          top: topY - lineHeight,
+        },
+      },
+      ...lines.map((line) =>
+        text(line.text, {
+          height: lineHeight,
+          alignItems: "flex-end",
+          overflow: "hidden",
+          fontSize: line.heading ? headingSize : textSize,
+          fontWeight: line.heading ? 700 : 500,
+          color: line.heading ? "#FDE68A" : "#FFFFFF",
+        }),
+      ),
+    ),
+    text("aggiornato automaticamente ogni mercoledì sera", {
+      position: "absolute",
+      left: 64,
+      top: 1820,
+      fontSize: 24,
+      color: "#D1D5DB",
+    }),
+  );
 
-    <text x="64" y="110" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" fill="#FFFFFF">EVENTI SETTIMANA</text>
-    <text x="64" y="168" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="600" fill="#93C5FD">${escapeXml(rangeText)}</text>
-    <text x="64" y="214" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="500" fill="#E5E7EB">Dal giovedì al mercoledì successivo</text>
+  const png = await new ImageResponse(element, {
+    width: STORY_WIDTH,
+    height: STORY_HEIGHT,
+  }).arrayBuffer();
 
-    ${textNodes.join("")}
-
-    <text x="64" y="1848" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#D1D5DB">aggiornato automaticamente ogni mercoledì sera</text>
-  </svg>`;
+  return sharp(Buffer.from(png)).jpeg({ quality: 92 }).toBuffer();
 }
 
 function getRequiredEnv(name: string): string {
@@ -312,9 +366,7 @@ export async function GET(request: NextRequest) {
           },
         ];
 
-    const svg = buildStorySvg(safeEvents, start, end);
-    const svgBuffer = Buffer.from(svg);
-    const jpgBuffer = await sharp(svgBuffer).jpeg({ quality: 92 }).toBuffer();
+    const jpgBuffer = await renderStoryJpeg(safeEvents, start, end);
 
     const bucket = process.env.STORY_BUCKET || "events";
     const latestPath = "stories/weekly-events-latest.jpg";

@@ -789,6 +789,18 @@ button {
   background: #e8e4db;
 }
 
+.site-footer p {
+  color: #4b4b4b;
+}
+
+.site-footer a {
+  color: #272727;
+}
+
+.site-footer .site-brand-accent {
+  color: #a33f24;
+}
+
 .site-brand-accent {
   color: #d65a38;
 }

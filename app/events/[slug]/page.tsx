@@ -78,6 +78,14 @@ async function getSameDayEvents(date: string, currentEventId: number) {
             date: date,
             id: { not: currentEventId },
         },
+        select: {
+            id: true,
+            title: true,
+            imageUrl: true,
+            description: true,
+            time: true,
+            location: true,
+        },
     });
     return events;
 }
@@ -108,6 +116,14 @@ async function getSimilarEvents(currentEvent: any) {
             { category: 'desc' }, // Prioritize same category
             { date: 'asc' } // Then by date
         ],
+        select: {
+            id: true,
+            title: true,
+            imageUrl: true,
+            description: true,
+            date: true,
+            location: true,
+        },
     });
     return similarEvents;
 }
@@ -127,8 +143,12 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
     const eventJsonLd = getEventJsonLd(event);
     const startDate = getEventStartDate(event.date, event.time);
 
-    const session: any = await getServerSession(authOptions as any);
-    const sessionUser = session?.user as any;
+    const [session, sameDayEvents, similarEvents] = await Promise.all([
+        getServerSession(authOptions as any),
+        getSameDayEvents(event.date, event.id),
+        getSimilarEvents(event),
+    ]);
+    const sessionUser = (session as any)?.user as any;
     const sessionUserId = parseInt((sessionUser?.id || '').toString(), 10);
     const sessionEmail = (sessionUser?.email || '').toLowerCase();
     const isAdmin =
@@ -139,9 +159,6 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
     const canEdit =
         isAdmin ||
         (!Number.isNaN(sessionUserId) && event.createdById === sessionUserId);
-
-    const sameDayEvents = await getSameDayEvents(event.date, event.id);
-    const similarEvents = await getSimilarEvents(event);
 
     return (
         <div className="min-h-screen page-shell w-full event-detail-page">
@@ -155,13 +172,15 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                 <div className="relative group event-image-container">
                                     <FavoriteButton eventId={event.id} />
                                     <Image
-                                        src={event.imageUrl.startsWith('/uploads/') ? event.imageUrl : event.imageUrl}
+                                        src={event.imageUrl}
                                         alt={event.title}
                                         width={800}
                                         height={600}
+                                        quality={65}
                                         className="w-full h-64 sm:h-80 lg:h-[30rem] object-cover transition-all duration-700"
                                         sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 100vw"
-                                        priority
+                                        preload
+                                        fetchPriority="high"
                                     />
                                 </div>
                             )}

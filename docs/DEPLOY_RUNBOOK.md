@@ -74,6 +74,13 @@ From [.env.example](../.env.example) and runtime code:
 - CRON_SECRET (Vercel scheduled scraper; manual proxy prefers it)
 - CRON_SECRET_KEY (legacy scraper fallback and existing other cron targets)
 
+Web search (event verification and cover images), first configured provider wins:
+- BRAVE_SEARCH_API_KEY (recommended; free plan at https://brave.com/search/api/)
+- TAVILY_API_KEY (optional)
+- GOOGLE_API_SECRET_KEY + GOOGLE_CX (optional; the key must allow the Custom Search API, which is closed to new customers)
+
+Scan learning (corrections and manual crops) needs the migration [20261030160000_add_scan_learning](../prisma/migrations/20261030160000_add_scan_learning/migration.sql). SCAN_LEARNING_SECRET_KEY is optional and falls back to NEXTAUTH_SECRET_KEY.
+
 Instagram story publishing is configured from the admin "Story Instagram" tab (account ID, access token, days and hour). It needs:
 - INSTAGRAM_TOKEN_SECRET_KEY (optional; falls back to NEXTAUTH_SECRET_KEY) to encrypt the stored token
 - the migration [20261030140000_add_instagram_story_settings](../prisma/migrations/20261030140000_add_instagram_story_settings/migration.sql) applied

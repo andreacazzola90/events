@@ -67,6 +67,8 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+    const [cropSelection, setCropSelection] = useState<{ area: Area; natural: { width: number; height: number } } | null>(null);
+    const [initialCrop, setInitialCrop] = useState<EventData['originalImageCrop']>();
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
     const [aiInstructions, setAiInstructions] = useState('');
@@ -119,8 +121,25 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
 
     const handleOpenCropper = (source = imageUrl) => {
         if (!source) return;
-        setCropSource(source);
+        // Refine the automatic crop on the full original, so the manual correction can teach future crops.
+        const autoCrop = !manualImageOverride && eventData.originalImageUrl && eventData.originalImageCrop
+            && originalCropSource.current === eventData.originalImageUrl ? eventData.originalImageCrop : undefined;
+        setInitialCrop(autoCrop);
+        setCropSource(autoCrop ? eventData.originalImageUrl! : source);
         setCroppedAreaPixels(null);
+        setCropSelection(null);
+    };
+
+    const recordCropSample = () => {
+        if (!cropSource || cropSource !== eventData.originalImageUrl || !cropSelection) return;
+        const { area, natural } = cropSelection;
+        void fetch('/api/scan-learning/crop-sample', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ width: natural.width, height: natural.height,
+                x: area.x / 100, y: area.y / 100, w: area.width / 100, h: area.height / 100 }),
+            keepalive: true,
+        }).catch(() => undefined);
     };
 
     const handleApplyCrop = async () => {
@@ -134,6 +153,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             setImageUrl(previewUrl);
             currentImageUrl.current = previewUrl;
             onImageChange?.(previewUrl, originalCropSource.current);
+            recordCropSample();
             setCropSource(null);
         } catch {
             toast.error('Impossibile ritagliare l’immagine o il ritaglio supera il limite di 4 MiB.');
@@ -638,7 +658,11 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                         </div>
                         <EventImageCropper
                             image={cropSource}
-                            onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
+                            initialCrop={initialCrop}
+                            onCropComplete={(area, areaPixels, natural) => {
+                                setCroppedAreaPixels(areaPixels);
+                                setCropSelection({ area, natural });
+                            }}
                         />
                         <div className="flex justify-end gap-3">
                             <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>

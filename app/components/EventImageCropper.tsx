@@ -7,12 +7,16 @@ import type { Area } from "react-easy-crop";
 
 type Props = {
   image: string;
-  onCropComplete: (area: Area, areaPixels: Area) => void;
+  onCropComplete: (area: Area, areaPixels: Area, natural: { width: number; height: number }) => void;
+  /** Initial selection, normalized 0..1 to the image. */
+  initialCrop?: { x: number; y: number; width: number; height: number };
 };
 
-export default function EventImageCropper({ image, onCropComplete }: Props) {
+export default function EventImageCropper({ image, onCropComplete, initialCrop }: Props) {
   const imageRef = useRef<HTMLImageElement>(null);
-  const [crop, setCrop] = useState<PercentCrop>({ unit: "%", x: 10, y: 10, width: 80, height: 80 });
+  const [crop, setCrop] = useState<PercentCrop>(initialCrop
+    ? { unit: "%", x: initialCrop.x * 100, y: initialCrop.y * 100, width: initialCrop.width * 100, height: initialCrop.height * 100 }
+    : { unit: "%", x: 10, y: 10, width: 80, height: 80 });
 
   const completeCrop = (selection: PercentCrop) => {
     const source = imageRef.current;
@@ -22,7 +26,7 @@ export default function EventImageCropper({ image, onCropComplete }: Props) {
       y: source.naturalHeight * selection.y / 100,
       width: source.naturalWidth * selection.width / 100,
       height: source.naturalHeight * selection.height / 100,
-    });
+    }, { width: source.naturalWidth, height: source.naturalHeight });
   };
 
   return (

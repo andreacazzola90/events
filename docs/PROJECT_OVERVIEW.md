@@ -37,9 +37,9 @@ The platform includes:
 1. User uploads an image from [app/crea/page.tsx](../app/crea/page.tsx).
 2. Frontend calls POST /api/process-image.
 3. OCR extracts text. In parallel, visual analysis identifies the full flyer inside the uploaded image; confident bounds produce an automatically cropped cover. The original remains available for free manual cropping during draft review, including after AI text reprocessing.
-4. Groq parses text into one or multiple events.
-5. Frontend confirms/edits data.
-6. Frontend saves via POST /api/events (JSON or multipart).
+4. Groq parses text into one or multiple events; relevant corrections from past scans are added to the prompt.
+5. Frontend confirms/edits data. Manual crops made on the original screenshot are stored as crop samples.
+6. Frontend saves via POST /api/events (JSON or multipart). Differences between the signed AI output and the published event are learned as corrections.
 7. API stores event in DB, uploads image if needed, geocodes location, revalidates caches.
 
 ### 3.2 Create event from link
@@ -129,6 +129,7 @@ Core variables:
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
 - CRON_SECRET_KEY (for protected cron routes)
 - Instagram Graph vars (for story publishing)
+- BRAVE_SEARCH_API_KEY (web search for verification and cover images; Tavily and Google are fallbacks)
 
 ## 7) BMAD installation in this repository
 

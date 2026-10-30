@@ -12,6 +12,8 @@ import type { EventData } from '../../types/event';
 import { extensionCorsPreflight, withExtensionCors } from '../../../lib/extension-cors';
 import { isWebSearchConfigured, webSearch } from '../../../lib/google-search';
 import type { ScanAgentReport } from '../../../lib/event-scan-agents';
+import { signScanBaseline } from '../../../lib/scan-learning';
+import { loadScanLessonsPrompt } from '../../../lib/scan-learning-store';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -181,6 +183,8 @@ Ignora interfacce social, nomi utente, avatar, chat, notifiche e dati personali 
     });
 
     const currentDate = new Date().toISOString().split('T')[0];
+    // Past user corrections on similar posters, learned when drafts were edited before publishing.
+    const scanLessons = await loadScanLessonsPrompt(rawText);
     // PROMPT PER EVENTI MULTIPLI / SINGOLO EVENTO
     const prompt = hasMultipleEvents
     ? `Sei un esperto analista di eventi. Questo contenuto contiene MULTIPLI EVENTI. Analizza attentamente ed estrai TUTTI gli eventi presenti.
@@ -256,6 +260,7 @@ GESTIONE DATE:
 
 INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
 ${heuristicHints}
+${scanLessons}
 
 TESTO ORIGINALE COMPLETO DA ANALIZZARE (OCR GREZZO):
 ${rawText}
@@ -339,6 +344,7 @@ GESTIONE DATE:
 
 INDIZI ESTRATTI AUTOMATICAMENTE (POSSONO CONTENERE ERRORI, USALI SOLO COME GUIDA):
 ${heuristicHints}
+${scanLessons}
 
 TESTO ORIGINALE COMPLETO DA ANALIZZARE (OCR GREZZO):
 ${rawText}
@@ -634,6 +640,10 @@ REGOLE:
         // rawText può rimanere vuoto se non disponibile
 
         return normalized;
+      });
+      finalEvents = finalEvents.map(event => {
+        const scanFeedbackToken = signScanBaseline(event, rawText);
+        return scanFeedbackToken ? { ...event, scanFeedbackToken } : event;
       });
 
       // Construct final response with debug info

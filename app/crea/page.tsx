@@ -197,7 +197,7 @@ export default function CreaEvento() {
                 if (cropId !== imageCropId.current) return;
                 const croppedUrl = blob ? URL.createObjectURL(blob) : undefined;
                 setEvents(current => current.map(event => event.imageUrl === newImageUrl
-                    ? { ...event, imageUrl: croppedUrl, originalImageUrl: newImageUrl }
+                    ? { ...event, imageUrl: croppedUrl, originalImageUrl: newImageUrl, originalImageCrop: blob ? crop.box : undefined }
                     : event));
                 setImageUrl(croppedUrl || null);
                 pendingImageCrop.current = undefined;

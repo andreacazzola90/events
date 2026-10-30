@@ -7,6 +7,7 @@ import { coverUrl, fetchCoverResource, withCoverAbort } from './event-cover-netw
 export const MAX_COVER_BYTES = 4 * 1024 * 1024;
 export const MAX_COVER_PIXELS = 16_000_000;
 const MAX_BODY_BYTES = 2048;
+const MAX_SCRAPED_PAGES = 5;
 const TOKEN_TTL_MS = 5 * 60_000;
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 
@@ -111,35 +112,49 @@ export async function searchEventCovers(
   try {
     const fields = parseCoverSearchInput(input);
     const query = [fields.title, fields.date, fields.location, 'evento locandina'].filter(Boolean).join(' ');
-    const search = providers.imageSearch ?? providers.search;
-    const results = await withCoverAbort(search(query, { signal: budget, throwOnFailure: true }), budget);
-    for (const result of results.slice(0, 5)) {
-      budget.throwIfAborted();
+    const addCandidate = async (result: Awaited<ReturnType<typeof providers.search>>[number]) => {
+      let sourceUrl = coverUrl(result.link).href;
+      let image = result.imageUrl;
+      if (!image) {
+        if (seenPages.has(sourceUrl) || seenPages.size >= MAX_SCRAPED_PAGES) return;
+        seenPages.add(sourceUrl);
+        const page = await providers.fetch(sourceUrl, { signal: budget, maxBytes: 512 * 1024, kind: 'page' });
+        sourceUrl = coverUrl(page.url).href;
+        image = extractEventImageFromHtml(page.bytes.toString('utf8'), page.url) ?? undefined;
+        if (!image) return;
+      }
+      const imageUrl = coverUrl(image).href;
+      if (seenImages.has(imageUrl)) return;
+      seenImages.add(imageUrl);
+      const bitmap = await providers.fetch(imageUrl, { signal: budget, maxBytes: MAX_COVER_BYTES, kind: 'image' });
+      const jpeg = await normalizeCoverImage(bitmap.bytes, budget);
+      const hash = createHash('sha256').update(jpeg).digest('hex');
+      if (seenPixels.has(hash)) return;
+      seenPixels.add(hash);
+      const candidate = { imageUrl: bitmap.url, sourceUrl, title: fields.title };
+      const token = signCoverCandidate(candidate);
+      candidates.push({ id: hash.slice(0, 24), title: candidate.title, sourceUrl: candidate.sourceUrl,
+        previewUrl: `/api/event-cover-image?token=${token}` });
+    };
+    // Direct image results first; when none of them can be downloaded, fall back to og:image of web pages.
+    const searches = providers.imageSearch ? [providers.imageSearch, providers.search] : [providers.search];
+    for (const [searchIndex, search] of searches.entries()) {
+      if (candidates.length) break;
+      let results: Awaited<ReturnType<typeof search>>;
       try {
-        let sourceUrl = coverUrl(result.link).href;
-        let image = result.imageUrl;
-        if (!image) {
-          if (seenPages.has(sourceUrl)) continue;
-          seenPages.add(sourceUrl);
-          const page = await providers.fetch(sourceUrl, { signal: budget, maxBytes: 512 * 1024, kind: 'page' });
-          sourceUrl = coverUrl(page.url).href;
-          image = extractEventImageFromHtml(page.bytes.toString('utf8'), page.url) ?? undefined;
-          if (!image) continue;
+        results = await withCoverAbort(search(query, { signal: budget, throwOnFailure: true }), budget);
+      } catch (error) {
+        if (searchIndex < searches.length - 1 && !budget.aborted) continue;
+        throw error;
+      }
+      for (const result of results.slice(0, 8)) {
+        budget.throwIfAborted();
+        if (candidates.length >= 6) break;
+        try {
+          await addCandidate(result);
+        } catch {
+          failed = true;
         }
-        const imageUrl = coverUrl(image).href;
-        if (seenImages.has(imageUrl)) continue;
-        seenImages.add(imageUrl);
-        const bitmap = await providers.fetch(imageUrl, { signal: budget, maxBytes: MAX_COVER_BYTES, kind: 'image' });
-        const jpeg = await normalizeCoverImage(bitmap.bytes, budget);
-        const hash = createHash('sha256').update(jpeg).digest('hex');
-        if (seenPixels.has(hash)) continue;
-        seenPixels.add(hash);
-        const candidate = { imageUrl: bitmap.url, sourceUrl, title: fields.title };
-        const token = signCoverCandidate(candidate);
-        candidates.push({ id: hash.slice(0, 24), title: candidate.title, sourceUrl: candidate.sourceUrl,
-          previewUrl: `/api/event-cover-image?token=${token}` });
-      } catch {
-        failed = true;
       }
     }
     budget.throwIfAborted();

@@ -277,3 +277,31 @@ model CronJobRun {
   finishedAt    DateTime?
   resultJson    String?   // JSON-serialized result/summary
 }
+
+/// Field corrected by a user between AI extraction and publication; reused as few-shot lessons.
+model ScanCorrection {
+  id             Int      @id @default(autoincrement())
+  field          String
+  aiValue        String
+  correctedValue String
+  context        String   // snippet of the OCR text the AI read
+  userId         Int?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Manual poster crop on an original screenshot, normalized 0..1 to the source size.
+model PosterCropSample {
+  id        Int      @id @default(autoincrement())
+  width     Int
+  height    Int
+  x         Float
+  y         Float
+  w         Float
+  h         Float
+  userId    Int?
+  createdAt DateTime @default(now())
+
+  @@index([width, height, createdAt])
+}

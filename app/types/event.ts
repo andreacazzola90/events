@@ -33,6 +33,10 @@ export interface EventData {
   rawText: string;
   imageUrl?: string;
   originalImageUrl?: string;
+  /** Draft-only: automatic crop rectangle (0..1 of the original image), used to preselect the manual cropper. */
+  originalImageCrop?: { x: number; y: number; width: number; height: number };
+  /** Signed AI extraction baseline; corrections made before saving are learned for future scans. */
+  scanFeedbackToken?: string;
   sourceUrl?: string;
   origin?: string;
 }

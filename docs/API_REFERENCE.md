@@ -314,11 +314,22 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - File: [app/api/crop-image/route.ts](../app/api/crop-image/route.ts)
 - Purpose: best-effort verified poster crop for a draft, before publishing.
 - Input: multipart `image`, supported JPEG/PNG/WebP with matching MIME/signature, at most 4 MiB.
-- Responses: `200 image/jpeg` for a verified crop; `204` for unavailable, uncertain or failed analysis; `400` invalid image; `413` oversized image. All responses are `no-store`.
-- Uses `AI_VISION_CROP_PROVIDERS` (default `groq`), a shared 45-second AI budget and 50-second server cancellation. Client cancellation is 55 seconds and also occurs when a draft is replaced or closed. Groq may retry a single HTTP 429 per crop, only with a valid `Retry-After` no longer than 20 seconds and enough remaining budget; other extraction paths keep retries disabled.
+- Responses: `200 image/jpeg` for an accepted crop, with `X-Image-Crop-Box` (`x,y,width,height` normalized 0..1 to the EXIF-rotated original) and `X-Image-Crop-Method` (`ai`, `learned` or `heuristic`); `204` for unavailable, uncertain or failed analysis; `400` invalid image; `413` oversized image. All responses are `no-store`.
+- Crop order: (1) a consistent learned crop for screenshots with the same pixel size, if the verifier approves it; (2) vision bounds, snapped to the plain screen bars detected locally in the pixels and verified; (3) local bar detection alone when the poster sits between unambiguous uniform bars. Without a verifier answer, a crop is accepted only when the local pixel analysis independently agrees.
+- Uses `AI_VISION_CROP_PROVIDERS` (default `groq,nvidia`), a shared 30-second AI budget and 35-second server cancellation. Client cancellation is 55 seconds and also occurs when a draft is replaced or closed. Rate-limited providers are not retried: the next provider or the local detection is used instead.
 - A fallback response includes `X-Image-Crop-Reason`: `rate-limited`, `timeout`, `not-configured`, `bounds-rejected`, `verification-rejected`, `image-invalid` or `service-unavailable`. Provider HTTP failures may include a sanitized `X-Image-Crop-Service-Status`. These contain no credentials or image content; the browser shows the reason and offers manual cropping or web-image search.
 - Does not create events, write to the database, upload to storage or schedule a background job. The browser applies the returned blob to the current draft only, preserves manual cover edits, and keeps the original available only as a temporary crop source. Manual cropping is available after both successful and failed automatic crops.
 - The original image is sent to the configured vision provider. This endpoint does not guarantee anonymity or bypass provider quotas.
+
+### POST /api/scan-learning/crop-sample
+- File: [app/api/scan-learning/crop-sample/route.ts](../app/api/scan-learning/crop-sample/route.ts)
+- Purpose: records a manual crop made on an original draft image, so screenshots of the same size are cropped alike in the future.
+- Input: JSON `{ width, height, x, y, w, h }` (natural pixel size and box normalized 0..1). Same-origin only, 20 requests/hour per IP, `204` on success, `400` for invalid boxes.
+- Needs the `PosterCropSample` table from migration `20261030160000_add_scan_learning`; without it the call is a no-op.
+
+### Scan learning
+- `POST /api/process-image` adds `scanFeedbackToken` (HMAC-signed AI output, 7-day TTL, key `SCAN_LEARNING_SECRET_KEY` or `NEXTAUTH_SECRET_KEY`) to each draft and includes up to 8 relevant past corrections in the extraction prompt.
+- `POST /api/events` compares the token with the published fields after the response; title, location and organizer corrections are stored only when grounded in the scanned text, and date/time only when well-formed (`ScanCorrection` table).
 
 ### POST /api/event-cover-search
 - File: [app/api/event-cover-search/route.ts](../app/api/event-cover-search/route.ts)

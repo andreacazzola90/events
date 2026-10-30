@@ -15,6 +15,7 @@ import {
   withExtensionCors,
 } from "../../../lib/extension-cors";
 import type { DbEvent } from "../../types/event";
+import { recordScanCorrections } from "../../../lib/scan-learning-store";
 
 function refreshEventCache(eventSlug: string) {
   revalidatePath("/", "page");
@@ -194,6 +195,14 @@ export async function POST(request: NextRequest) {
     }
 
     after(async () => {
+      if (typeof eventData.scanFeedbackToken === "string") {
+        const learned = await recordScanCorrections(
+          eventData.scanFeedbackToken,
+          eventDataToSave,
+          eventDataToSave.createdById ?? null,
+        );
+        if (learned) console.log(`[API /events POST] Learned ${learned} scan correction(s)`);
+      }
       await Promise.all([
         `/api/events?limit=200&_rebuild=${Date.now()}`,
         eventDetailPath,

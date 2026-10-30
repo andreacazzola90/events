@@ -8,13 +8,19 @@ export const DRAFT_CROP_FAILURE_MESSAGES = {
   'service-unavailable': 'Servizio AI temporaneamente non disponibile.',
 } as const;
 export type DraftImageCropFailure = keyof typeof DRAFT_CROP_FAILURE_MESSAGES;
-export type DraftImageCrop = { result: Promise<Blob | undefined>; cancel: () => void; readonly failureReason?: DraftImageCropFailure };
+export type DraftImageCropBox = { x: number; y: number; width: number; height: number };
+export type DraftImageCrop = {
+  result: Promise<Blob | undefined>; cancel: () => void; readonly failureReason?: DraftImageCropFailure;
+  /** Automatic crop rectangle, normalized 0..1 to the original image. */
+  readonly box?: DraftImageCropBox;
+};
 export type DraftImageCropStatus = 'idle' | 'processing' | 'completed' | 'failed';
 export type DraftImageScan = { isCurrent: () => boolean; registerCrop: (crop: DraftImageCrop) => void };
 
-export function prepareDraftForPublication<Event extends { originalImageUrl?: string }>(event: Event): Event {
+export function prepareDraftForPublication<Event extends { originalImageUrl?: string; originalImageCrop?: DraftImageCropBox }>(event: Event): Event {
   const publishable = { ...event };
   delete publishable.originalImageUrl;
+  delete publishable.originalImageCrop;
   return publishable;
 }
 
@@ -50,6 +56,7 @@ export function startDraftImageCrop(file: File): DraftImageCrop {
   const controller = new AbortController();
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]);
   let failureReason: DraftImageCropFailure | undefined;
+  let box: DraftImageCropBox | undefined;
   const result = (async () => {
     try {
       const form = new FormData();
@@ -62,7 +69,10 @@ export function startDraftImageCrop(file: File): DraftImageCrop {
         return undefined;
       }
       const blob = await response.blob();
-      if (!signal.aborted && blob.type === 'image/jpeg' && blob.size > 0) return blob;
+      if (!signal.aborted && blob.type === 'image/jpeg' && blob.size > 0) {
+        box = parseDraftCropBox(response.headers?.get('x-image-crop-box'));
+        return blob;
+      }
       failureReason = signal.aborted ? 'timeout' : 'image-invalid';
       return undefined;
     } catch {
@@ -70,5 +80,13 @@ export function startDraftImageCrop(file: File): DraftImageCrop {
       return undefined;
     }
   })();
-  return { result, cancel: () => controller.abort(), get failureReason() { return failureReason; } };
+  return { result, cancel: () => controller.abort(), get failureReason() { return failureReason; }, get box() { return box; } };
+}
+
+export function parseDraftCropBox(header: string | null | undefined): DraftImageCropBox | undefined {
+  const values = (header || '').split(',').map(Number);
+  if (values.length !== 4 || values.some(value => !Number.isFinite(value) || value < 0 || value > 1)) return undefined;
+  const [x, y, width, height] = values;
+  if (width <= 0 || height <= 0 || x + width > 1.001 || y + height > 1.001) return undefined;
+  return { x, y, width, height };
 }

@@ -58,6 +58,21 @@ model SiteSettings {
   updatedAt  DateTime @updatedAt
 }
 
+model InstagramStorySettings {
+  id                   String    @id @default("global")
+  igUserId             String?
+  accessTokenEncrypted String?
+  graphApiVersion      String    @default("v22.0")
+  autoPublish          Boolean   @default(false)
+  publishDays          Int[]     @default([3])
+  publishHour          Int       @default(20)
+  lastRunSlot          String?
+  lastRunAt            DateTime?
+  lastMediaId          String?
+  lastError            String?
+  updatedAt            DateTime  @updatedAt
+}
+
 model EventMedia {
   id          Int      @id @default(autoincrement())
   eventId     Int

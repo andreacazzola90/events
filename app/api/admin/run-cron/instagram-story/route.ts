@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
     const startedAt = new Date();
     try {
       let dryRun = false;
+      let publish: boolean | undefined;
       try {
         const body = await request.json();
         if (body?.target === "visitpedemontana") {
@@ -17,6 +18,9 @@ export async function POST(request: NextRequest) {
         }
         if (body?.dryRun === true) {
           dryRun = true;
+        }
+        if (typeof body?.publish === "boolean") {
+          publish = body.publish;
         }
       } catch {
         // Body opzionale: default instagram-story
@@ -43,6 +47,13 @@ export async function POST(request: NextRequest) {
       const targetUrl = new URL(targetPath, request.url);
       if (dryRun && target === "visitpedemontana") {
         targetUrl.searchParams.set("dryRun", "1");
+      }
+      if (target === "instagram-story") {
+        // Manual runs bypass the configured schedule.
+        targetUrl.searchParams.set("force", "1");
+        if (publish !== undefined) {
+          targetUrl.searchParams.set("publish", publish ? "1" : "0");
+        }
       }
 
       let jobStatus: "completed" | "failed" = "completed";
@@ -77,7 +88,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({ status: jobStatus === "completed" ? 200 : 500, target, dryRun, data });
+      return NextResponse.json({ status: jobStatus === "completed" ? 200 : 500, target, dryRun, publish, data });
     } catch (error) {
       console.error(
         "[API /admin/run-cron/instagram-story] Error triggering cron:",

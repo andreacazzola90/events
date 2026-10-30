@@ -84,7 +84,7 @@ sequenceDiagram
     participant AI as Groq
     participant DB as PostgreSQL (Prisma)
     participant API_I as API /api/cron/generate-instagram-story
-    participant IMG as sharp/svg renderer
+    participant IMG as next/og + sharp renderer
     participant SB as Supabase
     participant IG as Instagram Graph API
 
@@ -101,9 +101,10 @@ sequenceDiagram
     end
 
     Scheduler->>API_I: GET with Bearer CRON_SECRET_KEY
+    API_I->>DB: Load story settings, claim today's slot if due
     API_I->>DB: Query events in weekly window
     DB-->>API_I: Event set
-    API_I->>IMG: Build story image (SVG -> JPG)
+    API_I->>IMG: Build story image with thumbnails (PNG -> JPG)
     IMG-->>API_I: Story JPG buffer
     API_I->>SB: Upload story asset
     SB-->>API_I: Public/accessible image URL

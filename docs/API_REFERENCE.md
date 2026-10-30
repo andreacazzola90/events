@@ -406,8 +406,10 @@ curl -X GET "http://localhost:3000/api/cron/scrape-visitpedemontana" \
 
 ### GET /api/cron/generate-instagram-story
 - File: [app/api/cron/generate-instagram-story/route.ts](../app/api/cron/generate-instagram-story/route.ts)
-- Purpose: build weekly story image and publish to Instagram Graph API
-- Scheduled every Wednesday at 18:00 UTC by [vercel.json](../vercel.json).
+- Purpose: build the weekly story image (events Thursday → Wednesday, with poster thumbnails; events that do not fit are summarized as "+ altri N eventi") and optionally publish it to the Instagram Graph API
+- Vercel calls it every hour (`5 * * * *` in [vercel.json](../vercel.json)); it only runs on the days/hour (Europe/Rome) configured in the admin "Story Instagram" tab, once per day. Other calls return `{ "status": "skipped", "reason": "not_scheduled" }`.
+- Query params: `force=1` bypasses the schedule (manual runs); `publish=1` / `publish=0` overrides the saved auto-publish setting.
+- Credentials come from the admin tab (token stored AES-256-GCM encrypted) and fall back to the `INSTAGRAM_*` env vars.
 - Requires a bearer token matching `CRON_SECRET` or legacy `CRON_SECRET_KEY`; returns 503 when neither is configured and 401 for an invalid token.
 
 Example request:
@@ -417,12 +419,20 @@ curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
   -H "Authorization: Bearer <CRON_SECRET_KEY>"
 ```
 
+### GET | PUT | POST /api/admin/instagram-story
+- File: [app/api/admin/instagram-story/route.ts](../app/api/admin/instagram-story/route.ts)
+- Admin session required.
+- GET: current story settings (`igUserId`, `hasAccessToken`, `graphApiVersion`, `autoPublish`, `publishDays` 0=Sunday…6=Saturday, `publishHour`, last run/media/error). The token is never returned.
+- PUT: saves settings. `accessToken` omitted keeps the stored token, `null` removes it, a string replaces it (encrypted with `INSTAGRAM_TOKEN_SECRET_KEY` or `NEXTAUTH_SECRET_KEY`).
+- POST: checks the saved credentials against the Graph API and returns `{ ok, username }`.
+- Returns 503 until the `InstagramStorySettings` migration is applied.
+
 ### POST /api/admin/run-cron/instagram-story
 - File: [app/api/admin/run-cron/instagram-story/route.ts](../app/api/admin/run-cron/instagram-story/route.ts)
 - Purpose: admin-triggered proxy endpoint to run cron targets
 - Uses `CRON_SECRET` first, then legacy `CRON_SECRET_KEY`; without either, returns 503.
 - target values:
-  - instagram-story
+  - instagram-story (always forced; optional body `publish: true|false`)
   - visitpedemontana
 
 Example request:

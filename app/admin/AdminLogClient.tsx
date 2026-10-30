@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import SiteSettingsTab from "./SiteSettingsTab";
+import InstagramStoryTab from "./InstagramStoryTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -368,7 +369,7 @@ function EventLogTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-type Tab = "cron" | "events" | "appearance";
+type Tab = "cron" | "events" | "appearance" | "instagram";
 
 export default function AdminLogClient() {
   const [tab, setTab] = useState<Tab>("cron");
@@ -406,6 +407,7 @@ export default function AdminLogClient() {
                 { id: "cron" as Tab, label: "Cronologia cron" },
                 { id: "events" as Tab, label: "Log eventi trovati" },
                 { id: "appearance" as Tab, label: "Categorie e citazioni" },
+                { id: "instagram" as Tab, label: "Story Instagram" },
               ] as const
             ).map(({ id, label }) => (
               <button
@@ -428,7 +430,15 @@ export default function AdminLogClient() {
 
         {/* Tab content */}
         <div className="glass-effect p-4 sm:p-6" role="tabpanel">
-          {tab === "cron" ? <CronHistoryTab /> : tab === "events" ? <EventLogTab /> : <SiteSettingsTab />}
+          {tab === "cron" ? (
+            <CronHistoryTab />
+          ) : tab === "events" ? (
+            <EventLogTab />
+          ) : tab === "instagram" ? (
+            <InstagramStoryTab />
+          ) : (
+            <SiteSettingsTab />
+          )}
         </div>
 
       </div>

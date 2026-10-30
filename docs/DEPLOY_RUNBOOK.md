@@ -74,11 +74,16 @@ From [.env.example](../.env.example) and runtime code:
 - CRON_SECRET (Vercel scheduled scraper; manual proxy prefers it)
 - CRON_SECRET_KEY (legacy scraper fallback and existing other cron targets)
 
-If Instagram publishing is enabled:
+Instagram story publishing is configured from the admin "Story Instagram" tab (account ID, access token, days and hour). It needs:
+- INSTAGRAM_TOKEN_SECRET_KEY (optional; falls back to NEXTAUTH_SECRET_KEY) to encrypt the stored token
+- the migration [20261030140000_add_instagram_story_settings](../prisma/migrations/20261030140000_add_instagram_story_settings/migration.sql) applied
+- STORY_BUCKET (optional)
+
+Legacy env fallback, used only when the tab has no value:
 - INSTAGRAM_IG_USER_ID
 - INSTAGRAM_ACCESS_TOKEN_SECRET_KEY
 - INSTAGRAM_GRAPH_API_VERSION (optional, default in code)
-- STORY_BUCKET (optional)
+- INSTAGRAM_AUTO_PUBLISH_STORY (used only before the settings are saved)
 
 ## 4) Pre-deploy checklist
 
@@ -180,7 +185,7 @@ Run smoke checks:
 
 Daily scraping requires `Authorization: Bearer <CRON_SECRET>` for Vercel scheduling, or configured legacy `CRON_SECRET_KEY`. Both absent/empty fails closed. The admin scraper proxy prefers CRON_SECRET then KEY. Other cron endpoints retain `Authorization: Bearer <CRON_SECRET_KEY>`.
 
-The Instagram story cron is the exception: it accepts `CRON_SECRET` (preferred by Vercel) or legacy `CRON_SECRET_KEY`, and runs every Wednesday at 18:00 UTC. Configure at least one of these server-side secrets.
+The Instagram story cron is the exception: it accepts `CRON_SECRET` (preferred by Vercel) or legacy `CRON_SECRET_KEY`, and is invoked hourly (requires the Vercel Pro plan); it only generates/publishes on the days and hour set in the admin tab (Europe/Rome, default Wednesday 20:00), once per day. Configure at least one of these server-side secrets.
 
 Endpoints:
 - GET /api/cron/scrape-visitpedemontana

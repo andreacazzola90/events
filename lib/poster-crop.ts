@@ -45,6 +45,10 @@ export async function createVerifiedPosterCrop(
     const content = await detectPosterContent(source.data).catch(() => null);
 
     const cropSquareBox = async (box: CropBox, hasScreenshotUI: boolean) => {
+      if (hasScreenshotUI) {
+        const refined = await detectPosterContent(source.data, toSource(box)).catch(() => null);
+        if (refined) box = toSquare(refined.box);
+      }
       const left = Math.max(0, Math.ceil(box.x * side - 1e-6));
       const top = Math.max(0, Math.ceil(box.y * side - 1e-6));
       const right = Math.min(sourceWidth, Math.floor((box.x + box.width) * side + 1e-6));
@@ -358,12 +362,13 @@ function longestRun(isBar: boolean[], maxGap: number): { start: number; end: num
  * Finds the poster inside a screenshot by locating the uniform screen background (letterbox bars, status bar, reply bar).
  * Returns a box normalized to the image, and whether the surrounding bands look unambiguously like screen chrome.
  */
-export async function detectPosterContent(image: Buffer): Promise<ContentDetection | null> {
+export async function detectPosterContent(image: Buffer, approximate?: CropBox): Promise<ContentDetection | null> {
   const { data, info } = await sharp(image)
     .resize({ width: ANALYSIS_MAX_SIDE, height: ANALYSIS_MAX_SIDE, fit: 'inside', withoutEnlargement: true })
     .removeAlpha().toColourspace('srgb').raw().toBuffer({ resolveWithObject: true });
   const raster: Raster = { data, width: info.width, height: info.height, channels: info.channels };
   if (raster.width < 32 || raster.height < 32) return null;
+  if (approximate) return detectInsetPaper(raster, approximate);
 
   const corners = [cornerColor(raster, false, false), cornerColor(raster, true, false), cornerColor(raster, false, true), cornerColor(raster, true, true)];
   const spread = Math.max(...[0, 1, 2].map(channel => Math.max(...corners.map(color => color[channel])) - Math.min(...corners.map(color => color[channel]))));
@@ -406,6 +411,66 @@ export async function detectPosterContent(image: Buffer): Promise<ContentDetecti
   const strong = topBand >= 0.04 && bottomBand >= 0.04 &&
     barShare(0, rows.start) >= 0.6 && barShare(rows.end, raster.height) >= 0.6;
   return { box, strong };
+}
+
+function detectInsetPaper(raster: Raster, approximate: CropBox): ContentDetection | null {
+  const { data, width, height, channels } = raster;
+  const from = Math.max(2, Math.ceil((approximate.y + approximate.height * 0.1) * height));
+  const to = Math.min(height - 2, Math.floor((approximate.y + approximate.height * 0.9) * height));
+  if (to - from < height * 0.2) return null;
+  const contrast = (row: number, before: number, after: number) => {
+    let difference = 0;
+    for (let channel = 0; channel < 3; channel++) {
+      difference += Math.abs(data[(row * width + before) * channels + channel] - data[(row * width + after) * channels + channel]);
+    }
+    return difference / 3;
+  };
+  const findSide = (anchor: number) => {
+    let best: { position: number; score: number } | undefined;
+    const radius = Math.ceil(width * 0.18);
+    for (let position = Math.max(2, Math.floor(anchor - radius)); position <= Math.min(width - 3, Math.ceil(anchor + radius)); position++) {
+      let contrasting = 0;
+      let score = 0;
+      let samples = 0;
+      for (let row = from; row < to; row += 3) {
+        if (contrast(row, position - 2, position + 2) >= 45) contrasting++;
+        score += contrast(row, position - 1, position);
+        samples++;
+      }
+      if (samples && contrasting / samples >= 0.75 && (!best || score > best.score)) best = { position, score };
+    }
+    return best?.position;
+  };
+  const left = findSide(approximate.x * width);
+  const right = findSide((approximate.x + approximate.width) * width);
+  if (left === undefined || right === undefined || right - left < width * 0.25) return null;
+  const colors: number[][] = [[], [], []];
+  for (let row = from; row < to; row += 3) {
+    for (const column of [left + 3, right - 4]) {
+      for (let channel = 0; channel < 3; channel++) colors[channel].push(data[(row * width + column) * channels + channel]);
+    }
+  }
+  const paperColor = colors.map(values => values.sort((first, second) => first - second)[Math.floor(values.length / 2)]);
+  if (Math.min(...paperColor) < 160 || Math.max(...paperColor) - Math.min(...paperColor) > 50) return null;
+  const shares = Array.from({ length: height }, (_, row) => {
+    let hits = 0;
+    for (let column = left + 2; column < right - 2; column++) {
+      const offset = (row * width + column) * channels;
+      const minimum = Math.min(data[offset], data[offset + 1], data[offset + 2]);
+      const maximum = Math.max(data[offset], data[offset + 1], data[offset + 2]);
+      if (minimum >= 150 && maximum - minimum <= 60) hits++;
+    }
+    return hits / (right - left - 4);
+  });
+  const first = Math.max(0, Math.floor((approximate.y - 0.12) * height));
+  const last = Math.min(height, Math.ceil((approximate.y + approximate.height + 0.12) * height));
+  const rows = longestRun(shares.map((share, row) => row < first || row >= last ||
+    (share < 0.02 && Math.min(contrast(row, left - 2, left + 2), contrast(row, right - 2, right + 2)) < 35)), Math.max(2, Math.round(height * 0.003)));
+  if (!rows || rows.start <= first || rows.end >= last || rows.end - rows.start < height * 0.25) return null;
+  const top = rows.start;
+  const bottom = rows.end;
+  const box = { x: left / width, y: top / height, width: (right - left) / width, height: (bottom - top) / height };
+  return boxOverlap(box, approximate) >= 0.6 ? { box, strong: false } : null;
 }
 
 /**

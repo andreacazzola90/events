@@ -65,8 +65,8 @@ export function instagramAppOrigin(): string {
 }
 
 export function instagramAppCredentials() {
-  const appId = process.env.INSTAGRAM_APP_ID || '';
-  const appSecret = process.env.INSTAGRAM_APP_SECRET || '';
+  const appId = process.env.META_APP_ID || '';
+  const appSecret = process.env.META_APP_SECRET_KEY || '';
   if (!/^\d{5,25}$/.test(appId) || appSecret.length < 16) throw new InstagramScanError('instagram_not_configured', 503);
   return { appId, appSecret };
 }

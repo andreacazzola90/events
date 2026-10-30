@@ -68,7 +68,7 @@ Implementazione: [connessione Graph/OAuth](../lib/instagram-scan-connection.ts),
   - `disconnect`: elimina token e fonti; elementi elaborati e ricevute restano per la deduplica.
 
 ### GET /api/admin/instagram-scan/oauth/start
-- Sessione admin. 503 se `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`/`INSTAGRAM_SCAN_ENCRYPTION_KEY` o l'origine non sono configurati. Imposta un cookie `state` httpOnly, SameSite=Lax (10 minuti) e reindirizza al dialog OAuth di Facebook Login con scope `instagram_basic,pages_show_list,pages_read_engagement,business_management`.
+- Sessione admin. 503 se `META_APP_ID`/`META_APP_SECRET_KEY`/`INSTAGRAM_SCAN_ENCRYPTION_KEY` o l'origine non sono configurati. Imposta un cookie `state` httpOnly, SameSite=Lax (10 minuti) e reindirizza al dialog OAuth di Facebook Login con scope `instagram_basic,pages_show_list,pages_read_engagement,business_management`.
 
 ### GET /api/admin/instagram-scan/oauth/callback
 - Sessione admin e `state` coincidente con il cookie (stesso utente). Scambia il codice in token long-lived (~60 giorni), individua il primo account Instagram professionale collegato a una Pagina, cifra il token (AES-256-GCM) e salva la connessione.

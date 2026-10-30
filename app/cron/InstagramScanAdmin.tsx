@@ -11,7 +11,7 @@ type InstagramScanStatus = {
 };
 
 const messages: Record<string, string> = {
-  instagram_not_configured: 'App Meta non configurata sul server (INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET).',
+  instagram_not_configured: 'App Meta non configurata sul server (META_APP_ID, META_APP_SECRET_KEY).',
   instagram_key_not_configured: 'Chiave di cifratura server non configurata (INSTAGRAM_SCAN_ENCRYPTION_KEY).',
   instagram_origin_not_configured: 'Origine pubblica del sito non configurata (NEXTAUTH_URL o INSTAGRAM_SCAN_REDIRECT_ORIGIN).',
   instagram_token_expired: 'Accesso Instagram scaduto o revocato. Ricollega l\'account.',
@@ -106,7 +106,7 @@ export default function InstagramScanAdmin() {
       {notice && <p role="status" className="text-emerald-200 mt-4 break-words">{notice}</p>}
       {status?.lastError && <p className="text-amber-200 mt-3">{errorMessage(status.lastError)}</p>}
       {status && !status.configured && !status.connected && (
-        <p className="text-amber-200 mt-4">Configurazione server mancante: imposta <code>INSTAGRAM_APP_ID</code>, <code>INSTAGRAM_APP_SECRET</code>, <code>INSTAGRAM_SCAN_ENCRYPTION_KEY</code> e un&apos;origine HTTPS (<code>NEXTAUTH_URL</code>) prima di collegare l&apos;account.</p>
+        <p className="text-amber-200 mt-4">Configurazione server mancante: imposta <code>META_APP_ID</code>, <code>META_APP_SECRET_KEY</code>, <code>INSTAGRAM_SCAN_ENCRYPTION_KEY</code> e un&apos;origine HTTPS (<code>NEXTAUTH_URL</code>) prima di collegare l&apos;account.</p>
       )}
       {status && status.configured && status.status === 'disconnected' && (
         <div className="flex flex-wrap gap-3 mt-5">{connectButton('Collega account Instagram')}</div>

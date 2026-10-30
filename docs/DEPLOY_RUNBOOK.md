@@ -60,7 +60,7 @@ Prerequisiti manuali:
 2. Creare un'app Meta (tipo Business) con prodotto Facebook Login for Business. Redirect URI OAuth valido: `<origine>/api/admin/instagram-scan/oauth/callback`, dove l'origine e `INSTAGRAM_SCAN_REDIRECT_ORIGIN` oppure `NEXTAUTH_URL` (HTTPS; HTTP solo per localhost). L'header Host non viene mai usato.
 3. Permessi: `instagram_basic`, `pages_show_list`, `pages_read_engagement`, `business_management`. Per Business Discovery su account non gestiti servono App Review e accesso avanzato (Advanced Access) di `instagram_basic`/`pages_read_engagement`; fino ad allora funziona solo con utenti con ruolo nell'app.
 4. L'account Instagram dell'admin deve essere professionale (Business/Creator) e collegato a una Pagina Facebook gestita.
-5. Variabili d'ambiente server-only: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_SCAN_ENCRYPTION_KEY` (esattamente 64 caratteri esadecimali, es. `openssl rand -hex 32`; nessun default, fail closed). Opzionali: `INSTAGRAM_SCAN_REDIRECT_ORIGIN`, `INSTAGRAM_GRAPH_API_VERSION` (default `v22.0`). Servono anche `CRON_SECRET` (o `CRON_SECRET_KEY`) e la configurazione AI esistente.
+5. Variabili d'ambiente server-only: `META_APP_ID`, `META_APP_SECRET_KEY`, `INSTAGRAM_SCAN_ENCRYPTION_KEY` (esattamente 64 caratteri esadecimali, es. `openssl rand -hex 32`; nessun default, fail closed). Opzionali: `INSTAGRAM_SCAN_REDIRECT_ORIGIN`, `INSTAGRAM_GRAPH_API_VERSION` (default `v22.0`). Servono anche `CRON_SECRET` (o `CRON_SECRET_KEY`) e la configurazione AI esistente.
 6. Da `/cron` (sessione admin) premere "Collega Instagram", poi aggiungere le fonti indicando username e consenso esplicito.
 
 Limiti e comportamento:

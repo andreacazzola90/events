@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createEventWithCalendar, scheduleCalendarDeliveries } from "../../lib/google-calendar";
+import { scheduleCalendarDeliveries } from "../../lib/google-calendar";
 import { uploadImageToSupabase } from "../../lib/supabase";
 import { geocodeLocation } from "@/lib/geocoding";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
@@ -16,6 +16,7 @@ import {
 } from "../../../lib/extension-cors";
 import type { DbEvent } from "../../types/event";
 import { recordScanCorrections } from "../../../lib/scan-learning-store";
+import { createEventWithSeries } from "../../../lib/event-series-create";
 
 function refreshEventCache(eventSlug: string) {
   revalidatePath("/", "page");
@@ -179,9 +180,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify(eventDataToSave, null, 2),
     );
 
-    const event = await createEventWithCalendar({
-      data: eventDataToSave,
-    });
+    const { event, seriesSlug } = await createEventWithSeries(eventDataToSave, eventData.seriesTitle);
     scheduleCalendarDeliveries();
 
     console.log("[API /events POST] Event saved successfully, ID:", event.id);
@@ -190,6 +189,10 @@ export async function POST(request: NextRequest) {
     const eventDetailPath = `/events/${eventSlug}`;
     try {
       refreshEventCache(eventSlug);
+      if (seriesSlug) {
+        revalidatePath("/rassegne", "page");
+        revalidatePath(`/rassegne/${seriesSlug}`, "page");
+      }
     } catch {
       console.warn("[API /events POST] Event saved; cache refresh unavailable");
     }

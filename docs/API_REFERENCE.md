@@ -4,6 +4,51 @@ Last update: 2026-05-27
 
 This document is generated from current route handlers under [app/api](../app/api).
 
+## Personal Messaging Accounts (2026-11-02)
+
+Implementation: [admin API](../app/api/admin/messaging/route.ts), [public contract and encryption](../lib/personal-messaging.ts), [admin component](../app/admin/MessagingAccountsTab.tsx), [persistent worker](../services/messaging-worker/src/server.ts), [real adapters](../services/messaging-worker/src/adapters.ts).
+
+This is account connection and explicit source authorization only. It never creates events, reads message history, sends messages, joins/follows channels, or starts a scraper. The existing Telegram bot, webhook and cron contracts below are unchanged.
+
+### GET /api/admin/messaging?platform=telegram|whatsapp
+
+NextAuth session plus database-backed `User.role=admin` or `User.type=admin`; anonymous/nonadmin requests stop with 401/403 before worker access. The trusted owner is taken exclusively from the session. Exactly one `platform` query parameter is accepted. Returns an allowlisted snapshot: `platform`, `status`, `sources`, `listing`, optional expiry, sanitized error, `remoteRemoved`, and a short-lived owner-scoped QR PNG when pairing. No session, ciphertext, phone, login code, password, provider identity object or worker credential is returned. All responses are private/no-store. Missing/offline worker or missing Telegram API credentials return sanitized 503, not a local success.
+
+### POST /api/admin/messaging
+
+Same authorization, plus JSON content type and exact `Origin` matching server-configured `PERSONAL_MESSAGING_ADMIN_ORIGIN` or `NEXTAUTH_URL`. Cross-site fetches are refused; request Host does not establish trust. Body maximum 4 KiB, streamed reads maximum 5 seconds. Unknown keys/actions/platforms and client-supplied owner are refused.
+
+| action | Fields besides `action`, `platform` | Result |
+| --- | --- | --- |
+| `status` | none | Confirmed current state; lazily restores a previously connected encrypted session. |
+| `start` | Telegram: `phone` in international `+...` format; WhatsApp: none | Invalidates the previous generation and all grants, starts an expiring code/QR login. Never signs up a Telegram user. |
+| `code` | Telegram `code` | Invalid/expired code and provider throttling are distinct; may transition to `password`, never assumes success. |
+| `password` | Telegram `password` | Transient 2FA verification; connected only after provider confirmation and durable session write. |
+| `sources` | none | Metadata only, maximum 100 candidates. Telegram public administered broadcast channels only; WhatsApp returns no fabricated subscriptions. |
+| `authorize` | `source`, `consent: true` | Real metadata/access verification, rejects personal chats/groups/protected Telegram channels. Stores source-specific consent and verification timestamp. At most 50 saved sources, including paused ones. |
+| `pause` | saved source `source` ID | Stops authorization, increments account/source revisions, closes the old transport and invalidates outstanding grants/callbacks. Resume requires explicit consent and verification again. |
+| `disconnect` | none | Immediately invalidates login/grant generations. Queues durable remote uncertainty before local session erasure; concurrent disconnects share cleanup even if a write fails. Success requires durable erasure. Unconfirmed remote cleanup returns `remoteRemoved:false`; revoke the device in the provider app. Old callbacks cannot restore access. |
+
+Telegram verification accepts public `@username` or `https://t.me/username`, a positive channel ID already known to the metadata cache, or explicit `ID:access_hash` supplied by the owner from an independently available metadata source. Unknown bare IDs and private invite links fail closed. Only `channels.GetChannels` is used for numeric metadata lookup: it requires known identities/hashes and cannot enumerate followed channels. No hash discovery via dialogs/messages is attempted; a bare private ID can stop resolving after restart because `StringSession` does not persist the entity cache. The transient supplied hash is not included in the saved source or response. Broadcast status, absence of protected content and current membership are required; `GetParticipant` must return Member/Self/Creator/Admin, never Left/Banned. Consent is bound to immutable provider ID; optional public `reference` is not the authorization identity. `listing=administered-public-only` remains an explicit partial listing, not complete followed discovery. `getDialogs` is forbidden here because its response includes personal top-message content.
+
+Telegram's pinned metadata-only guard is installed before `connect`: background update-loop start, receiver, dispatcher, gap recovery and catch-up are disabled. Application RPCs are allowlisted and wrapped in `Api.InvokeWithoutUpdates`; `GetDifference`, `GetChannelDifference`, dialogs and history are rejected. The transport must still decode protocol frames before discarding unsolicited updates; zero network receipt cannot be guaranteed. No application private-message handlers, content caches or content persistence are installed. This internal SDK shim is version-specific and its offline real-client-stub regression must pass before any SDK upgrade. No `node_modules` modification or fork is used.
+
+WhatsApp verification accepts `https://whatsapp.com/channel/<invite>` or `<numeric-id>@newsletter`, using the pinned Baileys `newsletterMetadata('invite'|'jid', value)` API. Metadata visibility does not prove a subscription, permission to read protected content or republication rights. The SDK has no supported followed-newsletter listing here: `listing=unsupported` is always explicit. No follow, join, subscription-to-updates or message-fetch calls are made. Baileys is unofficial and may cause account restrictions; protocol-level sync cannot be eliminated entirely, but no chat-content handlers or storage are installed. Full history sync, history acceptance, initial sync queries and online presence are disabled.
+
+### Private Worker Protocol
+
+The app alone calls `POST /command` at the trusted worker origin, with a server-only Bearer secret of at least 32 random bytes (hex) and `{ owner, command }`. HTTPS is required except loopback HTTP. Userinfo, path prefixes, query, fragments and redirects are rejected. The browser never receives the worker URL/secret or connects directly. Worker auth uses a constant-time byte comparison before body/provider work. Body/header limits are 4 KiB; request/SDK/transport deadlines are bounded. Both boundaries cap requests at 90/minute/owner; login starts at 3/10 minutes/account and code/2FA submissions at 5/challenge. Limits are per running instance, not a distributed quota.
+
+The worker's 11-second deadline/client disconnect signal revokes the operation generation before late login/grant callbacks can publish. Queued writes recheck admission before storage; writes already admitted to the filesystem cannot be cancelled, so revocation queues a conservative replacement and rechecks generation before exposing success. Listing cancellation has no grant side effect and does not erase the session. Account candidates are immutable snapshots, written serially, and connected is published only after persistence. Disk failure fails closed and detached transports close independently of disk latency. A failed disk write cannot promise durable deletion: treat the response as failure and repair storage before restarting the worker.
+
+Trusted `status` checks Telegram authorization/liveness with a bounded `users.GetUsers(InputUserSelf)` RPC, not private messages or `checkAuthorization`'s update-state query. Transient Telegram/WhatsApp faults expose `restoring`, preserve the encrypted session and existing consents, and disallow source actions. Reconnect is lazy on later trusted status requests, throttled to at most one attempt per five seconds; WhatsApp pairing restart `515` is limited to two immediate retries. Confirmed authorization revocation/WhatsApp `401` or `403` erases credentials and disables grants. The UI has one in-flight status refresh, aborts stale refreshes on mutations, and clears account/source/credential fields on service timeout.
+
+One worker owns one persistent volume. State is encrypted using AES-256-GCM and dedicated AAD `personal-messaging:v1:<owner>:<platform>`; file/rename/directory fsync and a heartbeat/stale-recoverable lock protect writes. The encrypted archive contains session credentials, source grants, revision and expiry, never code, password or QR. Login expires after 5 minutes; each QR is exposed/displayed for at most 45 seconds, while the provider controls its actual protocol expiry. Partial logins do not survive restart. Confirmed sessions restore only on an authenticated request, not service startup. Lost/restored permissions do not authorize a new source automatically.
+
+The [Prisma models](../prisma/schema.prisma) and [SQL migration](../prisma/migrations/20261102000000_personal_messaging_accounts/migration.sql) are preparation only, not applied and not used as a second live store. This phase uses the worker's encrypted persistent volume as authoritative storage; losing it loses sessions/grants. Do not copy state into the prepared tables or run multiple independent archives for the same app.
+
+Stable errors include `worker_unavailable`, `telegram_configuration_missing`, `provider_unavailable`, `session_corrupt`, `code_invalid`, `code_expired`, `password_invalid`, `rate_limited`, `login_expired`, `source_unavailable`, `source_limit`, `consent_required`, `operation_cancelled`, `invalid_origin`, `invalid_payload`. Raw SDK exceptions never cross the boundary. Browser/server/edge Sentry hooks drop messaging/provider events and scrub nested authentication fields; worker SDK logging is silent and replay is disabled. Infrastructure must also disable request/response-body and authorization-header capture.
+
 ## Telegram Admin And Collection (2026-10-29)
 
 Implementation: [admin API](../app/api/admin/telegram/route.ts), [webhook](../app/api/telegram/webhook/route.ts), [connection security](../lib/telegram-connection.ts), [store](../lib/telegram-store.ts), [queue consumer](../lib/telegram-event-scanning.ts).
@@ -358,6 +403,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 ### Scan learning
 - `POST /api/process-image` adds `scanFeedbackToken` (HMAC-signed AI output, 7-day TTL, key `SCAN_LEARNING_SECRET_KEY` or `NEXTAUTH_SECRET_KEY`) to each draft and includes up to 8 relevant past corrections in the extraction prompt.
 - `POST /api/events` compares the token with the published fields after the response; title, location and organizer corrections are stored only when grounded in the scanned text, and date/time only when well-formed (`ScanCorrection` table).
+- `PUT /api/events/[id]` learns only with a valid `scanFeedbackToken` whose signed title, date, time, location, organizer, category and price match the actual stored pre-edit fields. Lesson context comes exclusively from the verified token, never from request or stored `rawText`. Missing, forged, expired or mismatched tokens skip learning without rejecting the edit; learning failures do not fail a committed edit. Arbitrary saved edits without signed scan evidence do not learn automatically. General extraction guidance and separately authorized maintenance lessons are independent of this path.
 
 ### POST /api/event-cover-search
 - File: [app/api/event-cover-search/route.ts](../app/api/event-cover-search/route.ts)

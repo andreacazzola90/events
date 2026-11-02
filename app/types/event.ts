@@ -23,6 +23,7 @@ export interface DbEvent {
 
 export interface EventData {
   title: string;
+  seriesTitle?: string;
   description: string;
   date: string;
   time: string;

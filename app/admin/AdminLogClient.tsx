@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { CalendarRange, Clock3, Globe2, Image, ListFilter, Radio, Settings2, UserRound } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import SiteSettingsTab from "./SiteSettingsTab";
 import InstagramStoryTab from "./InstagramStoryTab";
+import MessagingAccountsTab from "./MessagingAccountsTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -369,76 +372,103 @@ function EventLogTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-type Tab = "cron" | "events" | "appearance" | "instagram";
+type Tab = "cron" | "events" | "appearance" | "instagram" | "messaging";
+
+type AdminDestination = { label: string; icon: LucideIcon } & (
+  { tab: Tab; href?: never } | { href: string; tab?: never }
+);
+
+const navigationGroups: { label: string; items: AdminDestination[] }[] = [
+  { label: "Monitoraggio", items: [
+    { tab: "cron", label: "Esecuzioni automatiche", icon: Clock3 },
+    { tab: "events", label: "Eventi importati", icon: ListFilter },
+  ] },
+  { label: "Fonti e canali", items: [
+    { href: "/cron", label: "Fonti e scansioni", icon: Globe2 },
+    { tab: "messaging", label: "Account e canali", icon: Radio },
+  ] },
+  { label: "Pubblicazione", items: [
+    { tab: "instagram", label: "Story Instagram", icon: Image },
+    { href: "/admin/rassegne", label: "Rassegne", icon: CalendarRange },
+  ] },
+  { label: "Sito", items: [
+    { tab: "appearance", label: "Categorie e citazioni", icon: Settings2 },
+  ] },
+];
 
 export default function AdminLogClient() {
   const [tab, setTab] = useState<Tab>("cron");
+  const activeSection = navigationGroups.flatMap(group => group.items).find(item => item.tab === tab)!;
 
   return (
-    <main className="min-h-screen p-6 pt-24 sm:p-8 sm:pt-28 cron-page">
+    <main className="min-h-screen p-4 pt-24 sm:p-8 sm:pt-28 cron-page" data-testid="admin-shell">
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="glass-effect p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Admin</p>
-              <h1 className="text-3xl font-black text-white">Log &amp; Cronologia</h1>
-              <p className="text-gray-300 text-sm mt-1">
-                Storico delle esecuzioni cron e degli eventi trovati.
-              </p>
+              <h1 className="text-2xl font-bold text-white">Amministrazione</h1>
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Link href="/cron" className="btn btn-ghost text-xs">
-                Gestione cron
-              </Link>
               <Link href="/account" className="btn btn-ghost text-xs">
+                <UserRound size={16} aria-hidden="true" />
                 Profilo
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="border-b border-white/10">
-          <div className="flex gap-0 overflow-x-auto" role="tablist" aria-label="Sezioni amministrazione">
-            {(
-              [
-                { id: "cron" as Tab, label: "Cronologia cron" },
-                { id: "events" as Tab, label: "Log eventi trovati" },
-                { id: "appearance" as Tab, label: "Categorie e citazioni" },
-                { id: "instagram" as Tab, label: "Story Instagram" },
-              ] as const
-            ).map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                role="tab"
-                aria-selected={tab === id}
-                className={`shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition-colors sm:px-5 ${
-                  tab === id
-                    ? "border-white text-white"
-                    : "border-transparent text-gray-400 hover:text-gray-200"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tab content */}
-        <div className="glass-effect p-4 sm:p-6" role="tabpanel">
+        <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+          <nav aria-label="Sezioni amministrazione" className="min-w-0 lg:sticky lg:top-24">
+            <label className="block text-sm font-medium text-gray-200 lg:hidden">
+              Sezione amministrazione
+              <select value={tab} onChange={event => {
+                const destination = navigationGroups.flatMap(group => group.items).find(item => (item.tab ?? item.href) === event.target.value);
+                if (destination?.tab) setTab(destination.tab);
+                else if (destination?.href) event.currentTarget.ownerDocument.defaultView?.location.assign(destination.href);
+              }} className="select select-bordered mt-2 w-full min-w-0" aria-controls="admin-section">
+                {navigationGroups.map(group => <optgroup key={group.label} label={group.label}>
+                  {group.items.map(item => <option key={item.tab ?? item.href} value={item.tab ?? item.href}>{item.label}</option>)}
+                </optgroup>)}
+              </select>
+            </label>
+            <div className="hidden lg:block space-y-5 border-r border-white/10 pr-5">
+              {navigationGroups.map(group => <div key={group.label}>
+                <h2 className="mb-2 px-3 text-xs font-semibold uppercase text-gray-400">{group.label}</h2>
+                <ul className="space-y-1">
+                  {group.items.map(item => {
+                    const Icon = item.icon;
+                    const selected = item.tab === tab;
+                    const className = `flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2.5 text-left text-sm transition-colors ${selected ? "border-white bg-white/10 text-white font-semibold" : "border-transparent text-gray-300 hover:bg-white/5 hover:text-white"}`;
+                    return <li key={item.tab ?? item.href}>
+                      {item.tab ? <button type="button" className={className} aria-current={selected ? "location" : undefined} aria-controls="admin-section" onClick={() => setTab(item.tab!)}>
+                        <Icon size={18} className="shrink-0" aria-hidden="true" /><span>{item.label}</span>
+                      </button> : <Link href={item.href} className={className}>
+                        <Icon size={18} className="shrink-0" aria-hidden="true" /><span>{item.label}</span>
+                      </Link>}
+                    </li>;
+                  })}
+                </ul>
+              </div>)}
+            </div>
+          </nav>
+          <section id="admin-section" aria-labelledby="admin-section-heading" className="min-w-0 space-y-4">
+            <h2 id="admin-section-heading" className="text-xl font-semibold text-white">{activeSection.label}</h2>
+            <div className="glass-effect p-4 sm:p-6 min-w-0">
           {tab === "cron" ? (
             <CronHistoryTab />
           ) : tab === "events" ? (
             <EventLogTab />
           ) : tab === "instagram" ? (
             <InstagramStoryTab />
+          ) : tab === "messaging" ? (
+            <MessagingAccountsTab />
           ) : (
             <SiteSettingsTab />
           )}
+            </div>
+          </section>
         </div>
 
       </div>

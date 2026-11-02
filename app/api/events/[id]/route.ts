@@ -7,6 +7,7 @@ import { toIsoDate } from '../../../../lib/event-utils';
 import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase } from '../../../lib/supabase';
 import { validateEventMediaFile } from '../../../../lib/event-media';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
+import { recordSavedEventCorrections } from '../../../../lib/scan-learning-store';
 
 function isAdminSession(session: any): boolean {
     const user = session?.user as any;
@@ -42,7 +43,7 @@ export async function PUT(
 
         const event = await prisma.event.findUnique({
             where: { id: eventId },
-            select: { id: true, createdById: true },
+            select: { id: true, createdById: true, title: true, date: true, time: true, location: true, organizer: true, category: true, price: true, rawText: true },
         });
 
         if (!event) {
@@ -86,7 +87,7 @@ export async function PUT(
         }
 
         if (typeof data.rawText !== 'string') {
-            data.rawText = '';
+            data.rawText = event.rawText;
         }
         if (typeof data.date !== 'string') {
             data.date = '';
@@ -108,6 +109,12 @@ export async function PUT(
             },
         });
         uploadedCoverPath = null;
+
+        try {
+            await recordSavedEventCorrections(data.scanFeedbackToken, event, updated, userId);
+        } catch {
+            console.warn('[API /events/[id] PUT] Event saved; corrections unavailable');
+        }
 
         revalidatePath('/', 'layout');
         revalidateTag('events-list', { expire: 0 });

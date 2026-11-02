@@ -54,6 +54,8 @@ export async function POST(request: NextRequest) {
   const input = source as Record<string, unknown>;
   const eventData: EventData = {
     title: readText(input.title, 160),
+    seriesTitle: readText(input.seriesTitle, 160) || undefined,
+    scanFeedbackToken: readText(input.scanFeedbackToken, 12_000) || undefined,
     description: readText(input.description, 5000),
     date: readText(input.date, 40),
     time: readText(input.time, 40),
@@ -76,6 +78,7 @@ export async function POST(request: NextRequest) {
 REGOLE:
 - Usa le istruzioni aggiuntive come contesto per interpretare il tipo di evento e valorizzare i campi pertinenti.
 - Non creare altri eventi e non modificare URL immagine, URL sorgente o testo originale.
+- Se esiste una rassegna, conserva il titolo specifico dell'incontro associato alla sua data: il titolo della rassegna non sostituisce il titolo dell'evento. Non inventare titoli diversi per repliche dello stesso spettacolo.
 - Non inventare dati non supportati dal testo sorgente o dai dati correnti; se un dettaglio non è chiaro, conserva il dato corrente.
 - Mantieni data YYYY-MM-DD e ora HH:MM quando possibile.
 - Restituisci un oggetto JSON con title, description, date, time, location, organizer, category e price.

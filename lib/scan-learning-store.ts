@@ -1,5 +1,5 @@
 import { prisma } from '../app/lib/prisma';
-import { diffScanCorrections, formatScanLessons, selectScanLessons, verifyScanBaseline, type LearnedScanField } from './scan-learning';
+import { diffScanCorrections, formatScanLessons, LEARNED_SCAN_FIELDS, selectScanLessons, verifyScanBaseline, type LearnedScanField } from './scan-learning';
 import { learnedCropProfile, type CropSample, type LearnedCropProfile } from './poster-crop-learning';
 
 const LESSON_POOL_SIZE = 300;
@@ -24,6 +24,21 @@ export async function loadScanLessonsPrompt(rawText: string): Promise<string> {
 export async function recordScanCorrections(token: unknown, final: Partial<Record<LearnedScanField, unknown>>, userId?: number | null): Promise<number> {
   const baseline = verifyScanBaseline(token);
   if (!baseline) return 0;
+  return storeScanCorrections(baseline, final, userId);
+}
+
+export async function recordSavedEventCorrections(evidence: unknown, previous: Partial<Record<LearnedScanField, unknown>>, final: Partial<Record<LearnedScanField, unknown>>, userId: number): Promise<number> {
+  const baseline = verifyScanBaseline(evidence);
+  if (!baseline) return 0;
+  const matches = LEARNED_SCAN_FIELDS.every(field => {
+    const value = typeof previous[field] === 'string' ? previous[field] : '';
+    return baseline.fields[field] === value.normalize('NFKC').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  });
+  if (!matches) return 0;
+  return storeScanCorrections(baseline, final, userId);
+}
+
+async function storeScanCorrections(baseline: Parameters<typeof diffScanCorrections>[0], final: Partial<Record<LearnedScanField, unknown>>, userId?: number | null): Promise<number> {
   const corrections = diffScanCorrections(baseline, final);
   if (!corrections.length) return 0;
   try {

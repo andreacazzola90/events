@@ -108,6 +108,41 @@ model User {
   calendarDeliveries GoogleCalendarDelivery[]
   telegramConnection TelegramConnection?
   instagramScanConnection InstagramScanConnection?
+  personalMessagingAccounts PersonalMessagingAccount[]
+}
+
+model PersonalMessagingAccount {
+  id               String   @id @default(cuid())
+  ownerId          Int
+  platform         String
+  status           String   @default("disconnected")
+  encryptedSession String?
+  revision         Int      @default(1)
+  loginExpiresAt   DateTime?
+  lastError        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  owner            User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sources          PersonalMessagingSource[]
+
+  @@unique([ownerId, platform])
+}
+
+model PersonalMessagingSource {
+  id          String   @id @default(cuid())
+  accountId   String
+  providerId  String
+  title       String
+  kind        String
+  active      Boolean  @default(false)
+  consentedAt DateTime?
+  verifiedAt  DateTime?
+  revision    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  account     PersonalMessagingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, providerId])
 }
 
 model TelegramConnection {

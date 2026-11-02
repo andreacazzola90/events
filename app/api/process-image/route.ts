@@ -203,6 +203,9 @@ Se vedi parole come "ciclo", "rassegna", "stagione", "incontri", "appuntamenti":
 - OGNI DATA è un EVENTO SEPARATO
 - Anche se hanno stesso orario e luogo
 - Esempio: "29 novembre - Cleopatra", "6 dicembre - Ritratti", "13 dicembre - Giuditta" = 3 EVENTI
+- Distingui l'intestazione comune dal titolo di ciascun appuntamento: il nome della rassegna va in "seriesTitle", il titolo del singolo incontro va in "title".
+- Associa ogni titolo alla sua data nella locandina. Non ripetere il titolone comune come titolo di tutti gli eventi e non aggiungere marcatori Markdown come "#".
+- Se sono repliche dello STESSO spettacolo senza titoli distinti, conserva lo stesso titolo: non inventare titoli diversi e non dedurre una rassegna dalla sola ripetizione delle date.
 
 ATTENZIONE A TESTI TECNICI:
 Se vedi testi come "#event_description" o simili, il contenuto che segue è la DESCRIZIONE dell'evento precedente, NON un nuovo evento.
@@ -219,7 +222,8 @@ ISTRUZIONI CRITICHE:
 6. Se non sei sicuro, crea un evento per ogni orario di inizio distinto; accorpa solo dettagli riferiti allo stesso orario
 
 REGOLE PER OGNI EVENTO:
-- TITOLO: Deve essere UNICO e SPECIFICO (nome artista/band, titolo spettacolo)
+- TITOLO: Usa il titolo specifico del singolo incontro, spettacolo o concerto, non il nome della rassegna.
+  * RASSEGNA: "seriesTitle" contiene solo il nome comune esplicitamente stampato; omettilo se non c'e una rassegna riconoscibile.
   * Evita titoli generici come "Evento", "Concerto" da soli.
   * Se nel testo vedi sia il nome del locale che dell'artista, usa come titolo la parte più specifica (di solito artista/spettacolo) e lascia il locale solo in "location".
   * Esempi CORRETTI: "Marco Carola DJ Set", "Teatro: Amleto", "Rock Night con The Beatles"
@@ -271,6 +275,7 @@ Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
   "events": [
     {
       "title": "Nome specifico evento 1",
+      "seriesTitle": null,
       "description": "Descrizione dettagliata e unica per evento 1 con info specifiche",
       "date": "YYYY-MM-DD",
       "time": "HH:MM",
@@ -283,6 +288,7 @@ Rispondi SOLO con JSON array valido (senza markdown, senza testo aggiuntivo):
     },
     {
       "title": "Nome specifico evento 2",
+      "seriesTitle": null,
       "description": "Descrizione dettagliata e unica per evento 2 con info specifiche",
       "date": "YYYY-MM-DD",
       "time": "HH:MM",
@@ -308,6 +314,7 @@ IMPORTANTE:
 REGOLE FONDAMENTALI:
 1. Leggi TUTTO il testo senza saltare nessuna parte
 2. Il TITOLO è il nome dello spettacolo, concerto o evento; non includere nel titolo il giorno della settimana o la data, che vanno solo nel campo "date". Un titolo che segue la data sulla stessa riga resta il titolo (es. "SABATO 31 OTTOBRE A VOLTE RITORNANO" → titolo "A VOLTE RITORNANO", data 31 ottobre).
+  Se compare un'intestazione di rassegna e un titolo specifico del singolo incontro, usa il secondo in "title" e il nome comune in "seriesTitle"; ometti "seriesTitle" se non e esplicito. Non includere marcatori Markdown nei titoli.
 3. La DATA può essere in qualsiasi formato - CONVERTILA sempre in YYYY-MM-DD
    Esempi: "15 dicembre 2025" → "2025-12-15", "15/12/25" → "2025-12-15"
 4. L'ORARIO può essere: "21:00", "h 21", "ore 21", "dalle 20:00 alle 23:00"

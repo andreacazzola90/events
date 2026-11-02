@@ -621,7 +621,7 @@ export default function EventMap() {
                       />
                     )}
                     <h3 className="font-bold text-lg mb-1">
-                      <Link href={`/events/${generateUniqueSlug(event.title, event.id)}`} className="hover:text-[#d65a38]">
+                      <Link href={`/events/${generateUniqueSlug(event.title, event.id)}`} className="text-[#f08b6b] hover:text-[#ffb09a]">
                         {event.title}
                       </Link>
                     </h3>

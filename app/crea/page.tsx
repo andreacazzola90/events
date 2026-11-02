@@ -624,7 +624,7 @@ export default function CreaEvento() {
                                                 <button
                                                     type="submit"
                                                     disabled={loadingLink}
-                                                    className="btn btn-primary w-full disabled:opacity-50"
+                                                    className="btn btn-primary w-full !bg-[#b9432b] !border-[#b9432b] text-white disabled:opacity-50"
                                                 >
                                                     ✨ Estrai evento
                                                 </button>

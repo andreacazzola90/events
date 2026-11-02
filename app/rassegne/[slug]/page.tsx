@@ -161,11 +161,11 @@ export default async function EventSeriesPage(
           <div>
             {[...dayGroups.entries()].map(([key, items]) => (
               <section key={key} className="grid gap-4 border-b border-black/10 py-7 md:grid-cols-[210px_minmax(0,1fr)] md:gap-8">
-                <h2 className="text-lg font-black capitalize text-[#a33f24]">{dateLabel(key, items[0].date)}</h2>
+                <h2 className="text-lg font-black capitalize text-[#f08b6b]">{dateLabel(key, items[0].date)}</h2>
                 <ol className="divide-y divide-black/10 bg-white">
                   {items.map((event) => (
                     <li key={event.id} className={`grid gap-2 px-4 py-4 sm:gap-4 md:px-5 ${event.imageUrl ? "sm:grid-cols-[74px_minmax(0,1fr)_144px]" : "sm:grid-cols-[74px_minmax(0,1fr)]"}`}>
-                      <p className="text-sm font-black tabular-nums text-[#d65a38]">{event.time || "Orario da definire"}</p>
+                      <p className="text-sm font-black tabular-nums text-[#f08b6b]">{event.time || "Orario da definire"}</p>
                       <div>
                         <Link href={`/events/${event.id}`} className="font-bold hover:text-[#a33f24]">{event.title}</Link>
                         {event.location && <p className="mt-1 text-sm text-black/55">{event.location}</p>}

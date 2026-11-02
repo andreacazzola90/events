@@ -157,9 +157,10 @@ export default function Header() {
                   key={link.href}
                   href={link.href}
                   aria-current={active ? "page" : undefined}
-                  className={`desktop-nav-link site-nav-link text-[11px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${active ? "site-nav-active text-black" : "text-black/55 hover:text-black"}`}
+                  className={`desktop-nav-link site-nav-link inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] font-bold transition-colors no-underline hover:no-underline ${active ? "site-nav-active text-black" : "text-black/55 hover:text-black"}`}
                 >
-                  {link.label}
+                  {link.icon === "series" ? <Layers3 className="h-4 w-4" aria-hidden="true" /> : <AppIcon name={link.icon} className="h-4 w-4" />}
+                  <span>{link.label}</span>
                 </TransitionLink>
               );
             })}

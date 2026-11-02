@@ -7,6 +7,7 @@ import { getEventBreadcrumbJsonLd, getEventIdFromSlug, getEventJsonLd, getEventM
 import { publicPageMetadata, serializeJsonLd } from '../../../lib/seo-metadata';
 import { TransitionLink } from '../../components/TransitionLink';
 import EventCategoryBadge from '../../components/EventCategoryBadge';
+import EventPreview from '../../components/EventPreview';
 import { prisma } from '../../lib/prisma';
 import FavoriteButton from '../../components/FavoriteButton';
 import { notFound, permanentRedirect } from 'next/navigation';
@@ -72,6 +73,10 @@ const getEvent = cache(async (slug: string) => {
     return event;
 });
 
+function getPreviewImageUrls(event: { imageUrl: string | null; media?: { url: string }[] }) {
+    return [...new Set([event.imageUrl, ...(event.media ?? []).map((image) => image.url)].filter((url): url is string => Boolean(url)))].slice(0, 5);
+}
+
 async function getSameDayEvents(date: string, currentEventId: number) {
     const events = await prisma.event.findMany({
         where: {
@@ -83,8 +88,18 @@ async function getSameDayEvents(date: string, currentEventId: number) {
             title: true,
             imageUrl: true,
             description: true,
+            date: true,
             time: true,
             location: true,
+            organizer: true,
+            category: true,
+            price: true,
+            media: {
+                where: { kind: 'image' },
+                select: { url: true },
+                orderBy: { position: 'asc' },
+                take: 4,
+            },
         },
     });
     return events;
@@ -122,7 +137,17 @@ async function getSimilarEvents(currentEvent: any) {
             imageUrl: true,
             description: true,
             date: true,
+            time: true,
             location: true,
+            organizer: true,
+            category: true,
+            price: true,
+            media: {
+                where: { kind: 'image' },
+                select: { url: true },
+                orderBy: { position: 'asc' },
+                take: 4,
+            },
         },
     });
     return similarEvents;
@@ -166,8 +191,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
             <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(getEventBreadcrumbJsonLd(event)) }} />
             <div className="editorial-container">
                 <div className="w-full space-y-8">
-                    <div className="lg:flex lg:gap-8 lg:items-start">
-                        <div className="lg:w-1/4 event-image-sticky">
+                    <div className="event-detail-layout">
+                        <div className="event-image-sticky">
                             {event.imageUrl && (
                                 <div className="relative group event-image-container">
                                     <FavoriteButton eventId={event.id} />
@@ -176,9 +201,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         alt={event.title}
                                         width={800}
                                         height={600}
-                                        quality={65}
+                                        quality={75}
                                         className="w-full h-64 sm:h-80 lg:h-[30rem] object-cover transition-all duration-700"
-                                        sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 100vw"
+                                        sizes="100vw"
                                         preload
                                         fetchPriority="high"
                                     />
@@ -189,7 +214,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                             )}
                         </div>
 
-                        <div className="lg:w-3/4 mt-8 lg:mt-0">
+                        <div className="event-detail-content">
                             <div className="surface-panel p-5 md:p-8">
                                 <div className="space-y-8">
                                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -234,7 +259,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                             </p>
                                         </div>
                                         <div className="space-y-4">
-                                            {event.category && <EventCategoryBadge category={event.category} />}
+                                            {event.category && <EventCategoryBadge category={event.category} variant="dark" />}
                                             {event.organizer && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">👤</span> <span>{event.organizer}</span></p>}
                                             {event.price && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">💰</span> <span>{event.price}</span></p>}
                                         </div>
@@ -301,66 +326,54 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                     </div>
 
                     {sameDayEvents.length > 0 && (
-                        <div className="surface-panel p-5 md:p-8 w-full max-w-full">
+                    <div className="event-related-section surface-panel p-5 md:p-8 w-full max-w-full">
                             <h2 className="text-3xl font-black tracking-[-0.06em] mb-6 text-[#1d1d1b]">Altri Eventi dello Stesso Giorno</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-8">
                                 {sameDayEvents.map((sameDayEvent) => (
-                                    <TransitionLink
+                                    <EventPreview
                                         key={sameDayEvent.id}
+                                        eventId={sameDayEvent.id}
                                         href={`/events/${generateUniqueSlug(sameDayEvent.title, sameDayEvent.id)}`}
-                                        className="group block rounded-none border border-black/10 bg-white p-4 transition-all duration-300 hover:-translate-y-1 hover:border-[#d65a38] hover:shadow-[0_12px_30px_rgba(214,90,56,0.08)]"
-                                    >
-                                        {sameDayEvent.imageUrl && (
-                                            <Image
-                                                src={sameDayEvent.imageUrl.startsWith('/uploads/') ? sameDayEvent.imageUrl : sameDayEvent.imageUrl}
-                                                alt={sameDayEvent.title}
-                                                width={400}
-                                                height={300}
-                                                className="w-full h-44 object-cover mb-3"
-                                                sizes="(min-width: 1024px) 25vw, 50vw"
-                                                loading="lazy"
-                                            />
-                                        )}
-                                        <h3 className="font-bold text-xl mb-2 text-[#1d1d1b] truncate group-hover:text-[#d65a38] transition-colors">{sameDayEvent.title}</h3>
-                                        <p className="text-[#5f5b56] text-sm mb-3 line-clamp-2">{sameDayEvent.description}</p>
-                                        <div className="space-y-1 text-sm text-[#5f5b56]">
-                                            <p className="flex items-center gap-2"><ClockIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{sameDayEvent.time}</span></p>
-                                            <p className="flex items-center gap-2"><MapPinIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{sameDayEvent.location}</span></p>
-                                        </div>
-                                    </TransitionLink>
+                                        title={sameDayEvent.title}
+                                        imageUrl={sameDayEvent.imageUrl}
+                                        imageUrls={getPreviewImageUrls(sameDayEvent)}
+                                        description={sameDayEvent.description}
+                                        date={sameDayEvent.date}
+                                        time={sameDayEvent.time}
+                                        location={sameDayEvent.location}
+                                        organizer={sameDayEvent.organizer}
+                                        category={sameDayEvent.category}
+                                        price={sameDayEvent.price}
+                                        showFavorite={false}
+                                        imageSizes="(min-width: 1024px) 25vw, 50vw"
+                                    />
                                 ))}
                             </div>
                         </div>
                     )}
 
                     {similarEvents.length > 0 && (
-                        <div className="surface-panel p-5 md:p-8 w-full max-w-full">
+                        <div className="event-related-section surface-panel p-5 md:p-8 w-full max-w-full">
                             <h2 className="text-3xl font-black tracking-[-0.06em] mb-6 text-[#1d1d1b]">Eventi Simili</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-8">
                                 {similarEvents.map((similarEvent) => (
-                                    <TransitionLink
+                                    <EventPreview
                                         key={similarEvent.id}
+                                        eventId={similarEvent.id}
                                         href={`/events/${generateUniqueSlug(similarEvent.title, similarEvent.id)}`}
-                                        className="group block rounded-none border border-black/10 bg-white p-4 transition-all duration-300 hover:-translate-y-1 hover:border-[#d65a38] hover:shadow-[0_12px_30px_rgba(214,90,56,0.08)]"
-                                    >
-                                        {similarEvent.imageUrl && (
-                                            <Image
-                                                src={similarEvent.imageUrl.startsWith('/uploads/') ? similarEvent.imageUrl : similarEvent.imageUrl}
-                                                alt={similarEvent.title}
-                                                width={400}
-                                                height={300}
-                                                className="w-full h-44 object-cover mb-3"
-                                                sizes="(min-width: 1024px) 25vw, 50vw"
-                                                loading="lazy"
-                                            />
-                                        )}
-                                        <h3 className="font-bold text-lg text-[#1d1d1b] truncate group-hover:text-[#d65a38] transition-colors">{similarEvent.title}</h3>
-                                        <p className="text-[#5f5b56] text-sm line-clamp-2 mt-2">{similarEvent.description}</p>
-                                        <div className="mt-3 text-sm text-[#5f5b56]">
-                                            <p className="flex items-center gap-2"><CalendarIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{similarEvent.date}</span></p>
-                                            <p className="flex items-center gap-2"><MapPinIcon className="w-4 h-4 text-[#d65a38] shrink-0" /> <span className="truncate">{similarEvent.location}</span></p>
-                                        </div>
-                                    </TransitionLink>
+                                        title={similarEvent.title}
+                                        imageUrl={similarEvent.imageUrl}
+                                        imageUrls={getPreviewImageUrls(similarEvent)}
+                                        description={similarEvent.description}
+                                        date={similarEvent.date}
+                                        time={similarEvent.time}
+                                        location={similarEvent.location}
+                                        organizer={similarEvent.organizer}
+                                        category={similarEvent.category}
+                                        price={similarEvent.price}
+                                        showFavorite={false}
+                                        imageSizes="(min-width: 1024px) 25vw, 50vw"
+                                    />
                                 ))}
                             </div>
                         </div>

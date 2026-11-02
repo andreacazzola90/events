@@ -1,18 +1,13 @@
 "use client";
 
-import Image from "next/image";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { generateUniqueSlug } from "../../lib/slug-utils";
-import { getEventStartTime } from "../../lib/event-display";
-import { TransitionLink } from "./TransitionLink";
 import { trackSearch } from "../lib/gtm";
 import { trackEvent } from "../lib/analytics";
 import { STANDARD_CATEGORIES } from "../../lib/constants";
-import FavoriteButton from "./FavoriteButton";
-import { AppIcon, CalendarIcon, MapPinIcon } from "./EventIcons";
+import { AppIcon } from "./EventIcons";
 import EventCategoryIcon from "./EventCategoryIcon";
-import EventCategoryBadge from "./EventCategoryBadge";
-import { getCategoryPresentation } from "../../lib/site-presentation";
+import EventPreview from "./EventPreview";
 import { useSiteSettings } from "./SiteSettingsProvider";
 import { calendarToday } from "../../lib/calendar-view";
 import type { PublicListEvent } from "../../lib/public-event-list";
@@ -45,30 +40,11 @@ function cleanText(text: string): string {
 }
 
 type Event = PublicListEvent;
-type PriceLabel = "gratis" | "pagamento";
 
 function getDisplayValue(rawValue: string | null | undefined): string | null {
   const value = cleanText(rawValue ?? "");
   if (!value || /^(undefined|null|non definito|non specificato|non trovato|not defined|not specified|not found)$/i.test(value)) return null;
   return value;
-}
-
-function getPriceLabel(rawPrice: string | null | undefined): PriceLabel | null {
-  const value = getDisplayValue(rawPrice);
-  if (!value) return null;
-  const price = value.toLowerCase();
-  if (price.includes("gratis") || price.includes("ingresso libero") || price.includes("ingresso gratuito") || price.includes("free")) return "gratis";
-  if (price.includes("non definito")) return null;
-  if (/\d/.test(price) || price.includes("€") || price.includes("euro") || price.includes("bigliett") || price.includes("prevendita") || price.includes("ticket") || price.includes("vivaticket") || price.includes("ticketone")) return "pagamento";
-  return null;
-}
-
-function getPriceBadgeClasses(label: PriceLabel): string {
-  switch (label) {
-    case "gratis": return "bg-black text-white";
-    case "pagamento": return "bg-black/80 text-white";
-    default: return "bg-black/50 text-white";
-  }
 }
 
 function getCategoryLabel(rawCategory: string | null | undefined): string | null {
@@ -538,116 +514,37 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
               ) : (
                 displayedEvents.map((event, index) => {
                   const category = getCategoryLabel(event.category);
-                  const categoryPresentation = category ? getCategoryPresentation(category, settings.categories) : undefined;
-                  const priceLabel = getPriceLabel(event.price);
                   const location = getDisplayValue(event.location);
                   const organizer = getDisplayValue(event.organizer);
                   return (
-                  <TransitionLink
+                  <EventPreview
                     key={event.id}
+                    eventId={event.id}
                     href={`/events/${generateUniqueSlug(event.title, event.id)}`}
-                    className="event-card group flex items-stretch no-underline hover:no-underline"
-                    style={categoryPresentation ? { borderInlineStart: `4px solid ${categoryPresentation.color}` } : undefined}
-                  >
-                    <div className="event-card-body flex flex-1 min-w-0 flex-col gap-3 p-4 md:p-5">
-                      <div className="space-y-2">
-                        <h3 className="text-lg md:text-xl font-black text-black leading-tight line-clamp-2 transition-colors">
-                          {cleanText(event.title)}
-                        </h3>
-                        <p className="event-card-description text-black/60 text-sm line-clamp-2">
-                          {cleanText(event.description)}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1 text-sm">
-                        <div className="flex items-center gap-2 text-black/80">
-                          <CalendarIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
-                          <span>
-                            {(() => {
-                              const dateObj = parseEventDate(event.date);
-                              if (!dateObj) return event.date;
-                              return dateObj.toLocaleDateString("it-IT", {
-                                weekday: "short",
-                                day: "numeric",
-                                month: "short",
-                              });
-                            })()}
-                          </span>
-                          {getEventStartTime(event.time) && (
-                            <span className="text-black/40">
-                              • {getEventStartTime(event.time)}
-                            </span>
-                          )}
-                        </div>
-
-                        {location && (
-                          <div className="flex items-center gap-2 text-black/80 min-w-0">
-                            <MapPinIcon className="event-card-meta-icon h-4 w-4 shrink-0 text-[#d65a38]" />
-                            <span className="truncate">{location}</span>
-                          </div>
-                        )}
-
-                        {organizer && (
-                          <div className="event-card-organizer flex items-center gap-2 text-black/80 min-w-0">
-                            <span className="w-4 shrink-0">•</span>
-                            <span className="truncate">{organizer}</span>
-                          </div>
-                        )}
-                      </div>
-
-                    </div>
-
-                    <div className="event-card-media relative overflow-hidden shrink-0">
-                      <FavoriteButton
-                        eventId={event.id}
-                        initialIsFavorite={favoriteIds.has(event.id)}
-                        onToggle={(newValue) =>
-                          handleFavoriteToggleLocal(event.id, newValue)
-                        }
-                      />
-                      {event.imageUrl ? (
-                        <Image
-                          src={event.imageUrl}
-                          alt={event.title}
-                          width={400}
-                          height={400}
-                          className="event-card-image absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          loading={index < 2 ? "eager" : "lazy"}
-                          sizes={[
-                            "(min-width: 1280px) calc((100vw - clamp(2.5rem, 8vw, 8rem) - 4.5rem) / 4)",
-                            "(min-width: 1024px) calc((92vw - 3rem) / 3)",
-                            "(min-width: 640px) calc((92vw - 1.25rem) / 2)",
-                            mode === "full"
-                              ? "calc((100vw - 1.75rem) / 2)"
-                              : "calc((100vw - clamp(2.5rem, 8vw, 8rem) - 0.75rem) / 2)",
-                          ].join(", ")}
-                        />
-                      ) : (
-                        <div className="event-card-placeholder absolute inset-0 flex items-center justify-center">
-                          <div className="text-xs uppercase tracking-[0.12em] text-black/40 font-bold">
-                            No image
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="absolute bottom-2 inset-x-2 z-10 flex items-end justify-between gap-1 sm:gap-2">
-                        {category && (
-                          <EventCategoryBadge
-                            category={category}
-                            className="max-w-[75%] break-words px-1.5 py-1 text-[9px] sm:px-2.5 sm:text-[10px]"
-                            iconClassName="h-3 w-3 shrink-0"
-                          />
-                        )}
-                        {priceLabel && (
-                            <div
-                              className={`ml-auto shrink-0 px-1.5 sm:px-2 py-1 text-[9px] sm:text-[10px] uppercase sm:tracking-[0.11em] font-bold ${getPriceBadgeClasses(priceLabel)}`}
-                            >
-                              {priceLabel}
-                            </div>
-                        )}
-                      </div>
-                    </div>
-                  </TransitionLink>
+                    title={cleanText(event.title)}
+                    imageUrl={event.imageUrl}
+                    imageUrls={event.imageUrls}
+                    description={cleanText(event.description)}
+                    date={event.date}
+                    time={event.time}
+                    location={location}
+                    organizer={organizer}
+                    category={category}
+                    price={event.price}
+                    initialIsFavorite={favoriteIds.has(event.id)}
+                    onFavoriteToggle={(newValue) =>
+                      handleFavoriteToggleLocal(event.id, newValue)
+                    }
+                    imageLoading={index < 2 ? "eager" : "lazy"}
+                    imageSizes={[
+                      "(min-width: 1280px) calc((100vw - clamp(2.5rem, 8vw, 8rem) - 4.5rem) / 4)",
+                      "(min-width: 1024px) calc((92vw - 3rem) / 3)",
+                      "(min-width: 640px) calc((92vw - 1.25rem) / 2)",
+                      mode === "full"
+                        ? "calc((100vw - 1.75rem) / 2)"
+                        : "calc((100vw - clamp(2.5rem, 8vw, 8rem) - 0.75rem) / 2)",
+                    ].join(", ")}
+                  />
                   );
                 })
               )}

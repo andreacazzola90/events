@@ -139,11 +139,11 @@ export default async function EventSeriesPage(
   };
 
   return (
-    <main className="min-h-screen bg-[#f5f2ec] px-4 py-8 text-[#1d1d1b] md:px-8 md:py-12">
+    <main className="min-h-screen bg-[#f5f2ec] py-8 text-[#1d1d1b] md:py-12">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
-      <div className="mx-auto max-w-5xl">
+      <div className="editorial-container">
         <Link href="/rassegne" className="text-sm font-semibold text-[#a33f24] underline underline-offset-4">Tutte le rassegne</Link>
-        <header className="grid gap-6 border-b border-black/10 py-8 md:grid-cols-[minmax(0,1fr)_220px] md:items-start md:py-12">
+        <header className="grid gap-6 border-b border-black/10 py-8 md:grid-cols-[minmax(0,1fr)_minmax(280px,32vw)] md:items-start md:py-12">
           <div>
           <p className="mb-3 text-xs font-bold uppercase text-[#d65a38]">Programma</p>
           <h1 className="max-w-4xl text-4xl font-black leading-tight md:text-5xl">{series.title}</h1>
@@ -151,7 +151,7 @@ export default async function EventSeriesPage(
           <p className="mt-5 text-sm font-semibold text-black/55">{events.length} appuntamenti</p>
           </div>
           {posterUrl && (
-            <a href={posterUrl} target="_blank" rel="noreferrer" className="block w-full max-w-[260px] overflow-hidden border border-black/10 bg-white md:max-w-none">
+            <a href={posterUrl} target="_blank" rel="noreferrer" className="block w-full overflow-hidden border border-black/10 bg-white">
               <Image src={posterUrl} alt={`Locandina di ${series.title}`} width={440} height={620} unoptimized className="h-auto w-full" />
             </a>
           )}

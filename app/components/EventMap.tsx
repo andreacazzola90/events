@@ -588,8 +588,8 @@ export default function EventMap() {
         >
           <ZoomControl position="topright" />
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
           <MapLifecycleController center={validatedMapCenter} />
           <MapController center={validatedMapCenter} zoom={mapZoom} />
@@ -901,7 +901,7 @@ export default function EventMap() {
                     {event.time && <span className="inline-flex shrink-0 items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{event.time}</span>}
                     <span className="min-w-0 truncate">{event.location}</span>
                   </span>
-                  <EventCategoryBadge category={event.category} className="mt-1 px-2 py-0.5 text-[9px]" iconClassName="h-3 w-3" />
+                  <EventCategoryBadge category={event.category} variant="dark" className="mt-1 px-2 py-0.5 text-[9px]" iconClassName="h-3 w-3" />
                 </span>
               </button>
               <Link

@@ -7,7 +7,7 @@ import { DateTime } from "luxon";
 import type { DbEvent } from "../app/types/event";
 
 export type PublicCalendarEvent = Pick<DbEvent, "id" | "title" | "date" | "time" | "location" | "imageUrl" | "category">;
-export type PublicListEvent = PublicCalendarEvent & Pick<DbEvent, "description" | "organizer" | "category" | "price">;
+export type PublicListEvent = PublicCalendarEvent & Pick<DbEvent, "description" | "organizer" | "category" | "price"> & { imageUrls: string[] };
 
 const calendarSelect = {
   id: true, title: true, date: true, time: true, location: true, imageUrl: true, category: true,
@@ -26,11 +26,27 @@ function normalizePublicEvents<Event extends PublicCalendarEvent>(events: Event[
 const cachedList = unstable_cache(async (today: string, range: "today" | "upcoming") => {
   const events = await prisma.event.findMany({
     where: { OR: [{ date: { gte: today } }, { date: { contains: "/" } }] },
-    select: { ...calendarSelect, description: true, organizer: true, category: true, price: true },
+    select: {
+      ...calendarSelect,
+      description: true,
+      organizer: true,
+      category: true,
+      price: true,
+      media: {
+        where: { kind: "image" },
+        select: { url: true },
+        orderBy: { position: "asc" },
+        take: 4,
+      },
+    },
     orderBy: [{ date: "asc" }, { time: "asc" }, { id: "asc" }],
     take: 2000,
   });
-  return normalizePublicEvents(events, today, range);
+  const previewEvents = events.map(({ media, ...event }) => ({
+    ...event,
+    imageUrls: [...new Set([event.imageUrl, ...(media ?? []).map(image => image.url)].filter((url): url is string => Boolean(url)))].slice(0, 5),
+  }));
+  return normalizePublicEvents(previewEvents, today, range);
 }, ["public-event-list"], { tags: ["events-list"], revalidate: 60 });
 
 const cachedCalendar = unstable_cache(async (today: string) => {

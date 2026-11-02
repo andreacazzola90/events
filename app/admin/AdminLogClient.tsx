@@ -401,8 +401,8 @@ export default function AdminLogClient() {
   const activeSection = navigationGroups.flatMap(group => group.items).find(item => item.tab === tab)!;
 
   return (
-    <main className="min-h-screen p-4 pt-24 sm:p-8 sm:pt-28 cron-page" data-testid="admin-shell">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <main className="admin-page min-h-screen p-4 pt-24 sm:p-8 sm:pt-28 cron-page" data-testid="admin-shell">
+      <div className="w-full space-y-6">
 
         {/* Header */}
         <div className="glass-effect p-6 sm:p-8">
@@ -435,7 +435,7 @@ export default function AdminLogClient() {
             </label>
             <div className="hidden lg:block space-y-5 border-r border-white/10 pr-5">
               {navigationGroups.map(group => <div key={group.label}>
-                <h2 className="mb-2 px-3 text-xs font-semibold uppercase text-gray-400">{group.label}</h2>
+                <h2 className="admin-nav-group-title mb-2 px-3 text-xs font-semibold uppercase text-gray-400">{group.label}</h2>
                 <ul className="space-y-1">
                   {group.items.map(item => {
                     const Icon = item.icon;

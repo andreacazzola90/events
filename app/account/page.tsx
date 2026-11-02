@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Check, Link2, LoaderCircle, Pencil, Unlink, X } from "lucide-react";
 import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
+import EventPreview from "../components/EventPreview";
 import { groupEventsByScanOriginAndDate } from "../../lib/event-scan-groups";
 import type { DbEvent } from "../types/event";
 
@@ -238,6 +238,14 @@ export default function AccountPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const syncFavoriteEvent = (event: UserEvent, isFavorite: boolean) => {
+    setFavoriteEvents((current) => {
+      const alreadyFavorite = current.some((favorite) => favorite.id === event.id);
+      if (isFavorite) return alreadyFavorite ? current : [...current, event];
+      return alreadyFavorite ? current.filter((favorite) => favorite.id !== event.id) : current;
+    });
   };
 
   useEffect(() => {
@@ -962,78 +970,25 @@ export default function AccountPage() {
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {dayGroup.events.map((event) => (
-                          <div
+                          <EventPreview
                             key={event.id}
-                            className="account-event-card cursor-pointer group transition-all duration-300"
-                            onClick={() =>
-                              router.push(
-                                `/events/${generateUniqueSlug(event.title, event.id)}`,
-                              )
-                            }
-                          >
-                            <div className="relative overflow-hidden">
-                              {event.imageUrl ? (
-                                <Image
-                                  src={event.imageUrl}
-                                  alt={event.title}
-                                  width={600}
-                                  height={400}
-                                  className="account-event-image w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
-                                  sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                                />
-                              ) : (
-                                <div className="account-event-placeholder w-full h-40 flex items-center justify-center">
-                                  <div className="text-4xl opacity-50">🎵</div>
-                                </div>
-                              )}
-
-                              <div className="account-event-origin absolute top-3 right-3 text-xs font-semibold">
-                                {event.origin === "user"
-                                  ? isAdminEventsView ? "UTENTE" : "TU"
-                                  : "CRON"}
-                              </div>
-                            </div>
-
-                            <div className="p-5 space-y-3">
-                              <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
-                                {event.title}
-                              </h3>
-                              <p className="text-gray-400 text-sm line-clamp-2">
-                                {event.description}
-                              </p>
-
-                              <div className="space-y-1 text-sm text-gray-300">
-                                <div className="flex items-center gap-2">
-                                  <span>📅</span>
-                                  <span>
-                                    {event.date} • {event.time}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 line-clamp-1">
-                                  <span>📍</span>
-                                  <span className="truncate">{event.location}</span>
-                                </div>
-                                {event.category && (
-                                  <div className="flex items-center gap-2">
-                                    <span>🏷️</span>
-                                    <span>{event.category}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(
-                                    `/events/${generateUniqueSlug(event.title, event.id)}/edit`,
-                                  );
-                                }}
-                                className="btn btn-outline btn-primary w-full mt-4"
-                              >
-                                ✏️ Edit Event
-                              </button>
-                            </div>
-                          </div>
+                            eventId={event.id}
+                            href={`/events/${generateUniqueSlug(event.title, event.id)}`}
+                            title={event.title}
+                            imageUrl={event.imageUrl}
+                            description={event.description}
+                            date={event.date}
+                            time={event.time}
+                            location={event.location}
+                            organizer={event.organizer}
+                            category={event.category}
+                            price={event.price}
+                            originLabel={event.origin === "user" ? isAdminEventsView ? "UTENTE" : "TU" : "CRON"}
+                            initialIsFavorite={favoriteEvents.some((favorite) => favorite.id === event.id)}
+                            onFavoriteToggle={(isFavorite) => syncFavoriteEvent(event, isFavorite)}
+                            editHref={`/events/${generateUniqueSlug(event.title, event.id)}/edit`}
+                            imageSizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                          />
                         ))}
                       </div>
                     </div>
@@ -1059,68 +1014,25 @@ export default function AccountPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {favoriteEvents.map((event) => (
-                <div
+                <EventPreview
                   key={event.id}
-                  className="account-event-card cursor-pointer group transition-all duration-300"
-                  onClick={() =>
-                    router.push(
-                      `/events/${generateUniqueSlug(event.title, event.id)}`,
-                    )
-                  }
-                >
-                  <div className="relative overflow-hidden">
-                    {event.imageUrl ? (
-                      <Image
-                        src={
-                          event.imageUrl.startsWith("/uploads/")
-                            ? event.imageUrl
-                            : event.imageUrl
-                        }
-                        alt={event.title}
-                        width={600}
-                        height={400}
-                        className="account-event-image w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
-                        sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                      />
-                    ) : (
-                      <div className="account-event-placeholder w-full h-40 flex items-center justify-center">
-                        <div className="text-4xl opacity-50">🎵</div>
-                      </div>
-                    )}
-
-                    <div className="account-event-origin absolute top-3 right-3 text-xs font-semibold">
-                      PREFERITO
-                    </div>
-                  </div>
-
-                  <div className="p-5 space-y-3">
-                    <h3 className="text-xl font-bold text-white leading-tight line-clamp-2 group-hover:text-pink-400 transition-colors">
-                      {event.title}
-                    </h3>
-                    <p className="text-gray-400 text-sm line-clamp-2">
-                      {event.description}
-                    </p>
-
-                    <div className="space-y-1 text-sm text-gray-300">
-                      <div className="flex items-center gap-2">
-                        <span>📅</span>
-                        <span>
-                          {event.date} • {event.time}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 line-clamp-1">
-                        <span>📍</span>
-                        <span className="truncate">{event.location}</span>
-                      </div>
-                      {event.category && (
-                        <div className="flex items-center gap-2">
-                          <span>🏷️</span>
-                          <span>{event.category}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  eventId={event.id}
+                  href={`/events/${generateUniqueSlug(event.title, event.id)}`}
+                  title={event.title}
+                  imageUrl={event.imageUrl}
+                  description={event.description}
+                  date={event.date}
+                  time={event.time}
+                  location={event.location}
+                  organizer={event.organizer}
+                  category={event.category}
+                  price={event.price}
+                  initialIsFavorite
+                  onFavoriteToggle={(isFavorite) => syncFavoriteEvent(event, isFavorite)}
+                  originLabel="PREFERITO"
+                  showFavorite
+                  imageSizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                />
               ))}
             </div>
           )}

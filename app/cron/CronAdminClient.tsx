@@ -790,7 +790,7 @@ export default function CronAdminClient() {
 
   return (
     <main className="min-h-screen p-6 pt-24 sm:p-8 sm:pt-28 cron-page">
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
 
         {/* Header */}
         <div className="glass-effect rounded-2xl p-6 sm:p-8">

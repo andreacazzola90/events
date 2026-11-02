@@ -15,7 +15,7 @@ import { MAX_AI_INSTRUCTIONS_LENGTH } from '../../lib/ai-instructions';
 import SaveAnimation from './SaveAnimation';
 import { toast } from 'react-toastify';
 import { CheckCircle2, CircleAlert, Crop, Loader2 } from 'lucide-react';
-import { DRAFT_CROP_FAILURE_MESSAGES, prepareDraftForPublication, type DraftImageCropFailure, type DraftImageCropStatus } from '../../lib/draft-image-crop';
+import { appendPosterImage, DRAFT_CROP_FAILURE_MESSAGES, prepareDraftForPublication, type DraftImageCropFailure, type DraftImageCropStatus } from '../../lib/draft-image-crop';
 
 async function cropCoverToFile(imageSource: string, area: Area) {
     const image = new window.Image();
@@ -326,6 +326,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             // Normalizza i dati prima del salvataggio
             eventToSave.category = normalizeCategory(eventToSave.category);
             eventToSave.price = normalizePrice(eventToSave.price);
+            const posterImageUrl = eventToSave.posterImageUrl;
             eventToSave = prepareDraftForPublication(eventToSave);
 
             console.log('[EventDisplay] Saving event:', eventToSave);
@@ -339,6 +340,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                 const formData = new FormData();
                 formData.append('eventData', JSON.stringify(eventToSave));
                 formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
+                await appendPosterImage(formData, posterImageUrl, eventToSave.imageUrl);
 
                 const saveResponse = await fetch('/api/events', {
                     method: 'POST',

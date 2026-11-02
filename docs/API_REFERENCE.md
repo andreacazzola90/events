@@ -193,7 +193,7 @@ Example 200 response:
 - Purpose: create an event
 - Supported content types:
   - application/json
-  - multipart/form-data (eventData + image)
+  - multipart/form-data (eventData + image, optional `posterImage`)
 - Behavior:
   - optional external image ingestion to Supabase
   - duplicate check on (title, date, location)
@@ -202,7 +202,8 @@ Example 200 response:
   - persists the cover selected in the draft, with no vision or automatic crop calls and no deferred cover replacement
   - upload/share clients run `POST /api/crop-image` alongside extraction; publishing waits for the crop result. A failed crop removes the automatic cover and opens a web-image selection, with manual cropping or publication without a cover as alternatives
   - JSON image URLs, PDF, link and manual-crop flows are unchanged. Page pre-warming runs after the response with bounded requests
-  - draft clients omit temporary `originalImageUrl` from publication payloads. The events route persists an explicit allowlist and never uploads that field. Originals are still sent to cloud vision for analysis; AI checks and user-confirmed images do not guarantee anonymity
+  - optional multipart `posterImage` (JPEG/PNG/WebP, validated by signature): sent when the cover is only this event's section of a multi-event poster. After creation it is stored as the first `EventMedia` image named `Locandina completa`; upload failures are logged and never undo the event
+  - draft clients omit temporary `originalImageUrl` and `posterImageUrl` from publication payloads. The events route persists an explicit allowlist and never uploads that field. Originals are still sent to cloud vision for analysis; AI checks and user-confirmed images do not guarantee anonymity
 - Responses:
   - 201: created event (+ slug)
   - 409: EVENT_DUPLICATE
@@ -393,6 +394,14 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - A fallback response includes `X-Image-Crop-Reason`: `rate-limited`, `timeout`, `not-configured`, `bounds-rejected`, `verification-rejected`, `image-invalid` or `service-unavailable`. Provider HTTP failures may include a sanitized `X-Image-Crop-Service-Status`. These contain no credentials or image content; the browser shows the reason and offers manual cropping or web-image search.
 - Does not create events, write to the database, upload to storage or schedule a background job. The browser applies the returned blob to the current draft only, preserves manual cover edits, and keeps the original available only as a temporary crop source. Manual cropping is available after both successful and failed automatic crops.
 - The original image is sent to the configured vision provider. This endpoint does not guarantee anonymity or bypass provider quotas.
+
+### POST /api/poster-sections
+- File: [app/api/poster-sections/route.ts](../app/api/poster-sections/route.ts)
+- Purpose: on a poster listing several events, cut one detail image per event before publishing.
+- Input: multipart `image` (JPEG/PNG/WebP with matching signature, at most 4 MiB) and `events` (JSON array of 2–30 `{ title, date? }`, in draft order).
+- Behavior: Italian OCR (Tesseract, server-side, 25-second limit) locates each title line and the date line just above it; a section ends at the next event of the same column or, for the last one, at the first noisy line or large gap. Each section is cropped to the dominant text column and letterboxed to 16:9 with the poster background. No vision provider is used: tested models returned invented boxes.
+- Responses: `200 { sections: [{ index, image }] }` with `image` as a JPEG data URL; events that are not located are omitted, and OCR failures return `sections: []`. `400` invalid request; `413` oversized image. All responses are `no-store`.
+- `/crea` calls it after the automatic poster crop when a scan returns more than one event: located events use the section as cover and send the full poster as `posterImage` on publication; the others keep the full poster. Publishing waits for this step. Existing series can be updated with `node scripts/backfill-series-event-sections.mjs [--series=<slug>] [--apply]` (dry run by default; old files are kept).
 
 ### POST /api/scan-learning/crop-sample
 - File: [app/api/scan-learning/crop-sample/route.ts](../app/api/scan-learning/crop-sample/route.ts)

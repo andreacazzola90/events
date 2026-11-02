@@ -18,3 +18,8 @@
 - WhatsApp: rinviata acquisizione autorizzata tramite API ufficiali; Business/webhook non equivalgono all'accesso universale alle chat e ai gruppi dell'account personale.
 - Telegram: sessione personale, storico e stories fuori dalla prima fase basata su bot; richiedono valutazione tecnica e autorizzazione separate. Non sostituire silenziosamente la richiesta originaria di collegare l'account personale.
 - Per tutte le fasi conservare pubblicazione automatica dei soli eventi validi, tracciabilita, privacy e prevenzione dei duplicati; nessuna ripubblicazione privata solo perche visibile all'admin.
+
+## Da spec-multi-event-poster-sections (review 2026-11-02)
+
+- `/api/poster-sections`, come `/api/crop-image` e `/api/process-image`, non richiede sessione: ogni chiamata avvia un worker OCR (fino a 25 s). Valutare rate limit o login per gli endpoint di elaborazione immagini; inoltre il limite 413 si basa su `content-length` e senza header il body viene bufferizzato prima del controllo.
+

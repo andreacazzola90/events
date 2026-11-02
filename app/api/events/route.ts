@@ -1,7 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scheduleCalendarDeliveries } from "../../lib/google-calendar";
-import { uploadImageToSupabase } from "../../lib/supabase";
+import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase, uploadImageToSupabase } from "../../lib/supabase";
 import { geocodeLocation } from "@/lib/geocoding";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth/next";
@@ -17,6 +17,30 @@ import {
 import type { DbEvent } from "../../types/event";
 import { recordScanCorrections } from "../../../lib/scan-learning-store";
 import { createEventWithSeries } from "../../../lib/event-series-create";
+import { validateEventMediaFile } from "../../../lib/event-media";
+
+/** Stores the full poster as the event's first gallery image; failures never undo the event. */
+async function attachPosterImage(eventId: number, poster: File) {
+  let storagePath: string | undefined;
+  try {
+    const validation = validateEventMediaFile(poster.name, poster.type, new Uint8Array(await poster.arrayBuffer()), poster.size);
+    if (!validation.ok || validation.kind !== "image") {
+      console.warn("[API /events POST] Poster image rejected:", validation.ok ? "not an image" : validation.error);
+      return;
+    }
+    const uploaded = await uploadEventMediaToSupabase(poster, eventId);
+    storagePath = uploaded.storagePath;
+    await prisma.eventMedia.create({
+      data: {
+        eventId, kind: "image", fileName: "Locandina completa", mimeType: poster.type,
+        sizeBytes: poster.size, storagePath: uploaded.storagePath, url: uploaded.url, position: 0,
+      },
+    });
+  } catch (error) {
+    console.warn("[API /events POST] Poster image not saved:", error instanceof Error ? error.message : error);
+    if (storagePath) await deleteEventMediaFromSupabase(storagePath).catch(() => undefined);
+  }
+}
 
 function refreshEventCache(eventSlug: string) {
   revalidatePath("/", "page");
@@ -35,6 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     let eventData: any = null;
     let imageFile: File | null = null;
+    let posterFile: File | null = null;
     let imageUrl: string | undefined = undefined;
 
     const contentType = request.headers.get("content-type") || "";
@@ -86,6 +111,8 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
       eventData = JSON.parse(formData.get("eventData") as string);
       imageFile = formData.get("image") as File | null;
+      const poster = formData.get("posterImage");
+      posterFile = poster instanceof File && poster.size > 0 ? poster : null;
       imageUrl = eventData.imageUrl;
 
       // Upload image to Supabase if provided
@@ -181,6 +208,7 @@ export async function POST(request: NextRequest) {
     );
 
     const { event, seriesSlug } = await createEventWithSeries(eventDataToSave, eventData.seriesTitle);
+    if (posterFile && imageUrl) await attachPosterImage(event.id, posterFile);
     scheduleCalendarDeliveries();
 
     console.log("[API /events POST] Event saved successfully, ID:", event.id);

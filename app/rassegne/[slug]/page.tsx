@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -16,6 +17,8 @@ type SeriesEvent = {
   time: string;
   location: string;
   category: string;
+  imageUrl: string | null;
+  media: { url: string }[];
 };
 
 function dateKey(value: string): string {
@@ -45,12 +48,24 @@ function timeValue(value: string): number {
   return match ? Number(match[1]) * 60 + Number(match[2]) : Number.MAX_SAFE_INTEGER;
 }
 
+/** Full poster shared by the series: the saved "Locandina completa" or a cover used by every event. */
+function seriesPoster(events: SeriesEvent[]): string | null {
+  const saved = events.find((event) => event.media[0])?.media[0]?.url;
+  if (saved) return saved;
+  const covers = new Set(events.map((event) => event.imageUrl));
+  const [shared] = covers;
+  return events.length > 1 && covers.size === 1 && shared ? shared : null;
+}
+
 async function getSeries(slug: string) {
   return prisma.eventSeries.findUnique({
     where: { slug },
     include: {
       events: {
-        select: { id: true, title: true, description: true, date: true, time: true, location: true, category: true },
+        select: {
+          id: true, title: true, description: true, date: true, time: true, location: true, category: true, imageUrl: true,
+          media: { where: { kind: "image", fileName: "Locandina completa" }, select: { url: true }, orderBy: { position: "asc" }, take: 1 },
+        },
       },
     },
   });
@@ -90,6 +105,7 @@ export default async function EventSeriesPage(
     dayGroups.set(key, [...(dayGroups.get(key) ?? []), event]);
   }
 
+  const posterUrl = seriesPoster(events);
   const url = siteUrl(`/rassegne/${encodeURIComponent(series.slug)}`);
   const structuredData = {
     '@context': 'https://schema.org',
@@ -127,11 +143,18 @@ export default async function EventSeriesPage(
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <div className="mx-auto max-w-5xl">
         <Link href="/rassegne" className="text-sm font-semibold text-[#a33f24] underline underline-offset-4">Tutte le rassegne</Link>
-        <header className="border-b border-black/10 py-8 md:py-12">
+        <header className="grid gap-6 border-b border-black/10 py-8 md:grid-cols-[minmax(0,1fr)_220px] md:items-start md:py-12">
+          <div>
           <p className="mb-3 text-xs font-bold uppercase text-[#d65a38]">Programma</p>
           <h1 className="max-w-4xl text-4xl font-black leading-tight md:text-5xl">{series.title}</h1>
           {series.description && <p className="mt-5 max-w-3xl whitespace-pre-line text-base leading-7 text-black/65">{series.description}</p>}
           <p className="mt-5 text-sm font-semibold text-black/55">{events.length} appuntamenti</p>
+          </div>
+          {posterUrl && (
+            <a href={posterUrl} target="_blank" rel="noreferrer" className="block w-full max-w-[260px] overflow-hidden border border-black/10 bg-white md:max-w-none">
+              <Image src={posterUrl} alt={`Locandina di ${series.title}`} width={440} height={620} unoptimized className="h-auto w-full" />
+            </a>
+          )}
         </header>
 
         {events.length ? (
@@ -141,13 +164,18 @@ export default async function EventSeriesPage(
                 <h2 className="text-lg font-black capitalize text-[#a33f24]">{dateLabel(key, items[0].date)}</h2>
                 <ol className="divide-y divide-black/10 bg-white">
                   {items.map((event) => (
-                    <li key={event.id} className="grid gap-2 px-4 py-4 sm:grid-cols-[74px_minmax(0,1fr)] sm:gap-4 md:px-5">
+                    <li key={event.id} className={`grid gap-2 px-4 py-4 sm:gap-4 md:px-5 ${event.imageUrl ? "sm:grid-cols-[74px_minmax(0,1fr)_144px]" : "sm:grid-cols-[74px_minmax(0,1fr)]"}`}>
                       <p className="text-sm font-black tabular-nums text-[#d65a38]">{event.time || "Orario da definire"}</p>
                       <div>
                         <Link href={`/events/${event.id}`} className="font-bold hover:text-[#a33f24]">{event.title}</Link>
                         {event.location && <p className="mt-1 text-sm text-black/55">{event.location}</p>}
                         {event.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-black/65">{event.description}</p>}
                       </div>
+                      {event.imageUrl && (
+                        <Link href={`/events/${event.id}`} className="order-first block self-start overflow-hidden border border-black/10 sm:order-none" tabIndex={-1} aria-hidden="true">
+                          <Image src={event.imageUrl} alt="" width={288} height={162} unoptimized className="aspect-video w-full object-cover" />
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ol>

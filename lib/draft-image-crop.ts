@@ -17,11 +17,56 @@ export type DraftImageCrop = {
 export type DraftImageCropStatus = 'idle' | 'processing' | 'completed' | 'failed';
 export type DraftImageScan = { isCurrent: () => boolean; registerCrop: (crop: DraftImageCrop) => void };
 
-export function prepareDraftForPublication<Event extends { originalImageUrl?: string; originalImageCrop?: DraftImageCropBox }>(event: Event): Event {
+export function prepareDraftForPublication<Event extends { originalImageUrl?: string; originalImageCrop?: DraftImageCropBox; posterImageUrl?: string }>(event: Event): Event {
   const publishable = { ...event };
   delete publishable.originalImageUrl;
   delete publishable.originalImageCrop;
+  delete publishable.posterImageUrl;
   return publishable;
+}
+
+/**
+ * Asks the server to cut one detail image per event out of a poster listing several events.
+ * Returns object URLs keyed by event index; events that were not located are absent.
+ */
+export async function detectPosterSections(
+  posterUrl: string,
+  events: Array<{ title: string; date?: string }>,
+  signal?: AbortSignal,
+): Promise<Map<number, string>> {
+  const sections = new Map<number, string>();
+  try {
+    const poster = await (await fetch(posterUrl, { signal })).blob();
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(poster.type)) return sections;
+    const form = new FormData();
+    form.append('image', poster, `poster.${poster.type === 'image/png' ? 'png' : poster.type === 'image/webp' ? 'webp' : 'jpg'}`);
+    form.append('events', JSON.stringify(events.map(({ title, date }) => ({ title, date }))));
+    const response = await fetch('/api/poster-sections', {
+      method: 'POST', body: form, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(35_000)]),
+    });
+    if (!response.ok) return sections;
+    const payload = await response.json() as { sections?: Array<{ index?: unknown; image?: unknown }> };
+    for (const section of payload.sections ?? []) {
+      if (!Number.isSafeInteger(section.index) || typeof section.image !== 'string' || !section.image.startsWith('data:image/jpeg;base64,')) continue;
+      const blob = await (await fetch(section.image)).blob();
+      sections.set(section.index as number, URL.createObjectURL(blob));
+    }
+  } catch {
+    // The full poster stays as cover when sections cannot be detected.
+  }
+  return sections;
+}
+
+/** Adds the full poster as an extra gallery image when the cover is only the event's detail. */
+export async function appendPosterImage(form: FormData, posterImageUrl: string | undefined, coverUrl: string | undefined) {
+  if (!posterImageUrl || posterImageUrl === coverUrl || !/^(blob:|data:image\/)/.test(posterImageUrl)) return;
+  try {
+    const poster = await (await fetch(posterImageUrl)).blob();
+    const extension = poster.type === 'image/png' ? 'png' : poster.type === 'image/webp' ? 'webp' : 'jpg';
+    form.append('posterImage', poster, `Locandina-completa.${extension}`);
+  } catch {
+    // Publishing continues with the detail cover only.
+  }
 }
 
 let activeCoverRequests = 0;

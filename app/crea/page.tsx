@@ -13,7 +13,7 @@ import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
-import { prepareDraftForPublication, type DraftImageCrop, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
+import { appendPosterImage, detectPosterSections, prepareDraftForPublication, type DraftImageCrop, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -73,7 +73,14 @@ export default function CreaEvento() {
     const pendingImageCrop = useRef<DraftImageCrop | undefined>(undefined);
     const [imageCropStatus, setImageCropStatus] = useState<DraftImageCropStatus>('idle');
     const [imageCropFailure, setImageCropFailure] = useState<DraftImageCropFailure | undefined>(undefined);
-    const imageProcessing = imageCropStatus === 'processing';
+    const [posterSectionsPending, setPosterSectionsPending] = useState(false);
+    const posterSectionUrls = useRef<string[]>([]);
+    const releasePosterSections = () => {
+        posterSectionUrls.current.forEach(url => URL.revokeObjectURL(url));
+        posterSectionUrls.current = [];
+        setPosterSectionsPending(false);
+    };
+    const imageProcessing = imageCropStatus === 'processing' || posterSectionsPending;
     const draftScanId = useRef(0);
 
     const beginDraftScan = (): DraftImageScan => {
@@ -82,6 +89,7 @@ export default function CreaEvento() {
         pendingImageCrop.current?.cancel();
         pendingImageCrop.current = undefined;
         setImageCropStatus('idle');
+        releasePosterSections();
         return {
             isCurrent: () => draftScanId.current === scanId,
             registerCrop: crop => {
@@ -124,6 +132,7 @@ export default function CreaEvento() {
         pendingImageCrop.current?.cancel();
         pendingImageCrop.current = undefined;
         setImageCropStatus('idle');
+        releasePosterSections();
         setEvents([]);
         setOptimisticEvents(null);
         setImageUrl(null);
@@ -145,6 +154,7 @@ export default function CreaEvento() {
         draftScanId.current++;
         imageCropId.current++;
         pendingImageCrop.current?.cancel();
+        posterSectionUrls.current.forEach(url => URL.revokeObjectURL(url));
     }, []);
 
     useEffect(() => () => {
@@ -157,6 +167,7 @@ export default function CreaEvento() {
         pendingImageCrop.current = crop;
         setImageCropStatus(crop && newImageUrl ? 'processing' : 'idle');
         setImageCropFailure(undefined);
+        releasePosterSections();
 
         // Converti in array se è un singolo evento
         const newEvents = Array.isArray(newEventsOrSingle) ? newEventsOrSingle : [newEventsOrSingle];
@@ -192,6 +203,25 @@ export default function CreaEvento() {
             toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
         }
         checkDuplicates(eventsWithImage);
+        const sectionDrafts = eventsWithImage;
+        // A poster listing several events: each event gets its own section as cover, the full poster stays as extra image.
+        const startPosterSections = (posterUrl: string) => {
+            if (sectionDrafts.length < 2 || !/^(blob:|data:image\/)/.test(posterUrl)) return;
+            setPosterSectionsPending(true);
+            void detectPosterSections(posterUrl, sectionDrafts).then(sections => {
+                if (cropId !== imageCropId.current) {
+                    sections.forEach(url => URL.revokeObjectURL(url));
+                    return;
+                }
+                posterSectionUrls.current.push(...sections.values());
+                setEvents(current => current.length !== sectionDrafts.length ? current : current.map((event, index) => {
+                    const section = sections.get(index);
+                    return section && event.imageUrl === posterUrl ? { ...event, imageUrl: section, posterImageUrl: posterUrl } : event;
+                }));
+                setPosterSectionsPending(false);
+                if (sections.size) toast.info(`Copertina ritagliata per ${sections.size} eventi su ${sectionDrafts.length}; la locandina completa verrà salvata tra le immagini.`);
+            });
+        };
         if (crop && newImageUrl) {
             void crop.result.then(blob => {
                 if (cropId !== imageCropId.current) return;
@@ -203,9 +233,11 @@ export default function CreaEvento() {
                 pendingImageCrop.current = undefined;
                 setImageCropStatus(blob ? 'completed' : 'failed');
                 setImageCropFailure(blob ? undefined : crop.failureReason);
+                if (croppedUrl) startPosterSections(croppedUrl);
             });
         } else {
             crop?.cancel();
+            if (newImageUrl) startPosterSections(newImageUrl);
         }
     };
 
@@ -243,6 +275,7 @@ export default function CreaEvento() {
                     const formData = new FormData();
                     formData.append('eventData', JSON.stringify(eventData));
                     formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
+                    await appendPosterImage(formData, draft.posterImageUrl, eventData.imageUrl);
 
                     const saveResponse = await fetch('/api/events', {
                         method: 'POST',

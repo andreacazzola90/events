@@ -36,6 +36,8 @@ export interface EventData {
   originalImageUrl?: string;
   /** Draft-only: automatic crop rectangle (0..1 of the original image), used to preselect the manual cropper. */
   originalImageCrop?: { x: number; y: number; width: number; height: number };
+  /** Draft-only: full poster saved as an extra image when the cover is just this event's section. */
+  posterImageUrl?: string;
   /** Signed AI extraction baseline; corrections made before saving are learned for future scans. */
   scanFeedbackToken?: string;
   sourceUrl?: string;

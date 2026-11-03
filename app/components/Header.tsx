@@ -100,7 +100,7 @@ export default function Header() {
     setIsMobileMenuOpen(false);
   };
 
-  const renderInstallControl = (inMobileMenu = false) => {
+  const renderInstallControl = () => {
     if (isInstalled) return null;
     const className = "app-install-control";
 
@@ -113,8 +113,7 @@ export default function Header() {
           aria-label="Installa EventScanner"
           title="Installa app"
         >
-          <AppIcon name="install" className="h-5 w-5" />
-          <span>Installa app</span>
+          <AppIcon name="install" className="h-5 w-5" aria-hidden="true" />
         </button>
       );
     }
@@ -127,8 +126,7 @@ export default function Header() {
         aria-label="Come installare EventScanner"
         title="Installa app"
       >
-        <AppIcon name="install" className="h-5 w-5" />
-        <span>{inMobileMenu ? "Scarica l’app" : "Installa app"}</span>
+        <AppIcon name="install" className="h-5 w-5" aria-hidden="true" />
       </TransitionLink>
     );
   };
@@ -262,7 +260,7 @@ export default function Header() {
               <SiteFeedbackWidget />
               <span className="text-sm font-semibold text-[#1d1d1b]">Invia una segnalazione</span>
             </div>
-            {!isInstalled && <div className="mt-4">{renderInstallControl(true)}</div>}
+            {!isInstalled && <div className="mt-4">{renderInstallControl()}</div>}
           </nav>
         </dialog>
       )}

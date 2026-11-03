@@ -118,12 +118,12 @@ a:where(:not(.btn):not(.no-underline)):hover {
 
 /* Keep text readable on light controls even without hover */
 :is(a, button, [role="button"])[class~="bg-white"] {
-  color: #f5f2ec !important;
+  color: #111111 !important;
 }
 
 /* Keep contrast readable when a control turns white on hover */
 :is(a, button, [role="button"])[class~="hover:bg-white"]:hover {
-  color: #f5f2ec !important;
+  color: #111111 !important;
 }
 
 /* Buttons - base reset (DaisyUI gestisce lo stile) */
@@ -357,7 +357,7 @@ button {
 .account-tab-active:hover {
   border-color: var(--foreground);
   background: var(--foreground);
-  color: #fff;
+  color: var(--background);
 }
 
 .account-profile-card,
@@ -632,7 +632,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 .header-icon-control:focus-visible {
   background: var(--foreground);
   border-color: var(--foreground);
-  color: #ffffff !important;
+  color: var(--background) !important;
 }
 
 .desktop-nav-link {
@@ -645,25 +645,23 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 
 .app-install-control {
   display: inline-flex;
-  min-height: 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  padding: 0 0.85rem;
+  padding: 0;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.55);
+  background: #1b1b1b;
   color: var(--foreground) !important;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
 }
 
-.app-install-control:hover {
+.app-install-control:hover,
+.app-install-control:focus-visible {
   border-color: var(--foreground);
   background: var(--foreground);
-  color: #fff !important;
+  color: var(--background) !important;
 }
 
 .app-main {
@@ -1212,9 +1210,9 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 }
 
 .event-card-backdrop-image {
-  object-fit: cover;
-  filter: blur(24px) brightness(0.42) saturate(0.9);
-  transform: scale(1.12);
+  object-fit: fill;
+  filter: blur(40px);
+  transform: scale(1.25);
 }
 
 .event-card-image-link {
@@ -1224,19 +1222,10 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   display: block;
 }
 
-.event-card-media::after {
-  position: absolute;
-  z-index: 2;
-  inset: 18% 0 0;
-  background: linear-gradient(180deg, transparent 12%, rgba(12, 12, 12, 0.36) 48%, rgba(12, 12, 12, 0.9));
-  content: "";
-  opacity: 0.9;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-}
-
-.event-card:hover .event-card-media::after {
-  opacity: 0.94;
+.event-card-media > button {
+  width: 2.25rem;
+  height: 2.25rem;
+  background: rgba(12, 12, 12, 0.75);
 }
 
 .event-card-image {
@@ -1353,6 +1342,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 }
 
 .event-card-actions {
+  order: 2;
   padding: 0 1rem 1rem;
   background: #151515;
 }
@@ -2824,6 +2814,10 @@ html[data-theme="dicefm"] body [class~="bg-neutral-50"],
 html[data-theme="dicefm"] body [class*="bg-[#f"],
 html[data-theme="dicefm"] body [class*="bg-[#e"] {
   background-color: #202020 !important;
+}
+
+html[data-theme="dicefm"] body :is(a, button, [role="button"])[class~="bg-white"] {
+  color: var(--foreground) !important;
 }
 
 html[data-theme="dicefm"] body [class*="bg-green-50"] { background-color: #17231d !important; }

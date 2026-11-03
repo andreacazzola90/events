@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { publicPageMetadata, serializeJsonLd } from "../../../lib/seo-metadata";
 import { siteUrl } from "../../../lib/site-url";
 import { generateUniqueSlug } from "../../../lib/slug-utils";
+import PageHeading from "../../components/PageHeading";
 
 export const revalidate = 60;
 
@@ -139,52 +140,55 @@ export default async function EventSeriesPage(
   };
 
   return (
-    <main className="min-h-screen bg-[#f5f2ec] py-8 text-[#1d1d1b] md:py-12">
+    <main className="min-h-screen page-shell bg-[#f5f2ec] text-[#1d1d1b]">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <div className="editorial-container">
-        <Link href="/rassegne" className="text-sm font-semibold text-[#a33f24] underline underline-offset-4">Tutte le rassegne</Link>
-        <header className="grid gap-6 border-b border-black/10 py-8 md:grid-cols-[minmax(0,1fr)_minmax(280px,32vw)] md:items-start md:py-12">
+        <PageHeading
+          className="page-heading-align-start"
+          kicker="Programma"
+          title={series.title}
+          description={
+            <Link href="/rassegne" className="font-semibold text-[#a33f24] underline underline-offset-4">Tutte le rassegne</Link>
+          }
+        />
+
+        <div className={`grid gap-8 ${posterUrl ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,32vw)]" : ""}`}>
           <div>
-          <p className="mb-3 text-xs font-bold uppercase text-[#d65a38]">Programma</p>
-          <h1 className="max-w-4xl text-4xl font-black leading-tight md:text-5xl">{series.title}</h1>
-          {series.description && <p className="mt-5 max-w-3xl whitespace-pre-line text-base leading-7 text-black/65">{series.description}</p>}
-          <p className="mt-5 text-sm font-semibold text-black/55">{events.length} appuntamenti</p>
+            {series.description && <p className="mb-3 max-w-3xl whitespace-pre-line text-base leading-7 text-black/65">{series.description}</p>}
+            <p className="mb-0 text-sm font-semibold text-black/55">{events.length} appuntamenti</p>
+            {events.length ? (
+              [...dayGroups.entries()].map(([key, items]) => (
+                <section key={key} className="grid gap-4 border-b border-black/10 py-7 md:grid-cols-[210px_minmax(0,1fr)] md:gap-8">
+                  <h2 className="text-lg font-black capitalize text-[#f08b6b]">{dateLabel(key, items[0].date)}</h2>
+                  <ol className="divide-y divide-black/10 bg-white">
+                    {items.map((event) => (
+                      <li key={event.id} className={`grid gap-2 px-4 py-4 sm:gap-4 md:px-5 ${event.imageUrl ? "sm:grid-cols-[74px_minmax(0,1fr)_144px]" : "sm:grid-cols-[74px_minmax(0,1fr)]"}`}>
+                        <p className="text-sm font-black tabular-nums text-[#f08b6b]">{event.time || "Orario da definire"}</p>
+                        <div>
+                          <Link href={`/events/${event.id}`} className="font-bold hover:text-[#a33f24]">{event.title}</Link>
+                          {event.location && <p className="mt-1 text-sm text-black/55">{event.location}</p>}
+                          {event.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-black/65">{event.description}</p>}
+                        </div>
+                        {event.imageUrl && (
+                          <Link href={`/events/${event.id}`} className="order-first block self-start overflow-hidden border border-black/10 sm:order-none" tabIndex={-1} aria-hidden="true">
+                            <Image src={event.imageUrl} alt="" width={288} height={162} unoptimized className="aspect-video w-full object-cover" />
+                          </Link>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))
+            ) : (
+              <p className="border-b border-black/10 py-10 text-sm text-black/55">Il programma sarà disponibile a breve.</p>
+            )}
           </div>
           {posterUrl && (
-            <a href={posterUrl} target="_blank" rel="noreferrer" className="block w-full overflow-hidden border border-black/10 bg-white">
+            <a href={posterUrl} target="_blank" rel="noreferrer" className="order-first block self-start overflow-hidden border border-black/10 bg-white lg:order-last">
               <Image src={posterUrl} alt={`Locandina di ${series.title}`} width={440} height={620} unoptimized className="h-auto w-full" />
             </a>
           )}
-        </header>
-
-        {events.length ? (
-          <div>
-            {[...dayGroups.entries()].map(([key, items]) => (
-              <section key={key} className="grid gap-4 border-b border-black/10 py-7 md:grid-cols-[210px_minmax(0,1fr)] md:gap-8">
-                <h2 className="text-lg font-black capitalize text-[#f08b6b]">{dateLabel(key, items[0].date)}</h2>
-                <ol className="divide-y divide-black/10 bg-white">
-                  {items.map((event) => (
-                    <li key={event.id} className={`grid gap-2 px-4 py-4 sm:gap-4 md:px-5 ${event.imageUrl ? "sm:grid-cols-[74px_minmax(0,1fr)_144px]" : "sm:grid-cols-[74px_minmax(0,1fr)]"}`}>
-                      <p className="text-sm font-black tabular-nums text-[#f08b6b]">{event.time || "Orario da definire"}</p>
-                      <div>
-                        <Link href={`/events/${event.id}`} className="font-bold hover:text-[#a33f24]">{event.title}</Link>
-                        {event.location && <p className="mt-1 text-sm text-black/55">{event.location}</p>}
-                        {event.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-black/65">{event.description}</p>}
-                      </div>
-                      {event.imageUrl && (
-                        <Link href={`/events/${event.id}`} className="order-first block self-start overflow-hidden border border-black/10 sm:order-none" tabIndex={-1} aria-hidden="true">
-                          <Image src={event.imageUrl} alt="" width={288} height={162} unoptimized className="aspect-video w-full object-cover" />
-                        </Link>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            ))}
-          </div>
-        ) : (
-          <p className="border-b border-black/10 py-10 text-sm text-black/55">Il programma sarà disponibile a breve.</p>
-        )}
+        </div>
       </div>
     </main>
   );

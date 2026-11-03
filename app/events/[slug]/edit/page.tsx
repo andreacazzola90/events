@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { type Area } from "react-easy-crop";
 import EventImageCropper from "../../../components/EventImageCropper";
+import PageHeading from "../../../components/PageHeading";
 import {
   CalendarIcon,
   ClockIcon,
@@ -319,7 +320,7 @@ export default function EditEventPage() {
   return (
     <div className="min-h-screen py-8 px-2 bg-light w-full flex flex-col items-center">
       <div className="w-full max-w-2xl bg-white rounded-xl shadow-md p-8 border border-gray-200">
-        <h1 className="text-3xl font-bold mb-6">Modifica Evento</h1>
+        <PageHeading className="page-heading-compact" title="Modifica Evento" />
         <form onSubmit={handleSave} className="space-y-6">
           <div>
             <label className="block font-semibold mb-1">Titolo</label>

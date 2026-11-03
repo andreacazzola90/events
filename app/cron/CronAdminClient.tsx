@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TelegramAdmin from "./TelegramAdmin";
 import InstagramScanAdmin from "./InstagramScanAdmin";
+import PageHeading from "../components/PageHeading";
 
 type CronSource = {
   id: number;
@@ -794,17 +795,17 @@ export default function CronAdminClient() {
 
         {/* Header */}
         <div className="glass-effect rounded-2xl p-6 sm:p-8">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Cron Admin</h1>
-              <p className="text-gray-300 mt-2 text-sm sm:text-base">
-                Configura i siti da scrappare giornalmente e monitora i risultati.
-              </p>
-            </div>
+          <PageHeading
+            className="page-heading-compact"
+            kicker="EventScanner / Automazioni"
+            title="Cron Admin"
+            description="Configura i siti da scrappare giornalmente e monitora i risultati."
+            action={
             <button type="button" onClick={() => router.push("/account")} className="btn btn-ghost">
               Torna a Profilo
             </button>
-          </div>
+            }
+          />
         </div>
 
         <TelegramAdmin />

@@ -5,6 +5,7 @@ import { ArrowLeft, CalendarDays, CheckCircle2, CircleAlert, Clock3, Loader2, Ma
 import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
+import PageHeading from '../components/PageHeading';
 import { useRouter } from 'next/navigation';
 import ImageUploader from '../components/ImageUploader';
 import { DuplicateMatch, EventData } from '../types/event';
@@ -635,25 +636,22 @@ export default function CreaEvento() {
             </Suspense>
 
             <main className="min-h-screen page-shell create-event-page">
-                <section className="editorial-container create-page-intro mb-10 md:mb-14">
-                    <div className="animate-fadeInUp flex flex-col items-start gap-5">
-                        <div>
-                            <p className="section-kicker mb-4">EventScanner / Nuovo evento</p>
-                            <h1 className="section-title max-w-4xl">
-                                {events.length > 0 ? (
-                                    <>Rivedi i dettagli <span className="text-[#d65a38]">{events.length > 1 ? 'degli eventi' : 'dell’evento'}</span></>
-                                ) : (
-                                    <>Crea un nuovo <span className="text-[#d65a38]">evento</span></>
-                                )}
-                            </h1>
-                        </div>
-                        <p className="section-lead max-w-2xl mb-0">
-                                {events.length > 0
+                <section className="editorial-container create-page-intro">
+                    <div className="animate-fadeInUp">
+                        <PageHeading
+                            className="max-w-4xl"
+                            kicker="EventScanner / Nuovo evento"
+                            title={events.length > 0 ? (
+                                <>Rivedi i dettagli <span className="text-[#d65a38]">{events.length > 1 ? 'degli eventi' : 'dell’evento'}</span></>
+                            ) : (
+                                <>Crea un nuovo <span className="text-[#d65a38]">evento</span></>
+                            )}
+                            description={
+                                events.length > 0
                                     ? 'Controlla le informazioni estratte e completa i dettagli prima di pubblicare.'
                                     : 'Carica la locandina o inserisci un link: estrarremo automaticamente le informazioni principali.'
-                                }
-                        </p>
-
+                            }
+                        />
                     </div>
                 </section>
 

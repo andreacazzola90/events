@@ -7,6 +7,7 @@ import { Check, Link2, LoaderCircle, Pencil, Unlink, X } from "lucide-react";
 import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import EventPreview from "../components/EventPreview";
+import PageHeading from "../components/PageHeading";
 import { groupEventsByScanOriginAndDate } from "../../lib/event-scan-groups";
 import type { DbEvent } from "../types/event";
 
@@ -652,10 +653,11 @@ export default function AccountPage() {
           <div className="account-profile-card surface-panel p-6 md:p-10 animate-fadeInUp">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
               <div className="flex-1">
-                <p className="section-kicker mb-3">Area personale</p>
-                <h1 className="section-title mb-8">
-                  Il tuo <span className="site-brand-accent">profilo.</span>
-                </h1>
+                <PageHeading
+                  className="page-heading-compact"
+                  kicker="Area personale"
+                  title="Il tuo profilo"
+                />
                 <div className="space-y-4">
                   {editingProfile ? (
                     <form onSubmit={handleSaveProfile} className="max-w-xl space-y-3">

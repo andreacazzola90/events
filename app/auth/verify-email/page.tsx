@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import PageHeading from "../../components/PageHeading";
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -43,7 +44,11 @@ function VerifyEmailContent() {
             <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">✉️</span>
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">Conferma email</h1>
+            <PageHeading
+              className="page-heading-compact page-heading-centered"
+              kicker="EventScanner / Account"
+              title="Conferma email"
+            />
 
             {status === "loading" && (
               <p className="text-gray-400">Verifica in corso...</p>

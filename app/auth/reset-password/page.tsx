@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import PageHeading from "../../components/PageHeading";
 
 const inputClassName = "w-full rounded-2xl bg-white/95 border border-white/70 px-4 py-3 text-gray-900 placeholder:text-gray-500 caret-gray-900 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-sm focus:outline-none focus:bg-white focus:border-transparent focus:ring-2 focus:ring-pink-500 focus:shadow-[0_16px_40px_rgba(15,23,42,0.14)] transition-all";
 
@@ -70,8 +71,12 @@ function ResetPasswordContent() {
               <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🔐</span>
               </div>
-              <h1 className="text-2xl font-bold text-white mb-2">Nuova password</h1>
-              <p className="text-gray-400">Imposta una nuova password per il tuo account.</p>
+              <PageHeading
+                className="page-heading-compact page-heading-centered"
+                kicker="EventScanner / Account"
+                title="Nuova password"
+                description="Imposta una nuova password per il tuo account."
+              />
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit}>

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
 import { TransitionLink } from "../components/TransitionLink";
+import PageHeading from "../components/PageHeading";
 import { useSiteSettings } from "../components/SiteSettingsProvider";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { getCategoryPresentation } from "../../lib/site-presentation";
@@ -163,12 +164,10 @@ export default function TuttiGliEventiPage() {
   return (
     <main className="min-h-screen page-shell event-calendar-page">
       <div className="editorial-container">
-        <div className="mb-12 page-heading">
-          <p className="section-kicker">02 / Le date</p>
-          <h1 className="text-5xl md:text-7xl font-black mb-4 uppercase">
-            Calendario<span className="site-brand-accent">.</span>
-          </h1>
-        </div>
+        <PageHeading
+          kicker="02 / Le date"
+          title="Calendario"
+        />
         <section className="event-calendar" aria-label="Calendario eventi">
           <div className="calendar-toolbar">
             <div className="calendar-navigation">

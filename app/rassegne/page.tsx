@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/admin-auth";
 import { publicPageMetadata } from "../../lib/seo-metadata";
+import PageHeading from "../components/PageHeading";
 
 export const metadata: Metadata = publicPageMetadata({
   path: '/rassegne',
@@ -46,21 +47,19 @@ export default async function EventSeriesIndexPage() {
   ]);
 
   return (
-    <main className="rassegne-page min-h-screen px-4 py-10 text-[#1d1d1b] md:px-8">
+    <main className="rassegne-page min-h-screen page-shell text-[#1d1d1b]">
       <div className="editorial-container">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="mb-3 text-xs font-bold uppercase text-[#d65a38]">Alto Vicentino</p>
-            <h1 className="text-4xl font-black">Rassegne</h1>
-            <p className="mt-3 max-w-2xl text-base text-black/60">Festival e programmi raccolti in un unico calendario.</p>
-          </div>
-          {adminSession?.user && (
+        <PageHeading
+          kicker="Alto Vicentino"
+          title="Rassegne"
+          description="Festival e programmi raccolti in un unico calendario."
+          action={adminSession?.user ? (
             <Link href="/admin/rassegne" className="inline-flex items-center gap-2 border border-black/20 px-4 py-2.5 text-sm font-bold text-[#1d1d1b] transition-colors hover:border-[#d65a38] hover:text-[#a33f24]">
               <Settings2 className="h-4 w-4" aria-hidden="true" />
               Gestisci rassegne
             </Link>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         {series.length ? (
           <ul className="rassegne-grid mt-9">

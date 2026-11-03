@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { publicPageMetadata } from "../../lib/seo-metadata";
+import PageHeading from "../components/PageHeading";
 
 export const metadata: Metadata = publicPageMetadata({
   path: '/estensione',
@@ -11,17 +12,15 @@ export const metadata: Metadata = publicPageMetadata({
 
 export default function EstensionePage() {
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10 md:py-14">
-      <h1 className="text-3xl md:text-5xl font-bold mb-4 text-black">
-        Installa estensione Chrome o PWA
-      </h1>
-      <p className="text-black/70 mb-8 text-base md:text-lg">
-        Qui trovi i passaggi per installare EventScanner sul browser (estensione
-        Chrome) oppure come app sul telefono/desktop (PWA), e come usarlo per
-        creare eventi in pochi minuti.
-      </p>
+    <main className="page-shell">
+      <div className="editorial-container">
+        <PageHeading
+          kicker="EventScanner / Installazione"
+          title="Installa estensione Chrome o PWA"
+          description="Qui trovi i passaggi per installare EventScanner sul browser (estensione Chrome) oppure come app sul telefono/desktop (PWA), e come usarlo per creare eventi in pochi minuti."
+        />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <div className="rounded-2xl border border-black/10 bg-black/[0.02] p-6">
           <h2 className="text-xl font-semibold mb-4 text-black">
             Opzione 1: Estensione Chrome
@@ -107,7 +106,8 @@ export default function EstensionePage() {
         <Link href="/" className="btn btn-outline">
           Torna alla home
         </Link>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

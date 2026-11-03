@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import PageHeading from '../components/PageHeading';
 
 const authInputClassName = 'w-full border border-black/20 px-4 py-3 text-black placeholder:text-black/40 caret-black focus:outline-none focus:border-black transition-colors bg-white text-sm';
 
@@ -36,21 +37,16 @@ function AuthPageContent() {
             <div className="w-full max-w-md mx-auto px-4 md:px-6">
 
                 <div className="surface-panel p-6 md:p-8">
-                    <div className="mb-8">
-                        <p className="section-kicker mb-3">EventScanner</p>
-                        <h1 className="text-4xl font-black tracking-tight leading-tight mb-2">
-                            {view === 'login' ? 'Accedi al tuo account' : view === 'forgot' ? 'Recupera password' : 'Crea un account'}
-                        </h1>
-                        <p className="text-black/55 text-sm m-0">
-                            {view === 'login'
+                    <PageHeading
+                        className="page-heading-compact"
+                        kicker="EventScanner"
+                        title={view === 'login' ? 'Accedi al tuo account' : view === 'forgot' ? 'Recupera password' : 'Crea un account'}
+                            description={view === 'login'
                                 ? 'Inserisci le tue credenziali per continuare.'
                                 : view === 'forgot'
                                     ? 'Ti invieremo un link per reimpostare la password.'
-                                    : 'Registrati per salvare i tuoi eventi preferiti.'}
-                        </p>
-                    </div>
-
-                    <div className="mono-divider mb-8" />
+                                        : 'Registrati per salvare i tuoi eventi preferiti.'}
+                    />
 
                     <div>
                     {view === 'login' && (

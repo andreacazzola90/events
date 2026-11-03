@@ -39,9 +39,9 @@ export default async function Home() {
             <div>
               <p className="home-overline">Il tuo prossimo posto è qui.</p>
               <h1 className="home-headline">
-                ESCI.<br />
-                <span>SCOPRI.</span><br />
-                VIVI.
+                ESCI<span className="home-headline-dot">.</span><br />
+                <span>SCOPRI<span className="home-headline-dot">.</span></span><br />
+                VIVI<span className="home-headline-dot">.</span>
               </h1>
             </div>
             <div className="home-hero-aside">

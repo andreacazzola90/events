@@ -6,6 +6,7 @@ import { generateUniqueSlug, getPrimaryLocationToken } from '../../../lib/slug-u
 import { getEventBreadcrumbJsonLd, getEventIdFromSlug, getEventJsonLd, getEventMetadata, getEventPath, getEventStartDate } from '../../../lib/event-seo';
 import { publicPageMetadata, serializeJsonLd } from '../../../lib/seo-metadata';
 import { TransitionLink } from '../../components/TransitionLink';
+import PageHeading from '../../components/PageHeading';
 import EventCategoryBadge from '../../components/EventCategoryBadge';
 import EventPreview from '../../components/EventPreview';
 import { prisma } from '../../lib/prisma';
@@ -216,31 +217,27 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         <div className="event-detail-content">
                             <div className="surface-panel p-5 md:p-8">
                                 <div className="space-y-8">
-                                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                                        <div>
-                                            <p className="section-kicker mb-3">Evento</p>
-                                            <h1 className="section-title mb-0 text-[#1d1d1b]">{event.title}</h1>
-                                            {event.eventSeries?.isPublished && (
-                                                <TransitionLink
-                                                    href={`/rassegne/${event.eventSeries.slug}`}
-                                                    className="mt-3 inline-flex text-sm font-semibold text-[#a33f24] underline underline-offset-4"
-                                                >
-                                                    Programma completo: {event.eventSeries.title}
-                                                </TransitionLink>
-                                            )}
-                                        </div>
-                                        {canEdit && (
-                                            <div className="flex flex-wrap gap-3">
-                                                <TransitionLink
-                                                    href={`/events/${slug}/edit`}
-                                                    className="industrial-link industrial-link-primary no-underline hover:no-underline whitespace-nowrap"
-                                                >
-                                                    ✏️ Modifica <span aria-hidden="true">↗</span>
-                                                </TransitionLink>
-                                            </div>
-                                        )}
-                                    </div>
-
+                                    <PageHeading
+                                        className="page-heading-compact"
+                                        kicker="Evento"
+                                        title={event.title}
+                                        description={event.eventSeries?.isPublished ? (
+                                            <TransitionLink
+                                                href={`/rassegne/${event.eventSeries.slug}`}
+                                                className="font-semibold text-[#a33f24] underline underline-offset-4"
+                                            >
+                                                Programma completo: {event.eventSeries.title}
+                                            </TransitionLink>
+                                        ) : undefined}
+                                        action={canEdit ? (
+                                            <TransitionLink
+                                                href={`/events/${slug}/edit`}
+                                                className="industrial-link industrial-link-primary no-underline hover:no-underline whitespace-nowrap"
+                                            >
+                                                ✏️ Modifica <span aria-hidden="true">↗</span>
+                                            </TransitionLink>
+                                        ) : undefined}
+                                    />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-base">
                                         <div className="space-y-4">
                                             <p className="flex items-center gap-3 text-[#1d1d1b]"><CalendarIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> {startDate ? <time dateTime={startDate.slice(0, 10)}>{event.date}</time> : <span>{event.date}</span>}</p>

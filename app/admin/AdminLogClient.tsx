@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import SiteSettingsTab from "./SiteSettingsTab";
 import InstagramStoryTab from "./InstagramStoryTab";
 import MessagingAccountsTab from "./MessagingAccountsTab";
+import PageHeading from "../components/PageHeading";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -406,17 +407,17 @@ export default function AdminLogClient() {
 
         {/* Header */}
         <div className="glass-effect p-6 sm:p-8">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-bold text-white">Amministrazione</h1>
-            </div>
-            <div className="flex gap-2 flex-wrap">
+          <PageHeading
+            className="page-heading-compact"
+            kicker="EventScanner / Console"
+            title="Amministrazione"
+            action={
               <Link href="/account" className="btn btn-ghost text-xs">
                 <UserRound size={16} aria-hidden="true" />
                 Profilo
               </Link>
-            </div>
-          </div>
+            }
+          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">

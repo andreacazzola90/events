@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Plus, Save, Trash2 } from "lucide-react";
+import PageHeading from "../../components/PageHeading";
 
 type EventOption = {
   id: number;
@@ -164,18 +165,18 @@ export default function EventSeriesAdminClient() {
   });
 
   return (
-    <main className="min-h-screen bg-[#f5f2ec] px-4 py-6 text-[#1d1d1b] md:px-8 md:py-10">
+    <main className="min-h-screen page-shell bg-[#f5f2ec] px-4 text-[#1d1d1b] md:px-8">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-black/10 pb-5">
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase text-[#d65a38]">Contenuti</p>
-            <h1 className="text-3xl font-black">Rassegne</h1>
-            <p className="mt-2 max-w-2xl text-sm text-black/60">Raggruppa appuntamenti in una pagina pubblica con programma per giorno e orario.</p>
-          </div>
-          <button type="button" onClick={startNewSeries} className="inline-flex items-center gap-2 bg-[#1d1d1b] px-4 py-3 text-sm font-bold text-white hover:bg-[#d65a38]">
-            <Plus className="h-4 w-4" /> Nuova rassegna
-          </button>
-        </header>
+        <PageHeading
+          kicker="Contenuti"
+          title="Rassegne"
+          description="Raggruppa appuntamenti in una pagina pubblica con programma per giorno e orario."
+          action={
+            <button type="button" onClick={startNewSeries} className="inline-flex items-center gap-2 bg-[#1d1d1b] px-4 py-3 text-sm font-bold text-white hover:bg-[#d65a38]">
+              <Plus className="h-4 w-4" /> Nuova rassegna
+            </button>
+          }
+        />
 
         {message && <p role="status" className="mb-4 border-l-4 border-[#d65a38] bg-white px-4 py-3 text-sm">{message}</p>}
 

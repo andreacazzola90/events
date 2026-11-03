@@ -15,6 +15,7 @@
   --line: rgba(255, 255, 255, 0.14);
   --shadow-soft: 0 18px 42px rgba(0, 0, 0, 0.28);
   --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.22);
+  --page-gutter: clamp(1.25rem, 4vw, 4rem);
   --rounded: 0px;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -526,7 +527,7 @@ button {
 .editorial-container {
   width: 100%;
   max-width: none;
-  padding: 0 clamp(1.25rem, 4vw, 4rem);
+  padding: 0 var(--page-gutter);
 }
 
 .page-shell {
@@ -1518,10 +1519,6 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 }
 
 @media (max-width: 639px) {
-  .events-page > .editorial-container {
-    padding-inline: 0.5rem;
-  }
-
   .event-list-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 0.75rem;
@@ -1686,8 +1683,91 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 .calendar-open-day { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; margin-top: 1.25rem; padding: 0.75rem; background: var(--accent-strong); color: #fff; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 
 .page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  min-height: 17rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.16);
-  padding-bottom: 1.5rem;
+  padding-bottom: clamp(1.25rem, 3vw, 2rem);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.page-heading-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.page-heading-kicker {
+  display: block;
+  min-height: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.page-heading-title {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-inter), sans-serif;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.page-heading-dot {
+  color: #d65a38;
+}
+
+.page-heading-description {
+  max-width: 40rem;
+  margin: 0.75rem 0 0;
+  color: var(--foreground-muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.page-heading-action {
+  align-self: flex-end;
+  flex: 0 0 auto;
+}
+
+.page-heading-compact {
+  gap: 1rem;
+  min-height: 11rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+}
+
+.page-heading-align-start {
+  align-items: flex-start;
+}
+
+.page-heading-compact .page-heading-title {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+}
+
+.page-heading-centered {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+@media (max-width: 639px) {
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    min-height: 19rem;
+  }
+
+  .page-heading-action {
+    align-self: flex-start;
+  }
+
+  .page-heading-compact {
+    min-height: 12rem;
+  }
 }
 
 :where(a, button, input, select, textarea):focus-visible {
@@ -1725,7 +1805,6 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   .calendar-view-switch button { padding: 0.6rem 0.3rem; }
   .calendar-period-title { font-size: 1.05rem; }
   .calendar-preview { padding: 1rem; }
-  .event-calendar-page .page-heading h1 { font-size: 2rem; line-height: 1.1; letter-spacing: 0; }
   .calendar-icon-button { width: 2.75rem; height: 2.75rem; }
   .calendar-today-button, .calendar-view-switch button { min-height: 2.75rem; }
   .calendar-month-grid { min-width: 0; width: 100%; }
@@ -1762,11 +1841,6 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   .page-shell {
     padding-top: 1rem;
     padding-bottom: 1.5rem;
-  }
-
-  .page-shell .page-heading {
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
   }
 
   .map-app-screen {
@@ -1919,16 +1993,6 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 
   .create-methods-grid {
     gap: 0.75rem;
-  }
-
-  .create-page-intro .section-kicker,
-  .create-page-intro .section-lead {
-    display: none;
-  }
-
-  .create-page-intro .section-title {
-    font-size: 2rem;
-    line-height: 1.05;
   }
 
   .create-event-page .space-y-8 {
@@ -2288,8 +2352,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   position: relative;
   z-index: 2;
   width: 100%;
-  max-width: 74rem;
-  margin: -14rem auto 0;
+  margin: -14rem 0 0;
 }
 
 .event-detail-page .event-detail-content::before {
@@ -2761,10 +2824,25 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 }
 
 .map-app-screen .event-map-legend {
+  left: var(--page-gutter) !important;
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(23, 23, 23, 0.96) !important;
   color: #f5f2ec;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.map-app-screen .leaflet-control-zoom {
+  margin-right: var(--page-gutter) !important;
+}
+
+@media (max-width: 1023px) {
+  .map-app-screen .event-map-legend {
+    right: var(--page-gutter) !important;
+  }
+
+  .map-app-screen .leaflet-control-zoom {
+    margin-right: max(1rem, env(safe-area-inset-right, 0px)) !important;
+  }
 }
 
 .map-app-screen .event-map-legend .sticky {

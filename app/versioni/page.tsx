@@ -3,6 +3,7 @@ import { appBuildInfo } from "../../lib/build-info";
 import { releaseNotes } from "../../lib/release-notes";
 import { TransitionLink } from "../components/TransitionLink";
 import { publicPageMetadata } from "../../lib/seo-metadata";
+import PageHeading from "../components/PageHeading";
 
 export const metadata: Metadata = publicPageMetadata({
   path: '/versioni',
@@ -14,22 +15,25 @@ export default function VersioniPage() {
   return (
     <main className="page-shell">
       <div className="editorial-container">
-        <header className="mb-12 max-w-4xl md:mb-16">
-          <p className="section-kicker mb-4">EventScanner / Cronologia</p>
-          <h1 className="section-title mb-5">Novità e versioni</h1>
-          <p className="section-lead mb-6">
+        <PageHeading
+          className="max-w-4xl"
+          kicker="EventScanner / Cronologia"
+          title="Novità e versioni"
+          description={
+            <>
             Aggiornamenti del prodotto e miglioramenti visibili, ordinati per
             versione. La versione corrente è <strong className="break-all text-[#1d1d1b]">{appBuildInfo.version}</strong>.
-          </p>
-          <p className="mb-6 text-sm text-[#5f5b56]">
+            </>
+          }
+        />
+        <p className="mb-6 text-sm text-[#5f5b56]">
             {appBuildInfo.builtAt ? (
               <>Build del deploy: <time dateTime={appBuildInfo.builtAt}>{appBuildInfo.builtAtLabel}</time></>
             ) : process.env.NODE_ENV === "development" ? "Sviluppo locale" : "Data build non disponibile"}
-          </p>
-          <TransitionLink href="/ui-ux" className="industrial-link industrial-link-outline">
-            Regole UI/UX <span aria-hidden="true">↗</span>
-          </TransitionLink>
-        </header>
+        </p>
+        <TransitionLink href="/ui-ux" className="industrial-link industrial-link-outline mb-12">
+          Regole UI/UX <span aria-hidden="true">↗</span>
+        </TransitionLink>
 
         <div>
           {releaseNotes.map((release) => (

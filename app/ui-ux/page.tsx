@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { TransitionLink } from "../components/TransitionLink";
+import PageHeading from "../components/PageHeading";
 import { publicPageMetadata } from "../../lib/seo-metadata";
 
 export const metadata: Metadata = publicPageMetadata({
@@ -53,18 +54,23 @@ export default function UiUxPage() {
   return (
     <main className="page-shell">
       <div className="editorial-container">
-        <header className="mb-12 max-w-4xl md:mb-16">
-          <p className="section-kicker mb-4">EventScanner / Design system</p>
-          <h1 className="section-title mb-5">Regole UI/UX</h1>
-          <p className="section-lead mb-6">
+        <PageHeading
+          className="max-w-4xl"
+          kicker="EventScanner / Design system"
+          title="Regole UI/UX"
+          description={
+            <>
             La guida pratica per mantenere coerenti le pagine: colori, gerarchie,
             spazi, componenti e comportamento. I token principali sono definiti in
             <code className="mx-1 bg-black/5 px-1.5 py-0.5 text-sm">app/globals.css</code>.
-          </p>
+            </>
+          }
+          action={
           <TransitionLink href="/versioni" className="industrial-link industrial-link-primary">
             Novità del prodotto <span aria-hidden="true">↗</span>
           </TransitionLink>
-        </header>
+          }
+        />
 
         <RuleSection number="01" title="Palette">
             <p className="mb-5 text-sm leading-relaxed text-[#5f5b56]">

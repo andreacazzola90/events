@@ -109,10 +109,6 @@ export default function RootLayout({
   return (
     <html lang="it" data-theme="dicefm">
       <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: serializeJsonLd(getWebSiteJsonLd()) }}
-        />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
         {/* Google Search Console Verification */}
@@ -123,13 +119,14 @@ export default function RootLayout({
           />
         )}
 
-        {/* Google Analytics */}
-        <GoogleAnalytics />
-
-        {/* Google Tag Manager */}
-        <GoogleTagManager />
       </head>
       <body className={`${inter.variable} antialiased`}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(getWebSiteJsonLd()) }}
+        />
+        <GoogleAnalytics />
+        <GoogleTagManager />
         <Providers>
           <PageTransitionProvider>
             <PWAHandler />

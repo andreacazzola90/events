@@ -100,7 +100,9 @@ export function GoogleAnalytics() {
                     strategy="lazyOnload"
                 />
             )}
-            <script
+            <Script
+                id="google-analytics-init"
+                strategy="afterInteractive"
                 defer
                 dangerouslySetInnerHTML={{
                     __html: `

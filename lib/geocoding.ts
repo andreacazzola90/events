@@ -105,6 +105,7 @@ export async function geocodeLocation(location: string): Promise<Coordinates> {
 async function resolveLocation(location: string): Promise<Coordinates> {
   try {
     const expectedLocality = getExpectedLocality(location);
+    const signal = AbortSignal.timeout(5_000);
     const searchNominatim = async (query: string): Promise<NominatimResult[]> => {
       const params = new URLSearchParams({
         format: "jsonv2",
@@ -115,7 +116,7 @@ async function resolveLocation(location: string): Promise<Coordinates> {
       });
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-        { headers: { "User-Agent": "EventScanner/1.0 (server)" } },
+        { headers: { "User-Agent": "EventScanner/1.0 (server)" }, signal },
       );
       if (!response.ok) return [];
       const data = (await response.json()) as NominatimResult[];

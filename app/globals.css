@@ -2077,7 +2077,38 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   }
 }
 
+.request-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 88px;
+  width: 100%;
+  color: var(--foreground);
+}
+
+.request-status-icon {
+  color: var(--accent);
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  animation: spin 1.2s linear infinite;
+}
+
+.request-status-message {
+  color: inherit;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .request-status-icon {
+    animation: none !important;
+  }
   *,
   *::before,
   *::after {

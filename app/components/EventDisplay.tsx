@@ -39,6 +39,7 @@ async function cropCoverToFile(imageSource: string, area: Area) {
 interface EventDisplayProps {
     eventData: EventData;
     onSave?: (updatedData: EventData) => void;
+    onPublish?: (updatedData: EventData) => Promise<void>;
     duplicate?: DuplicateMatch | null;
     showPublishButton?: boolean;
     imageProcessing?: boolean;
@@ -62,7 +63,7 @@ function formatDateLong(raw?: string): string {
 
 const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d1b] focus:outline-none focus:border-[#d65a38] transition-colors';
 
-export default function EventDisplay({ eventData, onSave, duplicate, showPublishButton = true, imageProcessing = false, imageCropStatus = imageProcessing ? 'processing' : 'idle', imageCropFailure, onImageChange }: EventDisplayProps) {
+export default function EventDisplay({ eventData, onSave, onPublish, duplicate, showPublishButton = true, imageProcessing = false, imageCropStatus = imageProcessing ? 'processing' : 'idle', imageCropFailure, onImageChange }: EventDisplayProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
@@ -86,6 +87,16 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     useEffect(() => { currentOnSave.current = onSave; }, [onSave]);
 
     useEffect(() => () => cropPreviewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
+
+    const notifyImageChange = (selected: string, original?: string) => {
+        cropPreviewUrls.current = cropPreviewUrls.current.filter(url => {
+            if (onImageChange && url === selected) return false;
+            if (url === selected || url === original) return true;
+            URL.revokeObjectURL(url);
+            return false;
+        });
+        onImageChange?.(selected, original);
+    };
 
     const handleSaveApiError = (errorText: string): never => {
         let parsedError: any;
@@ -152,7 +163,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             setWebImageOverride(false);
             setImageUrl(previewUrl);
             currentImageUrl.current = previewUrl;
-            onImageChange?.(previewUrl, originalCropSource.current);
+            notifyImageChange(previewUrl, originalCropSource.current);
             recordCropSample();
             setCropSource(null);
         } catch {
@@ -290,7 +301,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
     };
 
     const handleAddEvent = async () => {
-        if (imageProcessing) return;
+        if (imageProcessing || isSaving) return;
         setIsSaving(true);
         setSaveAnimationStatus('saving');
 
@@ -326,6 +337,11 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             // Normalizza i dati prima del salvataggio
             eventToSave.category = normalizeCategory(eventToSave.category);
             eventToSave.price = normalizePrice(eventToSave.price);
+            if (onPublish) {
+                await onPublish(eventToSave);
+                setSaveAnimationStatus('hidden');
+                return;
+            }
             const posterImageUrl = eventToSave.posterImageUrl;
             eventToSave = prepareDraftForPublication(eventToSave);
 
@@ -380,11 +396,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                 console.log('[EventDisplay] Sending CLEAR_CACHE message to service worker');
                 navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
-                await new Promise(resolve => setTimeout(resolve, 300));
             }
-
-            // Wait for animation to complete
-            await new Promise(resolve => setTimeout(resolve, 1500));
 
             // Redirect to new event detail page when available
             if (savedEvent?.slug) {
@@ -479,7 +491,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                     setWebImageOverride(true);
                                     setImageUrl(previewUrl);
                                     currentImageUrl.current = previewUrl;
-                                    onImageChange?.(previewUrl, originalCropSource.current);
+                                    notifyImageChange(previewUrl, originalCropSource.current);
                                 }} />
                         )}
                         {isEditing && (
@@ -501,7 +513,7 @@ export default function EventDisplay({ eventData, onSave, duplicate, showPublish
                                             setWebImageOverride(false);
                                             setImageUrl(url);
                                             currentImageUrl.current = url;
-                                            onImageChange?.(url, url);
+                                            notifyImageChange(url, url);
                                         }
                                     }}
                                 />

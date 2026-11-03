@@ -16,7 +16,7 @@ interface ImageUploaderProps {
 
 export default function ImageUploader({ onProcessed, onError, onStart }: ImageUploaderProps) {
     const [isProcessing, setIsProcessing] = useState(false);
-    const [showReceived, setShowReceived] = useState(false);
+    const [processingMessage, setProcessingMessage] = useState('Scansione immagine in corso');
     const [showSourcePicker, setShowSourcePicker] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -36,20 +36,21 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
         if (crop) scan?.registerCrop(crop);
         let cancelled = false;
         let handedOff = false;
+        const controller = new AbortController();
         cancelRequest.current = () => {
             cancelled = true;
+            controller.abort();
             if (!handedOff) crop?.cancel();
         };
         const isCurrent = () => !cancelled && (!scan || scan.isCurrent());
 
-        // Mostra subito l'animazione di ricezione, poi passa allo stato di elaborazione
-        setShowReceived(true);
+        setProcessingMessage(isPdf ? 'Scansione PDF in corso' : 'Scansione immagine in corso');
         setIsProcessing(true);
-        setTimeout(() => setShowReceived(false), 1800);
 
         try {
             const response = await fetch(isPdf ? '/api/process-pdf' : '/api/process-image', {
                 method: 'POST',
+                signal: controller.signal,
                 body: (() => {
                     const formData = new FormData();
                     formData.append(isPdf ? 'document' : 'image', file);
@@ -132,7 +133,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
             onError(errorMessage);
         } finally {
             if (!handedOff) crop?.cancel();
-            if (isCurrent()) {
+            if (!cancelled) {
                 setIsProcessing(false);
                 setShowSourcePicker(false);
             }
@@ -264,9 +265,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
 
                 <div className="space-y-4">
                     {isProcessing ? (
-                        showReceived
-                            ? <LoadingAnimation message="Immagine ricevuta!" phase="received" />
-                            : <LoadingAnimation message="Scansione immagine in corso" phase="scan-image" />
+                        <LoadingAnimation message={processingMessage} phase="scan-image" />
                     ) : (
                         <>
                             <div className="image-upload-symbol" aria-hidden="true">＋</div>

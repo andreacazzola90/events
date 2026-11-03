@@ -8,6 +8,7 @@ interface MultipleEventsEditorProps {
     duplicates?: (DuplicateMatch | null)[];
     onEventsChange?: (events: EventData[]) => void;
     onSaveAll: (events: EventData[]) => Promise<void>;
+    onPublish?: (index: number, event: EventData) => Promise<void>;
     onCancel?: () => void;
     publishing?: boolean;
     imageProcessing?: boolean;
@@ -16,7 +17,7 @@ interface MultipleEventsEditorProps {
     onImageChange?: (index: number, imageUrl: string, originalImageUrl?: string) => void;
 }
 
-const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: initialEvents, duplicates = [], onEventsChange, onSaveAll, onCancel, publishing = false, imageProcessing = false, imageCropStatus, imageCropFailure, onImageChange }) => {
+const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: initialEvents, duplicates = [], onEventsChange, onSaveAll, onPublish, onCancel, publishing = false, imageProcessing = false, imageCropStatus, imageCropFailure, onImageChange }) => {
     const [events, setEvents] = useState<EventData[]>(initialEvents);
     useEffect(() => setEvents(initialEvents), [initialEvents]);
     const [saving, setSaving] = useState(false);
@@ -54,7 +55,7 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
         <div className="space-y-8">
             {events.map((event, idx) => (
                 <div key={idx} className="border rounded-lg p-4 bg-white shadow">
-                    <EventDisplay eventData={event} imageProcessing={imageProcessing} imageCropStatus={imageCropStatus} imageCropFailure={imageCropFailure} onImageChange={(image, original) => onImageChange?.(idx, image, original)} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} showPublishButton={!isSaving && !imageProcessing} />
+                    <EventDisplay eventData={event} imageProcessing={imageProcessing} imageCropStatus={imageCropStatus} imageCropFailure={imageCropFailure} onImageChange={onImageChange ? (image, original) => onImageChange(idx, image, original) : undefined} onPublish={onPublish ? updated => onPublish(idx, updated) : undefined} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} showPublishButton={!isSaving && !imageProcessing} />
                 </div>
             ))}
             {error && <div role="alert" className="text-red-500 font-semibold">{error}</div>}

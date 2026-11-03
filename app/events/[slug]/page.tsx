@@ -13,6 +13,7 @@ import FavoriteButton from '../../components/FavoriteButton';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
+import { calendarToday } from '../../../lib/calendar-view';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
@@ -107,21 +108,19 @@ async function getSameDayEvents(date: string, currentEventId: number) {
 
 async function getSimilarEvents(currentEvent: any) {
     const primaryLocationToken = getPrimaryLocationToken(currentEvent.location);
+    const today = calendarToday();
+    const nextWeek = new Date(Date.parse(today) + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const similarEvents = await prisma.event.findMany({
         where: {
             AND: [
                 { id: { not: currentEvent.id } }, // Exclude current event
+                { date: { gte: today } },
                 {
                     OR: [
                         ...(currentEvent.category ? [{ category: currentEvent.category }] : []), // Same category
                         ...(primaryLocationToken ? [{ location: { contains: primaryLocationToken } }] : []), // Same city/area
-                        {
-                            AND: [
-                                { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] } }, // Events in the next week
-                                { date: { lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] } }
-                            ]
-                        }
+                        { date: { lte: nextWeek } },
                     ]
                 }
             ]

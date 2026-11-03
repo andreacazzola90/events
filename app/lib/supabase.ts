@@ -3,10 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 
-let supabaseClient: ReturnType<typeof createClient> | undefined;
+let supabaseClient: ReturnType<typeof createSupabaseClient> | undefined;
 
 export function getSupabaseClient() {
   if (supabaseClient) return supabaseClient;
+
+  supabaseClient = createSupabaseClient();
+  return supabaseClient;
+}
+
+function createSupabaseClient(signal?: AbortSignal) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_SECRET_KEY;
@@ -15,13 +21,20 @@ export function getSupabaseClient() {
   }
 
   // Create the server-side client only when a Storage operation is requested.
-  supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+  return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
-    }
+    },
+    ...(signal ? { global: { fetch: (input: RequestInfo | URL, options?: RequestInit) => fetch(input, {
+      ...options,
+      signal: AbortSignal.any([
+        signal,
+        ...(options?.signal ? [options.signal] : []),
+        ...(input instanceof Request ? [input.signal] : []),
+      ]),
+    }) } } : {}),
   });
-  return supabaseClient;
 }
 
 /**
@@ -113,7 +126,8 @@ export async function uploadImageToSupabase(
   }
 }
 
-export async function uploadEventMediaToSupabase(file: File, eventId: number) {
+export async function uploadEventMediaToSupabase(file: File, eventId: number, options: { signal?: AbortSignal } = {}) {
+  options.signal?.throwIfAborted();
   const safeName = file.name
     .split(/[\\/]/)
     .pop()
@@ -121,17 +135,21 @@ export async function uploadEventMediaToSupabase(file: File, eventId: number) {
     .slice(-120) || "attachment";
   const storagePath = `${eventId}/${randomUUID()}-${safeName}`;
   const bytes = Buffer.from(await file.arrayBuffer());
-  const { error } = await getSupabaseClient().storage.from("events").upload(storagePath, bytes, {
+  options.signal?.throwIfAborted();
+  const client = options.signal ? createSupabaseClient(options.signal) : getSupabaseClient();
+  const { error } = await client.storage.from("events").upload(storagePath, bytes, {
     contentType: file.type,
     upsert: false,
   });
   if (error) throw error;
-  const { data } = getSupabaseClient().storage.from("events").getPublicUrl(storagePath);
+  const { data } = client.storage.from("events").getPublicUrl(storagePath);
   return { storagePath, url: data.publicUrl };
 }
 
-export async function deleteEventMediaFromSupabase(storagePath: string) {
-  const { error } = await getSupabaseClient().storage.from("events").remove([storagePath]);
+export async function deleteEventMediaFromSupabase(storagePath: string, options: { signal?: AbortSignal } = {}) {
+  options.signal?.throwIfAborted();
+  const client = options.signal ? createSupabaseClient(options.signal) : getSupabaseClient();
+  const { error } = await client.storage.from("events").remove([storagePath]);
   if (error) throw error;
 }
 

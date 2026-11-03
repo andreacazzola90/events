@@ -2,8 +2,12 @@
 
 describe('Parallel event cover', () => {
   beforeEach(() => {
+    cy.intercept('POST', '**/api/**', { statusCode: 503, body: { error: 'Unconfigured test mock' } });
+    cy.intercept('GET', '/api/auth/session', { statusCode: 200, body: {} }).as('mockSession');
+    cy.intercept('GET', '/api/events?*', { statusCode: 200, body: [] });
     cy.intercept('POST', '/api/event-cover-search', { statusCode: 200, body: { candidates: [], status: 'completed' } }).as('coverSearch');
     cy.visit('/crea', { failOnStatusCode: false });
+    cy.wait('@mockSession');
     cy.wait(2000);
   });
 
@@ -23,12 +27,14 @@ describe('Parallel event cover', () => {
           Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' });
         },
       });
+      cy.wait('@mockSession');
+      cy.window().then(window => Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' }));
       cy.get('.image-upload-zone').click();
       cy.get('.image-source-overlay').should('be.visible').contains('button', source).click();
       cy.get('.image-source-overlay').should('not.exist');
       cy.get(source === 'Fotocamera' ? 'input[capture="environment"]' : '.image-upload-zone input[type="file"]:not([capture])').last()
         .selectFile('cypress/fixtures/event-poster.png', { force: true });
-      cy.contains('Immagine ricevuta!').should('be.visible');
+      cy.contains('[role="status"]', 'Scansione immagine in corso').should('be.visible');
       cy.get('.image-source-overlay').should('not.exist');
       cy.wait(['@mobileExtraction', '@mobileCrop', '@mobileDuplicates']);
       cy.contains('Mobile picker draft').should('be.visible');
@@ -47,6 +53,8 @@ describe('Parallel event cover', () => {
     cy.visit('/crea', { failOnStatusCode: false, onBeforeLoad(window) {
       Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' });
     } });
+    cy.wait('@mockSession');
+    cy.window().then(window => Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' }));
     cy.get('.image-upload-zone').click();
     cy.contains('.image-source-overlay button', 'Galleria').click();
     cy.get('.image-source-overlay').should('not.exist');
@@ -99,6 +107,8 @@ describe('Parallel event cover', () => {
           }));
         } });
       });
+      cy.wait('@mockSession');
+      cy.window().then(window => Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android' }));
       cy.get('.image-upload-zone').click();
       cy.contains('.image-source-overlay button', 'Appunti').click();
       cy.get('.image-source-overlay').should('not.exist');
@@ -309,19 +319,20 @@ describe('Parallel event cover', () => {
   it('blocks both publication controls during one batch and allows retry after a save error', () => {
     const event = { title: 'Pubblicazione coordinata', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' };
     let saves = 0;
-    let finishSave: () => void;
+    const finishSaves: (() => void)[] = [];
     cy.intercept('POST', '/api/crop-image', { statusCode: 204 });
     cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
     cy.intercept('POST', '/api/process-image', { statusCode: 200, body: { events: [event, { ...event, title: 'Seconda pubblicazione', time: '21:00' }] } });
     cy.intercept('POST', '/api/events', request => new Promise<void>(resolve => {
       saves++;
-      finishSave = () => { request.reply({ statusCode: 503, body: { error: 'Pubblicazione temporaneamente non disponibile' } }); resolve(); };
+      finishSaves.push(() => { request.reply({ statusCode: 503, body: { error: 'Pubblicazione temporaneamente non disponibile' } }); resolve(); });
     })).as('pendingPublication');
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
     cy.get('[data-testid="publish-all-events-bottom"]').scrollIntoView().should('be.enabled').click();
     cy.get('[data-testid="publish-all-events-top"]').should('be.disabled');
     cy.get('[data-testid="publish-all-events-bottom"]').should('be.disabled');
-    cy.then(() => { expect(saves).to.eq(1); finishSave(); });
+    cy.wrap(null).should(() => expect(saves).to.eq(2));
+    cy.then(() => finishSaves.forEach(finish => finish()));
     cy.wait('@pendingPublication');
     cy.contains('[role="alert"]', 'Pubblicazione temporaneamente non disponibile').should('be.visible');
     cy.get('[data-testid="publish-all-events-top"]').should('be.enabled');
@@ -333,8 +344,193 @@ describe('Parallel event cover', () => {
     cy.get('[data-testid="publish-all-events-top"]').click();
     cy.wait('@retriedPublication');
     cy.contains('2 eventi creati').should('be.visible');
-    cy.then(() => expect(saves).to.eq(3));
+    cy.then(() => expect(saves).to.eq(4));
   });
+
+  it('retains a failed manual cover and bottom-button error through the single-draft retry', () => {
+    const events = ['Cover A', 'Cover B'].map((title, index) => ({
+      title, date: '2026-12-01', time: `${20 + index}:00`, location: 'Schio', category: 'music',
+    }));
+    const submitted: string[] = [];
+    let firstCoverBody: string;
+    cy.intercept('POST', '/api/process-link', { statusCode: 200, body: { events } });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('POST', '/api/events', request => {
+      const body = request.headers['content-type'].includes('application/json')
+        ? JSON.stringify(request.body)
+        : typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+      const isCoverB = body.includes('Cover B');
+      submitted.push(isCoverB ? 'B' : 'A');
+      if (isCoverB) {
+        expect(request.headers['content-type']).to.include('multipart/form-data');
+        const coverBody = body.slice(body.indexOf('filename="event-image.png"')).split('\r\n--')[0];
+        expect(coverBody).to.include('Content-Type: image/png');
+        if (firstCoverBody) expect(coverBody).to.eq(firstCoverBody);
+        else firstCoverBody = coverBody;
+      }
+      request.reply(isCoverB && submitted.length <= 2
+        ? { statusCode: 503, body: { error: 'Cover B da riprovare' } }
+        : { statusCode: 201, body: { id: 991 } });
+    }).as('manualRetry');
+    cy.get('input[type="url"]').type('https://events.example/manual-retry');
+    cy.contains('button', 'Estrai evento').click();
+    cy.contains('Cover B').should('be.visible');
+    cy.get('button').filter(':contains("Modifica dettagli")').eq(1).click();
+    cy.get('input.event-image-upload').selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.contains('button', 'Salva modifiche').click();
+    cy.get('[data-testid="publish-all-events-bottom"]').scrollIntoView().click();
+    cy.contains('[role="alert"]', 'Cover B da riprovare').should('be.visible');
+    cy.get('[data-testid="publish-all-events-bottom"]').should('not.exist');
+    cy.get('[data-testid="publish-all-events-top"]').click();
+    cy.contains('2 eventi creati').should('be.visible');
+    cy.then(() => expect(submitted).to.deep.equal(['A', 'B', 'B']));
+  });
+
+  it('coordinates edited card publication and retains unsubmitted drafts after failure', () => {
+    const events = ['Untouched draft', 'Selected draft', 'Third draft'].map((title, index) => ({
+      title, date: '2026-12-01', time: `${18 + index}:00`, location: 'Schio', category: 'music',
+    }));
+    let finish: () => void;
+    let saves = 0;
+    cy.intercept('POST', '/api/process-link', { statusCode: 200, body: { events } });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('POST', '/api/events', request => new Promise<void>(resolve => {
+      saves++;
+      expect(request.body.title).to.eq('Edited selected draft');
+      expect(request.body.time).to.eq('22:30');
+      finish = () => { request.reply({ statusCode: 503, body: { error: 'Selected draft retry' } }); resolve(); };
+    }));
+    cy.get('input[type="url"]').type('https://events.example/card');
+    cy.contains('button', 'Estrai evento').click();
+    cy.get('button').filter(':contains("Modifica dettagli")').eq(1).click();
+    cy.get('input[name="title"]').clear().type('Edited selected draft');
+    cy.get('input[name="time"]').clear().type('22.30');
+    cy.contains('button', 'Salva modifiche').click();
+    cy.get('.event-add-button').eq(1).click();
+    cy.wrap(null).should(() => expect(saves).to.eq(1));
+    cy.get('[data-testid="publish-all-events-top"]').should('be.disabled').trigger('keydown', { key: 'Enter', force: true });
+    cy.get('[data-testid="publish-all-events-bottom"]').should('be.disabled');
+    cy.then(() => { expect(saves).to.eq(1); finish(); });
+    cy.contains('[role="alert"]', 'Selected draft retry').should('be.visible');
+    cy.contains('Untouched draft').should('be.visible');
+    cy.contains('Third draft').should('be.visible');
+    cy.contains('Edited selected draft').should('be.visible');
+  });
+
+  for (const peerTime of ['20:00-22:00', 'non trovato']) {
+    it(`waits for same-date duplicate peers with start ${peerTime} while independent starts overlap`, () => {
+      const events = ['First peer', 'Dependent peer', 'Independent start'].map((title, index) => ({
+        title, date: '2026-12-01', time: index === 0 ? '20:00' : index === 1 ? peerTime : '23:00', location: 'Schio', category: 'music',
+      }));
+      const finishes: (() => void)[] = [];
+      const submitted: number[] = [];
+      cy.intercept('POST', '/api/process-link', { statusCode: 200, body: { events } });
+      cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+      cy.intercept('POST', '/api/events', request => new Promise<void>(resolve => {
+        const index = events.findIndex(event => event.title === request.body.title);
+        submitted.push(index);
+        finishes[index] = () => { request.reply({ statusCode: 201, body: { id: 950 + index } }); resolve(); };
+      }));
+      cy.get('input[type="url"]').type('https://events.example/peers');
+      cy.contains('button', 'Estrai evento').click();
+      cy.get('[data-testid="publish-all-events-top"]').click();
+      cy.wrap(null).should(() => expect(finishes[0]).to.be.a('function'));
+      cy.get('[aria-label="Eventi in pubblicazione"]').should('be.visible');
+      cy.then(() => { expect(submitted).to.deep.equal([0]); finishes[0](); });
+      if (peerTime === 'non trovato') {
+        cy.wrap(null).should(() => expect(finishes[1]).to.be.a('function'));
+        cy.then(() => { expect(submitted).to.deep.equal([0, 1]); finishes[1](); });
+      }
+      cy.wrap(null).should(() => expect(submitted).to.have.length(3));
+      cy.then(() => { if (peerTime !== 'non trovato') finishes[1](); finishes[2](); });
+      cy.contains('3 eventi creati').should('be.visible');
+    });
+  }
+
+  it('limits concurrency to two, preserves ordered results and retries only unsaved drafts', () => {
+    const events = ['Primo salvato', 'Da riprovare', 'Gia presente', 'Ultimo salvato'].map((title, index) => ({
+      title, date: '2026-12-01', time: `${18 + index}:00`, location: 'Schio', category: 'music',
+    }));
+    const finishes: (() => void)[] = [];
+    const submitted: string[] = [];
+    let active = 0;
+    let maximum = 0;
+    cy.intercept('POST', '/api/process-link', { statusCode: 200, body: { events } });
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('POST', '/api/events', request => new Promise<void>(resolve => {
+      const index = events.findIndex(event => event.title === request.body.title);
+      submitted.push(request.body.title);
+      maximum = Math.max(maximum, ++active);
+      finishes[index] = () => {
+        active--;
+        request.reply(index === 1 ? { statusCode: 503, body: { error: 'Riprova questa bozza' } }
+          : index === 2 ? { statusCode: 409, body: { error: 'EVENT_DUPLICATE' } }
+          : { statusCode: 201, body: { id: 900 + index, title: request.body.title } });
+        resolve();
+      };
+    }));
+    cy.get('input[type="url"]').type('https://events.example/mock');
+    cy.contains('button', 'Estrai evento').click();
+    cy.get('[data-testid="publish-all-events-top"]').click();
+    cy.wrap(null).should(() => expect(submitted).to.deep.equal(events.slice(0, 2).map(event => event.title)));
+    cy.get('[data-testid="publish-all-events-top"]').should('be.disabled');
+    cy.then(() => finishes[1]());
+    cy.wrap(null).should(() => expect(finishes[2]).to.be.a('function'));
+    cy.then(() => finishes[2]());
+    cy.wrap(null).should(() => expect(finishes[3]).to.be.a('function'));
+    cy.then(() => { finishes[3](); finishes[0](); });
+    cy.contains('Riprova questa bozza').should('be.visible');
+    cy.get('[aria-label="Eventi in pubblicazione"] article').should('have.length', 4).each((article, index) => {
+      expect(article.text()).to.include(events[index].title);
+      expect(article.text()).to.include(['Evento creato', 'Pubblicazione non riuscita', 'Evento già presente', 'Evento creato'][index]);
+    });
+    cy.then(() => { expect(maximum).to.eq(2); expect(submitted).to.have.length(4); });
+    cy.get('[data-testid="publish-all-events-top"]').should('be.enabled');
+    cy.intercept('POST', '/api/events', request => {
+      submitted.push(request.body.title);
+      expect(request.body.title).to.eq('Da riprovare');
+      request.reply({ statusCode: 201, body: { id: 999 } });
+    }).as('onlyUnsaved');
+    cy.get('[data-testid="publish-all-events-top"]').click();
+    cy.wait('@onlyUnsaved');
+    cy.contains('3 eventi creati').should('be.visible');
+    cy.then(() => expect(submitted).to.deep.equal([...events.map(event => event.title), 'Da riprovare']));
+  });
+
+  for (const [width, reduced] of [[1280, false], [390, false], [390, true]] as const) {
+    it(`shows truthful immediate link status at ${width}px with reduced motion ${reduced}`, { defaultCommandTimeout: 30000 }, () => {
+      let finish: () => void;
+      cy.viewport(width, 900);
+      cy.intercept('POST', '/api/process-link', request => new Promise<void>(resolve => {
+        finish = () => { request.reply({ statusCode: 200, body: { events: [{ title: 'Link mock pronto', date: '2026-12-01', time: '20:00', location: 'Schio' }] } }); resolve(); };
+      }));
+      cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+      cy.then(() => Cypress.automation('remote:debugger:protocol', {
+        command: 'Emulation.setEmulatedMedia',
+        params: { features: [{ name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference' }] },
+      }));
+      cy.get('input[type="url"]').type('https://events.example/mock');
+      cy.contains('button', 'Estrai evento').click();
+      cy.get('.request-status').should('be.visible').and('contain', 'Scansione pagina web in corso').and('not.contain', 'Step:');
+      cy.get('.request-status-icon').then(icon => {
+        const style = icon[0].ownerDocument.defaultView!.getComputedStyle(icon[0]);
+        expect(style.width).to.eq('24px');
+        expect(style.animationName).to.eq(reduced ? 'none' : 'spin');
+      });
+      cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(width));
+      cy.get('.request-status').scrollIntoView({ offset: { top: -160, left: 0 } });
+      cy.get('.request-status').then(status => {
+        const bounds = status[0].getBoundingClientRect();
+        expect(bounds.top).to.be.at.least(65);
+        expect(bounds.bottom).to.be.at.most(900);
+      });
+      cy.screenshot(`responsive-link-${width}-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
+      cy.then(() => finish());
+      cy.contains('Link mock pronto').should('be.visible');
+      cy.get('.request-status').should('not.exist');
+      cy.then(() => Cypress.automation('remote:debugger:protocol', { command: 'Emulation.setEmulatedMedia', params: { features: [] } }));
+    });
+  }
 
   const failedScan = (multiple = false, onPreview?: () => void, sourceUrl?: string) => {
     cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'verification-rejected' } });

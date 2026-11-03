@@ -22,14 +22,19 @@ import { validateEventMediaFile } from "../../../lib/event-media";
 /** Stores the full poster as the event's first gallery image; failures never undo the event. */
 async function attachPosterImage(eventId: number, poster: File) {
   let storagePath: string | undefined;
+  let commitAttempted = false;
+  const deadline = AbortSignal.timeout(10_000);
+  const uploadSignal = AbortSignal.any([deadline, AbortSignal.timeout(8_000)]);
   try {
     const validation = validateEventMediaFile(poster.name, poster.type, new Uint8Array(await poster.arrayBuffer()), poster.size);
     if (!validation.ok || validation.kind !== "image") {
       console.warn("[API /events POST] Poster image rejected:", validation.ok ? "not an image" : validation.error);
       return;
     }
-    const uploaded = await uploadEventMediaToSupabase(poster, eventId);
+    const uploaded = await uploadEventMediaToSupabase(poster, eventId, { signal: uploadSignal });
     storagePath = uploaded.storagePath;
+    deadline.throwIfAborted();
+    commitAttempted = true;
     await prisma.eventMedia.create({
       data: {
         eventId, kind: "image", fileName: "Locandina completa", mimeType: poster.type,
@@ -38,7 +43,13 @@ async function attachPosterImage(eventId: number, poster: File) {
     });
   } catch (error) {
     console.warn("[API /events POST] Poster image not saved:", error instanceof Error ? error.message : error);
-    if (storagePath) await deleteEventMediaFromSupabase(storagePath).catch(() => undefined);
+    const definiteRejection = error && typeof error === 'object' && 'code' in error
+      && (error.code === 'P2002' || error.code === 'P2003');
+    if (storagePath && (!commitAttempted || definiteRejection) && !deadline.aborted) {
+      await deleteEventMediaFromSupabase(storagePath, {
+        signal: AbortSignal.any([deadline, AbortSignal.timeout(2_000)]),
+      }).catch(() => undefined);
+    }
   }
 }
 
@@ -184,31 +195,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Geocode location once at creation time to store coordinates
-    if (eventDataToSave.location) {
-      try {
-        const coords = await geocodeLocation(eventDataToSave.location);
-        eventDataToSave.latitude = coords.latitude;
-        eventDataToSave.longitude = coords.longitude;
-        console.log(
-          "[API /events POST] Geocoded location to coordinates:",
-          coords,
-        );
-      } catch (geoError) {
-        console.warn(
-          "[API /events POST] Failed to geocode location, continuing without coordinates:",
-          geoError,
-        );
-      }
-    }
-
     console.log(
       "[API /events POST] Saving event with data:",
       JSON.stringify(eventDataToSave, null, 2),
     );
 
     const { event, seriesSlug } = await createEventWithSeries(eventDataToSave, eventData.seriesTitle);
-    if (posterFile && imageUrl) await attachPosterImage(event.id, posterFile);
     scheduleCalendarDeliveries();
 
     console.log("[API /events POST] Event saved successfully, ID:", event.id);
@@ -226,24 +218,51 @@ export async function POST(request: NextRequest) {
     }
 
     after(async () => {
-      if (typeof eventData.scanFeedbackToken === "string") {
-        const learned = await recordScanCorrections(
-          eventData.scanFeedbackToken,
-          eventDataToSave,
-          eventDataToSave.createdById ?? null,
-        );
-        if (learned) console.log(`[API /events POST] Learned ${learned} scan correction(s)`);
-      }
-      await Promise.all([
-        `/api/events?limit=200&_rebuild=${Date.now()}`,
-        eventDetailPath,
-      ].map(async path => {
+      const tasks = [async () => {
+        if (!event.location) return;
+        const coords = await geocodeLocation(event.location);
+        if (coords.latitude === null || coords.longitude === null) return;
+        const updated = await prisma.event.updateMany({
+          where: {
+            id: event.id, location: event.location, updatedAt: event.updatedAt,
+            latitude: event.latitude, longitude: event.longitude,
+          },
+          data: coords,
+        });
+        if (updated.count) refreshEventCache(eventSlug);
+      }, async () => {
+        if (posterFile && imageUrl) {
+          await attachPosterImage(event.id, posterFile);
+          refreshEventCache(eventSlug);
+        }
+      }, async () => {
+        if (typeof eventData.scanFeedbackToken === "string") {
+          const learned = await recordScanCorrections(
+            eventData.scanFeedbackToken,
+            eventDataToSave,
+            eventDataToSave.createdById ?? null,
+          );
+          if (learned) console.log(`[API /events POST] Learned ${learned} scan correction(s)`);
+        }
+      }, async () => {
+        await Promise.all([
+          `/api/events?limit=200&_rebuild=${Date.now()}`,
+          eventDetailPath,
+        ].map(async path => {
+          try {
+            await fetch(new URL(path, request.nextUrl.origin), {
+              cache: "no-store", signal: AbortSignal.timeout(3_000),
+            });
+          } catch {
+            console.warn("[API /events POST] Event saved; page pre-warm unavailable");
+          }
+        }));
+      }];
+      await Promise.all(tasks.map(async task => {
         try {
-          await fetch(new URL(path, request.nextUrl.origin), {
-            cache: "no-store", signal: AbortSignal.timeout(3_000),
-          });
-        } catch {
-          console.warn("[API /events POST] Event saved; page pre-warm unavailable");
+          await task();
+        } catch (error) {
+          console.warn("[API /events POST] Event saved; background task unavailable:", error);
         }
       }));
     });

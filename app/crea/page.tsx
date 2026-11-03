@@ -14,6 +14,8 @@ import SharedImageHandler from '../components/SharedImageHandler';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
 import { appendPosterImage, detectPosterSections, prepareDraftForPublication, type DraftImageCrop, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
+import { getEventStartTime, sameEventStartTime } from '../../lib/event-display';
+import { normalizeCategory, normalizePrice, toIsoDate } from '../../lib/event-utils';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -37,12 +39,7 @@ function normalizeEventFields(event: EventData): EventData {
     }
     // Ora
     if (time) {
-        const nums = time.match(/\d+/g);
-        if (nums && nums.length >= 2) {
-            time = `${nums[0].padStart(2, '0')}:${nums[1].padStart(2, '0')}`;
-        } else {
-            time = '';
-        }
+        time = getEventStartTime(time) || '';
     }
     // Luogo
     if (location) {
@@ -51,7 +48,7 @@ function normalizeEventFields(event: EventData): EventData {
     return { ...event, date, time, location };
 }
 
-type OptimisticEventStatus = 'pending' | 'created' | 'duplicate';
+type OptimisticEventStatus = 'pending' | 'created' | 'duplicate' | 'failed';
 type OptimisticEvent = { event: EventData; status: OptimisticEventStatus };
 
 export default function CreaEvento() {
@@ -64,9 +61,11 @@ export default function CreaEvento() {
     const [processingSharedImage, setProcessingSharedImage] = useState(false);
     const [linkUrl, setLinkUrl] = useState('');
     const [loadingLink, setLoadingLink] = useState(false);
-    const [linkReceived, setLinkReceived] = useState(false);
     const [isPublishingAll, setIsPublishingAll] = useState(false);
     const publicationInFlight = useRef(false);
+    const settledDrafts = useRef(new WeakSet<EventData>());
+    const savedBatch = useRef({ count: 0, firstSlug: null as string | null });
+    const linkRequest = useRef<AbortController | null>(null);
     const [duplicates, setDuplicates] = useState<(DuplicateMatch | null)[]>([]);
     const duplicateCheckId = useRef(0);
     const imageCropId = useRef(0);
@@ -75,6 +74,11 @@ export default function CreaEvento() {
     const [imageCropFailure, setImageCropFailure] = useState<DraftImageCropFailure | undefined>(undefined);
     const [posterSectionsPending, setPosterSectionsPending] = useState(false);
     const posterSectionUrls = useRef<string[]>([]);
+    const manualCoverUrls = useRef(new Set<string>());
+    const releaseManualCovers = () => {
+        manualCoverUrls.current.forEach(url => URL.revokeObjectURL(url));
+        manualCoverUrls.current.clear();
+    };
     const releasePosterSections = () => {
         posterSectionUrls.current.forEach(url => URL.revokeObjectURL(url));
         posterSectionUrls.current = [];
@@ -84,6 +88,8 @@ export default function CreaEvento() {
     const draftScanId = useRef(0);
 
     const beginDraftScan = (): DraftImageScan => {
+        linkRequest.current?.abort();
+        setLoadingLink(false);
         const scanId = ++draftScanId.current;
         imageCropId.current++;
         pendingImageCrop.current?.cancel();
@@ -127,6 +133,11 @@ export default function CreaEvento() {
     };
 
     const resetEvents = () => {
+        if (publicationInFlight.current) return;
+        linkRequest.current?.abort();
+        setLoadingLink(false);
+        settledDrafts.current = new WeakSet();
+        savedBatch.current = { count: 0, firstSlug: null };
         draftScanId.current++;
         imageCropId.current++;
         pendingImageCrop.current?.cancel();
@@ -134,6 +145,7 @@ export default function CreaEvento() {
         setImageCropStatus('idle');
         releasePosterSections();
         setEvents([]);
+        releaseManualCovers();
         setOptimisticEvents(null);
         setImageUrl(null);
         setOriginalImageUrl(null);
@@ -151,11 +163,23 @@ export default function CreaEvento() {
     }, [imageUrl, originalImageUrl]);
 
     useEffect(() => () => {
+        linkRequest.current?.abort();
         draftScanId.current++;
         imageCropId.current++;
         pendingImageCrop.current?.cancel();
         posterSectionUrls.current.forEach(url => URL.revokeObjectURL(url));
+        manualCoverUrls.current.forEach(url => URL.revokeObjectURL(url));
     }, []);
+
+    useEffect(() => {
+        const retained = new Set(events.flatMap(event => [event.imageUrl, event.originalImageUrl, event.posterImageUrl]));
+        manualCoverUrls.current.forEach(url => {
+            if (!retained.has(url)) {
+                URL.revokeObjectURL(url);
+                manualCoverUrls.current.delete(url);
+            }
+        });
+    }, [events]);
 
     useEffect(() => () => {
         if (originalImageUrl) URL.revokeObjectURL(originalImageUrl);
@@ -195,6 +219,9 @@ export default function CreaEvento() {
         }
 
         console.log(`[handleNewEvents] Processati ${eventsWithImage.length} eventi`);
+        settledDrafts.current = new WeakSet();
+        savedBatch.current = { count: 0, firstSlug: null };
+        setOptimisticEvents(null);
         setEvents(eventsWithImage);
         setImageUrl(newImageUrl);
         setProcessingSharedImage(false);
@@ -243,13 +270,15 @@ export default function CreaEvento() {
 
 
     const handleDraftImageChange = (index: number, image: string, original?: string) => {
+        if (image.startsWith('blob:')) manualCoverUrls.current.add(image);
         setEvents(current => current.map((event, eventIndex) => eventIndex === index
             ? { ...event, imageUrl: image, originalImageUrl: original || event.originalImageUrl }
             : event));
     };
 
-    const handleSaveAll = async (eventsToSave: EventData[]) => {
+    const handleSaveAll = async (eventsToSave: EventData[], allDrafts = events) => {
         if (publicationInFlight.current) return;
+        eventsToSave = eventsToSave.filter(draft => !settledDrafts.current.has(draft));
         if (imageProcessing) throw new Error('Attendi il controllo della copertina.');
         if (eventsToSave.length === 0) throw new Error('Nessun nuovo evento da pubblicare: gli eventi risultano già presenti.');
 
@@ -263,93 +292,141 @@ export default function CreaEvento() {
             ) ?? null);
         };
         try {
-            let successfulSaves = 0;
-            let firstSavedSlug: string | null = null;
-
-            for (const [eventIndex, draft] of eventsToSave.entries()) {
-                const eventData = prepareDraftForPublication(draft);
-                // Se c'è un'immagine blob, carica con FormData
-                if (eventData.imageUrl && eventData.imageUrl.startsWith('blob:')) {
-                    const response = await fetch(eventData.imageUrl);
-                    const blob = await response.blob();
-                    const formData = new FormData();
-                    formData.append('eventData', JSON.stringify(eventData));
-                    formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
-                    await appendPosterImage(formData, draft.posterImageUrl, eventData.imageUrl);
-
-                    const saveResponse = await fetch('/api/events', {
-                        method: 'POST',
-                        body: formData,
+            const failures: Error[] = [];
+            let nextIndex = 0;
+            const normalized = eventsToSave.map(normalizeEventFields);
+            const completions = eventsToSave.map(() => {
+                let finish!: () => void;
+                const promise = new Promise<void>(resolve => { finish = resolve; });
+                return { promise, finish };
+            });
+            const publishDraft = async (draft: EventData, eventIndex: number) => {
+                try {
+                    const eventData = prepareDraftForPublication({
+                        ...normalized[eventIndex],
+                        category: normalizeCategory(draft.category),
+                        price: normalizePrice(draft.price),
                     });
-                    if (!saveResponse.ok) {
-                        let message = `Failed to save event: ${eventData.title}`;
-                        try {
-                            const body = await saveResponse.json();
-                            if (saveResponse.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
-                                message = body?.message || 'Questo evento è già stato creato.';
-                                toast.info(message);
-                                updateOptimisticStatus(eventIndex, 'duplicate');
-                                console.warn('[Crea] Duplicate event skipped in batch save:', message);
-                                continue;
-                            }
-                            if (body?.message || body?.details || body?.error) {
-                                message = body.message || body.details || body.error;
-                            }
-                        } catch {
-                            // ignore JSON parse errors, use default message
-                        }
-                        throw new Error(message);
-                    }
+                    // Se c'è un'immagine blob, carica con FormData
+                    if (eventData.imageUrl && eventData.imageUrl.startsWith('blob:')) {
+                        const response = await fetch(eventData.imageUrl);
+                        const blob = await response.blob();
+                        const formData = new FormData();
+                        formData.append('eventData', JSON.stringify(eventData));
+                        formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
+                        await appendPosterImage(formData, draft.posterImageUrl, eventData.imageUrl);
 
-                    // Track event creation
-                    const savedEvent = await saveResponse.json();
-                    successfulSaves += 1;
-                    updateOptimisticStatus(eventIndex, 'created');
-                    if (!firstSavedSlug && savedEvent?.slug) {
-                        firstSavedSlug = savedEvent.slug;
-                    }
-                    trackEventCreate(savedEvent);
-                    trackEvent('event_create', 'Events', eventData.title);
-                } else {
-                    // No image upload needed, use regular JSON
-                    const response = await fetch('/api/events', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(eventData),
-                    });
-                    if (!response.ok) {
-                        let message = `Failed to save event: ${eventData.title}`;
-                        try {
-                            const body = await response.json();
-                            if (response.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
-                                message = body?.message || 'Questo evento è già stato creato.';
-                                toast.info(message);
-                                updateOptimisticStatus(eventIndex, 'duplicate');
-                                console.warn('[Crea] Duplicate event skipped in batch save (JSON):', message);
-                                continue;
+                        const saveResponse = await fetch('/api/events', {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        if (!saveResponse.ok) {
+                            let message = `Failed to save event: ${eventData.title}`;
+                            try {
+                                const body = await saveResponse.json();
+                                if (saveResponse.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
+                                    message = body?.message || 'Questo evento è già stato creato.';
+                                    toast.info(message);
+                                    updateOptimisticStatus(eventIndex, 'duplicate');
+                                    console.warn('[Crea] Duplicate event skipped in batch save:', message);
+                                    settledDrafts.current.add(draft);
+                                    return;
+                                }
+                                if (body?.message || body?.details || body?.error) {
+                                    message = body.message || body.details || body.error;
+                                }
+                            } catch {
+                                // ignore JSON parse errors, use default message
                             }
-                            if (body?.message || body?.details || body?.error) {
-                                message = body.message || body.details || body.error;
-                            }
-                        } catch {
-                            // ignore JSON parse errors, use default message
+                            throw new Error(message);
                         }
-                        throw new Error(message);
-                    }
 
-                    // Track event creation
-                    const savedEvent = await response.json();
-                    successfulSaves += 1;
-                    updateOptimisticStatus(eventIndex, 'created');
-                    if (!firstSavedSlug && savedEvent?.slug) {
-                        firstSavedSlug = savedEvent.slug;
+                        // Track event creation
+                        const savedEvent = await saveResponse.json();
+                        settledDrafts.current.add(draft);
+                        savedBatch.current.count += 1;
+                        updateOptimisticStatus(eventIndex, 'created');
+                        if (!savedBatch.current.firstSlug && savedEvent?.slug) {
+                            savedBatch.current.firstSlug = savedEvent.slug;
+                        }
+                        trackEventCreate(savedEvent);
+                        trackEvent('event_create', 'Events', eventData.title);
+                    } else {
+                        // No image upload needed, use regular JSON
+                        const response = await fetch('/api/events', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(eventData),
+                        });
+                        if (!response.ok) {
+                            let message = `Failed to save event: ${eventData.title}`;
+                            try {
+                                const body = await response.json();
+                                if (response.status === 409 && (body?.error === 'EVENT_DUPLICATE')) {
+                                    message = body?.message || 'Questo evento è già stato creato.';
+                                    toast.info(message);
+                                    updateOptimisticStatus(eventIndex, 'duplicate');
+                                    console.warn('[Crea] Duplicate event skipped in batch save (JSON):', message);
+                                    settledDrafts.current.add(draft);
+                                    return;
+                                }
+                                if (body?.message || body?.details || body?.error) {
+                                    message = body.message || body.details || body.error;
+                                }
+                            } catch {
+                                // ignore JSON parse errors, use default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        // Track event creation
+                        const savedEvent = await response.json();
+                        settledDrafts.current.add(draft);
+                        savedBatch.current.count += 1;
+                        updateOptimisticStatus(eventIndex, 'created');
+                        if (!savedBatch.current.firstSlug && savedEvent?.slug) {
+                            savedBatch.current.firstSlug = savedEvent.slug;
+                        }
+                        trackEventCreate(savedEvent);
+                        trackEvent('event_create', 'Events', eventData.title);
                     }
-                    trackEventCreate(savedEvent);
-                    trackEvent('event_create', 'Events', eventData.title);
+                } catch (error) {
+                    updateOptimisticStatus(eventIndex, 'failed');
+                    failures.push(error instanceof Error ? error : new Error('Errore durante la pubblicazione'));
+                } finally {
+                    completions[eventIndex].finish();
                 }
+            };
+            const worker = async () => {
+                while (nextIndex < eventsToSave.length) {
+                    const eventIndex = nextIndex++;
+                    const candidate = normalized[eventIndex];
+                    for (let peerIndex = 0; peerIndex < eventIndex; peerIndex++) {
+                        const peer = normalized[peerIndex];
+                        if (toIsoDate(peer.date || '') === toIsoDate(candidate.date || '')
+                            && (!getEventStartTime(peer.time) || !getEventStartTime(candidate.time)
+                                || sameEventStartTime(peer.time, candidate.time))) {
+                            await completions[peerIndex].promise;
+                        }
+                    }
+                    await publishDraft(eventsToSave[eventIndex], eventIndex);
+                }
+            };
+            await Promise.all([worker(), worker()]);
+            const remaining = allDrafts.filter(draft => !settledDrafts.current.has(draft));
+            if (failures.length) {
+                setEvents(remaining);
+                checkDuplicates(remaining);
+                throw failures[0];
             }
+            if (remaining.length) {
+                setEvents(remaining);
+                checkDuplicates(remaining);
+                return;
+            }
+            const { count: successfulSaves, firstSlug: firstSavedSlug } = savedBatch.current;
             if (successfulSaves === 0) {
                 throw new Error('Nessun nuovo evento è stato creato: gli eventi risultano già presenti.');
             }
@@ -362,10 +439,10 @@ export default function CreaEvento() {
             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                 console.log('[Crea] Sending CLEAR_CACHE message to service worker');
                 navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
-                await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             // Reset state after successful save
+            publicationInFlight.current = false;
             resetEvents();
             // Redirect to event detail when exactly one event was created
             if (successfulSaves === 1 && firstSavedSlug) {
@@ -375,12 +452,19 @@ export default function CreaEvento() {
             }
         } catch (error) {
             console.error('Error saving events:', error);
-            setOptimisticEvents(null);
-            throw error; // Re-throw to let the MultipleEventsEditor handle it
+            setError(error instanceof Error ? error.message : 'Errore durante la pubblicazione degli eventi');
+            throw error;
         } finally {
             publicationInFlight.current = false;
             setIsPublishingAll(false);
         }
+    };
+
+    const handlePublishDraft = async (index: number, updated: EventData) => {
+        if (publicationInFlight.current) return;
+        const next = events.map((draft, draftIndex) => draftIndex === index ? updated : draft);
+        setEvents(next);
+        await handleSaveAll([updated], next);
     };
 
     const handlePublishAllEvents = async () => {
@@ -399,6 +483,7 @@ export default function CreaEvento() {
 
     const handleLinkSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (loadingLink || publicationInFlight.current) return;
         if (!linkUrl.trim()) {
             const msg = 'Inserisci un link valido';
             setError(msg);
@@ -418,16 +503,13 @@ export default function CreaEvento() {
         }
 
         const scan = beginDraftScan();
+        const controller = new AbortController();
+        linkRequest.current = controller;
+        const timeoutId = setTimeout(() => controller.abort(), 90000);
         setLoadingLink(true);
-        setLinkReceived(true);
         setError(null);
-        // Mostra l'animazione di ricezione per 1.8s, poi passa allo stato di elaborazione
-        setTimeout(() => setLinkReceived(false), 1800);
 
         try {
-            // Create a fetch request with timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondi - ottimizzato
 
             const isPdfLink = (() => {
                 try {
@@ -452,6 +534,7 @@ export default function CreaEvento() {
             }
 
             const data = await response.json();
+            if (!scan.isCurrent()) return;
 
             if (data.events && data.events.length > 0) {
                 if (!scan.isCurrent()) return;
@@ -469,6 +552,9 @@ export default function CreaEvento() {
                     sourceUrl: ev.sourceUrl || (isPdfLink ? linkUrl : ev.sourceUrl),
                 }));
                 setEvents(normalized);
+                settledDrafts.current = new WeakSet();
+                savedBatch.current = { count: 0, firstSlug: null };
+                setOptimisticEvents(null);
                 setImageUrl(pdfPreviewUrl || data.imageUrl || null);
                 if (data.debug?.pdfTextSummarized) {
                     toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
@@ -523,7 +609,9 @@ export default function CreaEvento() {
                 });
             }
         } finally {
-            setLoadingLink(false);
+            clearTimeout(timeoutId);
+            if (linkRequest.current === controller) linkRequest.current = null;
+            if (scan.isCurrent()) setLoadingLink(false);
         }
     };
 
@@ -608,9 +696,7 @@ export default function CreaEvento() {
 
                                     <form onSubmit={handleLinkSubmit} className="space-y-4">
                                         {loadingLink ? (
-                                            linkReceived
-                                                ? <LoadingAnimation message="Link ricevuto!" phase="received" />
-                                                : <LoadingAnimation message="Scansione pagina web in corso" phase="scan-link" />
+                                            <LoadingAnimation message="Scansione pagina web in corso" phase="scan-link" />
                                         ) : (
                                             <>
                                                 <input
@@ -637,7 +723,7 @@ export default function CreaEvento() {
 
                         {/* Error Display */}
                         {error && (
-                            <div className="border border-[#d65a38]/40 bg-[#fff7f4] p-6 animate-fadeInUp">
+                            <div role="alert" className="border border-[#d65a38]/40 bg-[#fff7f4] p-6 animate-fadeInUp">
                                 <div className="flex items-start gap-4">
                                     <span className="text-[#b84b2d] text-3xl shrink-0">⚠️</span>
                                     <div className="flex-1">
@@ -658,10 +744,10 @@ export default function CreaEvento() {
                                         <div className={`flex items-center gap-2 text-sm font-semibold ${status === 'created' ? 'text-green-700' : 'text-[#8f3823]'}`}>
                                             {status === 'created'
                                                 ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                                                : status === 'duplicate'
+                                                : status === 'duplicate' || status === 'failed'
                                                     ? <CircleAlert className="h-4 w-4" aria-hidden="true" />
-                                                    : <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                                            <span>{status === 'created' ? 'Evento creato' : status === 'duplicate' ? 'Evento già presente' : 'Pubblicazione in corso'}</span>
+                                                        : <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                                                    <span>{status === 'created' ? 'Evento creato' : status === 'duplicate' ? 'Evento già presente' : status === 'failed' ? 'Pubblicazione non riuscita' : 'Pubblicazione in corso'}</span>
                                         </div>
                                         <h2 className="mt-2 text-lg font-bold text-[#1d1d1b]">{event.title}</h2>
                                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-[#5f5b56]">
@@ -718,6 +804,7 @@ export default function CreaEvento() {
                         )}
 
                         {/* Event Editing Interface */}
+                        <fieldset disabled={isPublishingAll} className="min-w-0">
                         {events.length > 1 ? (
                             <MultipleEventsEditor
                                 events={events}
@@ -732,6 +819,7 @@ export default function CreaEvento() {
                                     checkDuplicates(updated);
                                 }}
                                 onSaveAll={handleSaveAll}
+                                onPublish={handlePublishDraft}
                                 onCancel={resetEvents}
                             />
                         ) : events.length === 1 ? (
@@ -743,12 +831,14 @@ export default function CreaEvento() {
                                 onImageChange={(image, original) => handleDraftImageChange(0, image, original)}
                                 duplicate={duplicates[0]}
                                 showPublishButton={false}
+                                onPublish={updated => handlePublishDraft(0, updated)}
                                 onSave={(updated) => {
                                     setEvents([updated]);
                                     checkDuplicates([updated]);
                                 }}
                             />
                         ) : null}
+                        </fieldset>
                     </div>
                 </div>
             </main>

@@ -1,0 +1,108 @@
+.overlay {
+    --scan-coral: #cc503f;
+    --scan-teal: #167a74;
+    position: fixed;
+    inset: 64px 0 0;
+    z-index: 40;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    overflow: hidden;
+    background: #f3f7f6;
+    color: #194440;
+    isolation: isolate;
+    letter-spacing: 0;
+    overscroll-behavior: contain;
+}
+
+:global(html):has(.overlay),
+:global(body):has(.overlay) {
+    overflow: hidden !important;
+}
+
+.visual {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+}
+
+.canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    visibility: hidden;
+}
+
+.overlay[data-scene-state='ready'] .canvas {
+    visibility: visible;
+}
+
+.fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--scan-coral);
+}
+
+.overlay[data-scene-state='ready'] .fallback {
+    display: none;
+}
+
+.fallbackOrbit {
+    position: absolute;
+    width: 250px;
+    height: 250px;
+    max-width: 80%;
+    border: 1px solid #a9c5be;
+    border-radius: 50%;
+}
+
+.fallbackPad {
+    position: absolute;
+    top: calc(50% + 80px);
+    width: 160px;
+    height: 32px;
+    border: 5px solid #d5e4de;
+    border-radius: 50%;
+    background: var(--scan-teal);
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 108px;
+    padding: 20px 24px max(28px, env(safe-area-inset-bottom));
+    border-top: 1px solid #d5e3de;
+    background: #f3f7f6;
+}
+
+.status p {
+    margin: 0;
+    max-width: 40ch;
+    font: 600 18px/1.5 var(--font-inter), sans-serif;
+    text-align: center;
+    overflow-wrap: anywhere;
+    color: #194440;
+}
+
+.statusMark {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 10px;
+    border-radius: 50%;
+    background: var(--scan-coral);
+}
+
+@media (max-width: 600px), (max-height: 500px) {
+    .status {
+        min-height: 88px;
+        padding: 16px 20px max(20px, env(safe-area-inset-bottom));
+    }
+
+    .status p {
+        font-size: 16px;
+    }
+}

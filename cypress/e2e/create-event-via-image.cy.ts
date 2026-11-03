@@ -6,6 +6,11 @@ Cypress.on('window:before:load', window => {
   window.localStorage.setItem('eventscanner:autopublish', autopublishEnabled ? '1' : '0');
 });
 
+beforeEach(function () {
+  const grep = Cypress.env('grep') as string | undefined;
+  if (grep && !new RegExp(grep).test(this.currentTest!.fullTitle())) this.skip();
+});
+
 describe('Parallel event cover', () => {
   beforeEach(() => {
     autopublishEnabled = false;
@@ -518,23 +523,19 @@ describe('Parallel event cover', () => {
       }));
       cy.get('input[type="url"]').type('https://events.example/mock');
       cy.contains('button', 'Estrai evento').click();
-      cy.get('.rocket-scene').should('be.visible').and('have.attr', 'data-rocket-stage', 'build').and('contain', 'Scansione pagina web in corso').and('not.contain', 'Step:');
-      cy.get('.rocket-scene .rocket-part-body').then(part => {
-        const style = part[0].ownerDocument.defaultView!.getComputedStyle(part[0]);
-        expect(style.animationName).to.eq(reduced ? 'none' : 'rocket-assemble');
-      });
-      cy.get('.rocket-scene-art').should('have.css', 'height', '170px');
+      cy.get('[data-scan-scene]').should('be.visible').and('contain', 'Scansione pagina web in corso').and('not.contain', 'Step:');
+      cy.get('[data-scan-scene]').should('have.attr', 'data-scene-state', 'ready').and('have.attr', 'data-reduced-motion', String(reduced));
+      cy.get('[data-scan-scene] canvas').should('be.visible');
       cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(width));
-      cy.get('.rocket-scene').scrollIntoView({ offset: { top: -160, left: 0 } });
-      cy.get('.rocket-scene').then(status => {
+      cy.get('[data-scan-scene]').then(status => {
         const bounds = status[0].getBoundingClientRect();
-        expect(bounds.top).to.be.at.least(65);
+        expect(bounds.top).to.be.at.least(64);
         expect(bounds.bottom).to.be.at.most(900);
       });
       cy.screenshot(`responsive-link-${width}-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
       cy.then(() => finish());
       cy.contains('Link mock pronto').should('be.visible');
-      cy.get('.rocket-scene').should('not.exist');
+      cy.get('[data-scan-scene]').should('not.exist');
       cy.then(() => Cypress.automation('remote:debugger:protocol', { command: 'Emulation.setEmulatedMedia', params: { features: [] } }));
     });
   }
@@ -762,7 +763,7 @@ describe('Event creation autopilot', () => {
       scanPoster();
       cy.get('[data-testid="autopublish-toggle"]').should('be.checked');
       cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-      cy.get('[data-rocket-stage="build"]').should('be.visible');
+      cy.get('[data-scan-scene]').should('be.visible');
       cy.wait(['@autopilotScan', '@autopilotDuplicates']);
       cy.get('[data-testid="autopilot-panel"] [data-rocket-stage="position"]').should('be.visible').and('contain', 'Razzo in posizione');
       cy.get('[data-optimistic-status="ready"]').should('contain', event.title).find('img').should('exist');

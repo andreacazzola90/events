@@ -5,6 +5,7 @@ import { ArrowLeft, CalendarDays, CheckCircle2, CircleAlert, Clock3, Loader2, Ma
 import { trackEventCreate } from '../lib/gtm';
 import { trackEvent } from '../lib/analytics';
 import LoadingAnimation from '../components/LoadingAnimation';
+import RocketLaunchAnimation from '../components/RocketLaunchAnimation';
 import PageHeading from '../components/PageHeading';
 import { useRouter } from 'next/navigation';
 import ImageUploader from '../components/ImageUploader';
@@ -17,6 +18,8 @@ import { logClientError } from '../lib/error-tool';
 import { appendPosterImage, detectPosterSections, prepareDraftForPublication, type DraftImageCrop, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
 import { getEventStartTime, sameEventStartTime } from '../../lib/event-display';
 import { normalizeCategory, normalizePrice, toIsoDate } from '../../lib/event-utils';
+import { parseEventDate } from '../../lib/calendar-ics';
+import { AUTOPILOT_STOP_MESSAGES, AUTOPUBLISH_STORAGE_KEY, getAutopilotDecision } from '../../lib/event-autopilot';
 
 // Normalizza data (DD/MM/YYYY), ora (HH:MM) e luogo (trim)
 function normalizeEventFields(event: EventData): EventData {
@@ -49,8 +52,18 @@ function normalizeEventFields(event: EventData): EventData {
     return { ...event, date, time, location };
 }
 
-type OptimisticEventStatus = 'pending' | 'created' | 'duplicate' | 'failed';
+type OptimisticEventStatus = 'ready' | 'pending' | 'created' | 'duplicate' | 'failed';
 type OptimisticEvent = { event: EventData; status: OptimisticEventStatus };
+type AutopilotState = { run: number; stage: 'position' | 'ignite' | 'launch' | 'stopped'; reason?: string };
+type SaveOptions = { onConfirmed?: () => Promise<void> };
+
+const OPTIMISTIC_STATUS_LABELS: Record<OptimisticEventStatus, string> = {
+    ready: 'In preparazione al lancio',
+    pending: 'Pubblicazione in corso',
+    created: 'Evento creato',
+    duplicate: 'Evento già presente',
+    failed: 'Pubblicazione non riuscita',
+};
 
 export default function CreaEvento() {
     const router = useRouter();
@@ -87,8 +100,80 @@ export default function CreaEvento() {
     };
     const imageProcessing = imageCropStatus === 'processing' || posterSectionsPending;
     const draftScanId = useRef(0);
+    const [autoPublish, setAutoPublish] = useState(true);
+    const autoPublishRef = useRef(true);
+    const [autopilot, setAutopilot] = useState<AutopilotState | null>(null);
+    const autopilotRun = useRef(0);
+    const launchDone = useRef<(() => void) | null>(null);
+    const [duplicatesChecked, setDuplicatesChecked] = useState(false);
+    const [coverMissing, setCoverMissing] = useState(false);
+    const [needsReview, setNeedsReview] = useState(false);
+    const autopilotActive = !!autopilot && autopilot.stage !== 'stopped';
+
+    const mounted = useRef(true);
+
+    useEffect(() => {
+        mounted.current = true;
+        try {
+            if (window.localStorage.getItem(AUTOPUBLISH_STORAGE_KEY) === '0') {
+                autoPublishRef.current = false;
+                setAutoPublish(false);
+            }
+        } catch {
+            // Storage can be blocked (private mode, sandboxed frames): keep the default.
+        }
+        return () => {
+            mounted.current = false;
+            autopilotRun.current++;
+            launchDone.current?.();
+        };
+    }, []);
+
+    const handleAutoPublishChange = (enabled: boolean) => {
+        autoPublishRef.current = enabled;
+        setAutoPublish(enabled);
+        try {
+            window.localStorage.setItem(AUTOPUBLISH_STORAGE_KEY, enabled ? '1' : '0');
+        } catch {
+            // The choice still applies to this visit.
+        }
+    };
+
+    const cancelAutopilot = () => {
+        autopilotRun.current++;
+        setAutopilot(null);
+    };
+
+    const startAutopilot = (options: { eventCount: number; coverMissing: boolean; needsReview: boolean }) => {
+        setCoverMissing(options.coverMissing);
+        setNeedsReview(options.needsReview);
+        if (!autoPublishRef.current || options.eventCount === 0) {
+            cancelAutopilot();
+            return;
+        }
+        setAutopilot({ run: ++autopilotRun.current, stage: 'position' });
+    };
+
+    const playLaunch = (run: number) => new Promise<void>(resolve => {
+        if (autopilotRun.current !== run) {
+            resolve();
+            return;
+        }
+        let timer: number | undefined;
+        const finish = () => {
+            window.clearTimeout(timer);
+            if (launchDone.current === finish) launchDone.current = null;
+            resolve();
+        };
+        const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        // The liftoff lasts 0.9 s; the timer guarantees navigation even if animationend never fires.
+        timer = window.setTimeout(finish, reducedMotion ? 0 : 1000);
+        launchDone.current = finish;
+        setAutopilot({ run, stage: 'launch' });
+    });
 
     const beginDraftScan = (): DraftImageScan => {
+        cancelAutopilot();
         linkRequest.current?.abort();
         setLoadingLink(false);
         const scanId = ++draftScanId.current;
@@ -109,6 +194,7 @@ export default function CreaEvento() {
     const checkDuplicates = async (list: EventData[]) => {
         const checkId = ++duplicateCheckId.current;
         setDuplicates([]);
+        setDuplicatesChecked(false);
         try {
             const response = await fetch('/api/events/check-duplicates', {
                 method: 'POST',
@@ -130,11 +216,14 @@ export default function CreaEvento() {
         } catch (err) {
             // The server still blocks duplicates on save, so a failed pre-check is not fatal.
             console.warn('[Crea] Duplicate check failed:', err);
+        } finally {
+            if (checkId === duplicateCheckId.current) setDuplicatesChecked(true);
         }
     };
 
     const resetEvents = () => {
         if (publicationInFlight.current) return;
+        cancelAutopilot();
         linkRequest.current?.abort();
         setLoadingLink(false);
         settledDrafts.current = new WeakSet();
@@ -231,6 +320,7 @@ export default function CreaEvento() {
             toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
         }
         checkDuplicates(eventsWithImage);
+        startAutopilot({ eventCount: eventsWithImage.length, coverMissing: !newImageUrl, needsReview: !!debug?.pdfTextSummarized });
         const sectionDrafts = eventsWithImage;
         // A poster listing several events: each event gets its own section as cover, the full poster stays as extra image.
         const startPosterSections = (posterUrl: string) => {
@@ -248,6 +338,9 @@ export default function CreaEvento() {
                 }));
                 setPosterSectionsPending(false);
                 if (sections.size) toast.info(`Copertina ritagliata per ${sections.size} eventi su ${sectionDrafts.length}; la locandina completa verrà salvata tra le immagini.`);
+            }).catch(sectionError => {
+                console.warn('[Crea] Poster sections failed:', sectionError);
+                if (cropId === imageCropId.current) setPosterSectionsPending(false);
             });
         };
         if (crop && newImageUrl) {
@@ -277,8 +370,10 @@ export default function CreaEvento() {
             : event));
     };
 
-    const handleSaveAll = async (eventsToSave: EventData[], allDrafts = events) => {
+    const handleSaveAll = async (eventsToSave: EventData[], allDrafts = events, options: SaveOptions = {}): Promise<'navigated' | 'partial' | void> => {
         if (publicationInFlight.current) return;
+        // A manual publish supersedes a paused autopilot and its stale reason.
+        if (!options.onConfirmed) cancelAutopilot();
         eventsToSave = eventsToSave.filter(draft => !settledDrafts.current.has(draft));
         if (imageProcessing) throw new Error('Attendi il controllo della copertina.');
         if (eventsToSave.length === 0) throw new Error('Nessun nuovo evento da pubblicare: gli eventi risultano già presenti.');
@@ -425,7 +520,7 @@ export default function CreaEvento() {
             if (remaining.length) {
                 setEvents(remaining);
                 checkDuplicates(remaining);
-                return;
+                return 'partial';
             }
             const { count: successfulSaves, firstSlug: firstSavedSlug } = savedBatch.current;
             if (successfulSaves === 0) {
@@ -441,16 +536,20 @@ export default function CreaEvento() {
                 console.log('[Crea] Sending CLEAR_CACHE message to service worker');
                 navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
             }
+            await options.onConfirmed?.();
+            // The user left /crea meanwhile: the event is saved, don't pull them back.
+            if (!mounted.current) return 'navigated';
 
             // Reset state after successful save
             publicationInFlight.current = false;
             resetEvents();
             // Redirect to event detail when exactly one event was created
             if (successfulSaves === 1 && firstSavedSlug) {
-                router.push(`/events/${firstSavedSlug}`);
+                router.push(`/events/${firstSavedSlug}?nuovo=1`);
             } else {
                 router.push('/');
             }
+            return 'navigated';
         } catch (error) {
             console.error('Error saving events:', error);
             setError(error instanceof Error ? error.message : 'Errore durante la pubblicazione degli eventi');
@@ -481,6 +580,43 @@ export default function CreaEvento() {
             toast.error(message);
         }
     };
+
+    const handleSaveAllRef = useRef(handleSaveAll);
+    useEffect(() => {
+        handleSaveAllRef.current = handleSaveAll;
+    });
+
+    useEffect(() => {
+        if (autopilot?.stage !== 'position') return;
+        const decision = getAutopilotDecision({
+            // An unreadable date cannot be published safely, so treat it as missing.
+            events: events.map(event => ({ title: event.title, date: event.date && parseEventDate(event.date) ? event.date : '' })),
+            duplicates,
+            duplicatesChecked,
+            cropStatus: imageCropStatus,
+            sectionsPending: posterSectionsPending,
+            coverMissing,
+            needsReview,
+        });
+        if (decision.action === 'wait') return;
+        const { run } = autopilot;
+        if (decision.action === 'stop') {
+            setAutopilot({ run, stage: 'stopped', reason: AUTOPILOT_STOP_MESSAGES[decision.reason] });
+            return;
+        }
+        setAutopilot({ run, stage: 'ignite' });
+        void handleSaveAllRef.current(events, events, { onConfirmed: () => playLaunch(run) })
+            .then(outcome => {
+                if (autopilotRun.current === run && outcome !== 'navigated') {
+                    setAutopilot({ run, stage: 'stopped', reason: 'Alcuni eventi richiedono la tua revisione.' });
+                }
+            })
+            .catch(publishError => {
+                if (autopilotRun.current !== run) return;
+                const message = publishError instanceof Error ? publishError.message : 'Errore durante la pubblicazione degli eventi';
+                setAutopilot({ run, stage: 'stopped', reason: message });
+            });
+    }, [autopilot, events, duplicates, duplicatesChecked, imageCropStatus, posterSectionsPending, coverMissing, needsReview]);
 
     const handleLinkSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -562,6 +698,7 @@ export default function CreaEvento() {
                 }
                 setLinkUrl('');
                 checkDuplicates(normalized);
+                startAutopilot({ eventCount: normalized.length, coverMissing: false, needsReview: !!data.debug?.pdfTextSummarized });
             } else {
                 setError('Nessun evento trovato dal link');
             }
@@ -616,6 +753,9 @@ export default function CreaEvento() {
         }
     };
 
+    const optimisticCards: OptimisticEvent[] | null = optimisticEvents
+        ?? (autopilotActive ? events.map(event => ({ event, status: 'ready' as const })) : null);
+
     return (
         <>
             {/* Shared Image Handler with Suspense */}
@@ -641,13 +781,17 @@ export default function CreaEvento() {
                         <PageHeading
                             className="max-w-4xl"
                             kicker="EventScanner / Nuovo evento"
-                            title={events.length > 0 ? (
+                            title={autopilotActive ? (
+                                <>Il tuo evento sta <span className="text-[#d65a38]">decollando</span></>
+                            ) : events.length > 0 ? (
                                 <>Rivedi i dettagli <span className="text-[#d65a38]">{events.length > 1 ? 'degli eventi' : 'dell’evento'}</span></>
                             ) : (
                                 <>Crea un nuovo <span className="text-[#d65a38]">evento</span></>
                             )}
                             description={
-                                events.length > 0
+                                autopilotActive
+                                    ? 'Lo pubblichiamo appena è pronto: potrai modificarlo subito dopo.'
+                                    : events.length > 0
                                     ? 'Controlla le informazioni estratte e completa i dettagli prima di pubblicare.'
                                     : 'Carica la locandina o inserisci un link: estrarremo automaticamente le informazioni principali.'
                             }
@@ -658,6 +802,21 @@ export default function CreaEvento() {
                 <div className="editorial-container">
                     <div className="create-content-stack space-y-8">
                         {/* Creation Methods - Only show if no events extracted */}
+                        {events.length === 0 && (
+                            <label className="create-autopublish-toggle flex cursor-pointer items-start gap-3 text-sm text-[var(--foreground)]">
+                                <input
+                                    type="checkbox"
+                                    data-testid="autopublish-toggle"
+                                    checked={autoPublish}
+                                    onChange={event => handleAutoPublishChange(event.target.checked)}
+                                    className="mt-0.5 h-5 w-5 shrink-0 accent-[#d65a38]"
+                                />
+                                <span>
+                                    <span className="block font-bold">Pubblica automaticamente</span>
+                                    <span className="block text-[var(--foreground-muted)]">Pubblichiamo appena la scansione è pronta; ci fermiamo solo se serve il tuo controllo. Disattiva per rivedere sempre i dettagli.</span>
+                                </span>
+                            </label>
+                        )}
                         {events.length === 0 && (
                             <div className="create-methods-grid grid md:grid-cols-2 gap-8">
                                 {processingSharedImage && (
@@ -732,20 +891,49 @@ export default function CreaEvento() {
                             </div>
                         )}
 
-                        {optimisticEvents && (
+                        {autopilot && autopilotActive && (
+                            <section className="surface-panel create-autopilot-panel p-6 md:p-8 animate-fadeInUp" data-testid="autopilot-panel" aria-label="Pubblicazione automatica">
+                                <RocketLaunchAnimation stage={autopilot.stage} onLaunchEnd={() => launchDone.current?.()} />
+                                {autopilot.stage === 'position' && (
+                                    <div className="mt-4 flex justify-center">
+                                        <button
+                                            type="button"
+                                            data-testid="autopilot-review"
+                                            onClick={() => setAutopilot({ run: autopilot.run, stage: 'stopped', reason: AUTOPILOT_STOP_MESSAGES['user-stopped'] })}
+                                            className="inline-flex min-h-11 items-center justify-center border border-[var(--line)] px-4 py-2 text-sm font-bold text-[var(--foreground)] transition-colors hover:border-[#d65a38]"
+                                        >
+                                            Rivedi prima di pubblicare
+                                        </button>
+                                    </div>
+                                )}
+                            </section>
+                        )}
+
+                        {autopilot?.stage === 'stopped' && events.length > 0 && (
+                            <div className="surface-panel p-4" data-testid="autopilot-stopped">
+                                <RocketLaunchAnimation compact stage="stopped" message={`Lancio in pausa: ${autopilot.reason ?? ''}`} />
+                            </div>
+                        )}
+
+                        {optimisticCards && (
                             <section aria-label="Eventi in pubblicazione" className="mb-6 space-y-3" aria-live="polite">
-                                {optimisticEvents.map(({ event, status }, index) => (
+                                {optimisticCards.map(({ event, status }, index) => (
                                     <article
                                         key={`${event.title}-${event.date}-${index}`}
-                                        className="rounded-md border border-[#d65a38]/30 bg-white p-4 shadow-sm"
+                                        data-optimistic-status={status}
+                                        className="flex gap-4 rounded-md border border-[#d65a38]/30 bg-white p-4 shadow-sm"
                                     >
+                                        {event.imageUrl && (
+                                            <img src={event.imageUrl} alt="" className="h-24 w-20 shrink-0 object-cover" />
+                                        )}
+                                        <div className="min-w-0 flex-1">
                                         <div className={`flex items-center gap-2 text-sm font-semibold ${status === 'created' ? 'text-green-700' : 'text-[#8f3823]'}`}>
                                             {status === 'created'
                                                 ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                                                 : status === 'duplicate' || status === 'failed'
                                                     ? <CircleAlert className="h-4 w-4" aria-hidden="true" />
                                                         : <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-                                                    <span>{status === 'created' ? 'Evento creato' : status === 'duplicate' ? 'Evento già presente' : status === 'failed' ? 'Pubblicazione non riuscita' : 'Pubblicazione in corso'}</span>
+                                                    <span>{OPTIMISTIC_STATUS_LABELS[status]}</span>
                                         </div>
                                         <h2 className="mt-2 text-lg font-bold text-[#1d1d1b]">{event.title}</h2>
                                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-[#5f5b56]">
@@ -768,12 +956,13 @@ export default function CreaEvento() {
                                                 </span>
                                             )}
                                         </div>
+                                        </div>
                                     </article>
                                 ))}
                             </section>
                         )}
 
-                        {events.length > 0 && (
+                        {events.length > 0 && !autopilotActive && (
                             <div className="sticky top-16 z-30 flex items-center justify-between gap-2 border-b border-black/10 bg-[var(--background)] py-3">
                                 <button
                                     type="button"
@@ -802,7 +991,7 @@ export default function CreaEvento() {
                         )}
 
                         {/* Event Editing Interface */}
-                        <fieldset disabled={isPublishingAll} className="min-w-0">
+                        <fieldset disabled={isPublishingAll} hidden={autopilotActive} className="min-w-0">
                         {events.length > 1 ? (
                             <MultipleEventsEditor
                                 events={events}
@@ -816,7 +1005,7 @@ export default function CreaEvento() {
                                     setEvents(updated);
                                     checkDuplicates(updated);
                                 }}
-                                onSaveAll={handleSaveAll}
+                                onSaveAll={async drafts => { await handleSaveAll(drafts); }}
                                 onPublish={handlePublishDraft}
                                 onCancel={resetEvents}
                             />

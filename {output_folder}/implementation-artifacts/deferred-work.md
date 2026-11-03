@@ -23,3 +23,15 @@
 
 - `/api/poster-sections`, come `/api/crop-image` e `/api/process-image`, non richiede sessione: ogni chiamata avvia un worker OCR (fino a 25 s). Valutare rate limit o login per gli endpoint di elaborazione immagini; inoltre il limite 413 si basa su `content-length` e senza header il body viene bufferizzato prima del controllo.
 
+
+## Creazione evento autopilota, split 2026-11-03
+
+- Scelta S dell'utente: ora autopilota in pagina con animazione del razzo (spec-event-creation-autopilot-rocket.md). Rinviato il completamento durevole ad app chiusa: richiede modello job Prisma + migrazione, ritaglio copertina/sezioni locandina e controllo privacy lato server (oggi nel browser), worker o cron frequente (oggi solo cron giornaliero) e notifica all'utente (web-push assente). Valutare costi di esecuzione Vercel e privacy prima di implementare.
+
+## Da spec-event-creation-autopilot-rocket (review 2026-11-03)
+
+- Il salvataggio (`/api/events`) non ha timeout/abort lato client: se resta appeso, l'autopilota resta in "Accensione" senza via d'uscita (stesso limite del flusso manuale).
+- Pre-check duplicati fallito: l'autopilota pubblica affidandosi al 409 del server, che non intercetta quasi-duplicati.
+- Eventi da link senza immagine vengono pubblicati automaticamente senza copertina (lo spec ferma solo il crop fallito).
+- Il banner `?nuovo=1` appare solo con `canEdit` (creatori anonimi vedono solo il toast) e si perde se lo slug richiede `permanentRedirect`.
+- Accessibilità: allo stop il focus non viene spostato sull'editor riapparso.

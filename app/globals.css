@@ -2159,6 +2159,183 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   line-height: 1.5;
 }
 
+.rocket-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 210px;
+  color: var(--foreground);
+}
+
+.rocket-scene-compact {
+  min-height: 0;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.rocket-scene-art {
+  display: block;
+  width: min(100%, 260px);
+  height: 170px;
+  overflow: visible;
+}
+
+.rocket-scene-compact .rocket-scene-art {
+  width: 84px;
+  height: 55px;
+  flex: 0 0 84px;
+}
+
+.rocket-scene-message {
+  margin: 0;
+  min-width: 0;
+  max-width: 32rem;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: inherit;
+}
+
+.rocket-scene-compact .rocket-scene-message {
+  text-align: left;
+}
+
+.rocket-scene-art * {
+  transform-box: view-box;
+}
+
+.rocket-ground,
+.rocket-pad path,
+.rocket-kid-legs,
+.rocket-kid-arm line,
+.rocket-kid-wrench,
+.rocket-fuse {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+
+.rocket-ground { stroke: var(--line); stroke-width: 2; }
+.rocket-pad rect { fill: var(--surface-strong); stroke: var(--foreground-muted); stroke-width: 2; }
+.rocket-pad path { stroke: var(--foreground-muted); stroke-width: 3; }
+.rocket-part-body { fill: var(--foreground); }
+.rocket-part-fins { fill: var(--accent); }
+.rocket-part-window { fill: var(--background-secondary); stroke: var(--accent); stroke-width: 3; }
+.rocket-flame { fill: #f2b84b; opacity: 0; transform-origin: 180px 136px; transform: scaleY(0.4); }
+.rocket-smoke circle { fill: var(--foreground-muted); opacity: 0; transform-box: fill-box; transform-origin: center; }
+.rocket { transform-origin: 180px 140px; }
+.rocket-kid-skin { fill: #e9b48f; }
+.rocket-kid-hair { fill: #6b3b22; }
+.rocket-kid-shirt { fill: var(--accent); }
+.rocket-kid-legs { stroke: var(--foreground-muted); }
+.rocket-kid-arm line { stroke: #e9b48f; }
+.rocket-kid-arm-front { transform-origin: 90px 112px; }
+.rocket-kid-arm-back { transform-origin: 74px 112px; }
+.rocket-kid-wrench { stroke: var(--foreground-muted); stroke-width: 3; }
+.rocket-kid-match line { stroke: #c79a62; stroke-width: 2; }
+.rocket-kid-spark { fill: #f2b84b; }
+.rocket-kid-thought { fill: var(--accent); font-size: 22px; font-weight: 800; }
+.rocket-fuse { stroke: #c79a62; stroke-width: 2; stroke-dasharray: 4 4; }
+.rocket-kid { transform-origin: 82px 150px; }
+
+.rocket-kid-wrench,
+.rocket-kid-match,
+.rocket-kid-thought,
+.rocket-fuse {
+  display: none;
+}
+
+[data-rocket-stage="build"] .rocket-kid-wrench,
+[data-rocket-stage="ignite"] .rocket-kid-match,
+[data-rocket-stage="ignite"] .rocket-fuse,
+[data-rocket-stage="stopped"] .rocket-kid-thought {
+  display: inline;
+}
+
+[data-rocket-stage="ignite"] .rocket-flame { opacity: 0.85; transform: scaleY(0.45); }
+[data-rocket-stage="launch"] .rocket-flame { opacity: 1; transform: scaleY(1); }
+[data-rocket-stage="launch"] .rocket-smoke circle { opacity: 0.5; }
+[data-rocket-stage="launch"] .rocket-kid-arm-front { transform: rotate(-115deg); }
+[data-rocket-stage="launch"] .rocket-kid-arm-back { transform: rotate(115deg); }
+[data-rocket-stage="position"] .rocket-kid-arm-front { transform: rotate(-35deg); }
+[data-rocket-stage="stopped"] .rocket-kid { transform: rotate(-3deg); }
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-rocket-stage="build"] .rocket-part { animation: rocket-assemble 2.4s ease-in-out infinite both; }
+  [data-rocket-stage="build"] .rocket-part-body { animation-delay: 0.3s; }
+  [data-rocket-stage="build"] .rocket-part-window { animation-delay: 0.6s; }
+  [data-rocket-stage="build"] .rocket-kid-arm-front { animation: rocket-hammer 0.6s ease-in-out infinite alternate; }
+
+  [data-rocket-stage="position"] .rocket { animation: rocket-raise 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+  [data-rocket-stage="position"] .rocket-kid { animation: rocket-kid-push 2.2s ease-in-out infinite; }
+
+  [data-rocket-stage="ignite"] .rocket { animation: rocket-rumble 0.12s linear infinite alternate; }
+  [data-rocket-stage="ignite"] .rocket-flame { animation: rocket-flicker 0.2s ease-in-out infinite alternate; }
+  [data-rocket-stage="ignite"] .rocket-fuse { animation: rocket-fuse-burn 0.8s linear infinite; }
+  [data-rocket-stage="ignite"] .rocket-kid-spark { animation: rocket-flicker 0.15s ease-in-out infinite alternate; }
+
+  [data-rocket-stage="launch"] .rocket { animation: rocket-liftoff 0.9s cubic-bezier(0.55, 0, 0.75, 0.2) forwards; }
+  [data-rocket-stage="launch"] .rocket-smoke circle { animation: rocket-smoke 0.9s ease-out forwards; }
+  [data-rocket-stage="launch"] .rocket-kid { animation: rocket-kid-jump 0.45s ease-out 2 alternate; }
+}
+
+@keyframes rocket-assemble {
+  0%, 8% { opacity: 0; transform: translateY(-14px); }
+  30%, 85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+
+@keyframes rocket-hammer {
+  from { transform: rotate(10deg); }
+  to { transform: rotate(-40deg); }
+}
+
+@keyframes rocket-raise {
+  0% { transform: translateX(-24px) rotate(-70deg); }
+  55%, 100% { transform: translateX(0) rotate(0deg); }
+}
+
+@keyframes rocket-kid-push {
+  0% { transform: translateX(-6px); }
+  55%, 100% { transform: translateX(0); }
+}
+
+@keyframes rocket-rumble {
+  from { transform: translateX(-1px); }
+  to { transform: translateX(1px); }
+}
+
+@keyframes rocket-flicker {
+  from { opacity: 0.55; transform: scaleY(0.35); }
+  to { opacity: 1; transform: scaleY(0.6); }
+}
+
+@keyframes rocket-fuse-burn {
+  to { stroke-dashoffset: -16; }
+}
+
+@keyframes rocket-liftoff {
+  0% { transform: translateY(0); }
+  70% { opacity: 1; }
+  100% { transform: translateY(-200px); opacity: 0; }
+}
+
+@keyframes rocket-smoke {
+  from { opacity: 0.7; transform: scale(0.4); }
+  to { opacity: 0.25; transform: scale(1.6); }
+}
+
+@keyframes rocket-kid-jump {
+  from { transform: translateY(0); }
+  to { transform: translateY(-10px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .request-status-icon {
     animation: none !important;

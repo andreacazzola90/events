@@ -1022,7 +1022,7 @@ export async function GET(request: NextRequest) {
     await prisma.cronJobRun.updateMany({
       where: { jobKey: 'visitpedemontana', startedAt: aggregateStartedAt },
       data: {
-        status: overallStatus === 'partial-error' ? 'failed' : 'completed',
+        status: ['partial', 'partial-error'].includes(overallStatus) ? 'failed' : 'completed',
         finishedAt: new Date(),
         resultJson: JSON.stringify(response),
       },

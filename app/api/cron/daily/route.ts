@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 // Vercel Hobby allows only daily cron jobs: this single entry point fans out
 // to every scheduled job. Each job runs in its own function invocation (with
@@ -51,7 +52,7 @@ async function runJob(
       data = { raw: text.slice(0, 500) };
     }
     const status = (data as { status?: unknown } | null)?.status;
-    const ok = response.ok && !["error", "partial-error", "failed"].includes(String(status));
+    const ok = response.ok && !["error", "partial", "partial-error", "failed"].includes(String(status));
     return { key: job.key, ok, httpStatus: response.status, data };
   } catch (error) {
     return { key: job.key, ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -71,6 +72,16 @@ export async function GET(request: NextRequest) {
   }
 
   const startedAt = new Date();
+  try {
+    await (prisma as any).cronJobRun.upsert({
+      where: { jobKey: "daily-dispatch" },
+      update: { status: "running", startedAt, finishedAt: null, resultJson: null },
+      create: { jobKey: "daily-dispatch", status: "running", startedAt },
+    });
+  } catch (error) {
+    console.warn("[Daily Cron] Failed recording dispatcher start:", error);
+  }
+
   const origin = request.nextUrl.origin;
   const jobs = await Promise.all(
     DAILY_CRON_JOBS.map((job) => runJob(origin, job, authorization!)),
@@ -81,11 +92,25 @@ export async function GET(request: NextRequest) {
     console.error("[Daily Cron] Failed jobs:", failed.join(", "));
   }
 
-  return NextResponse.json({
+  const result = {
     status: failed.length ? "partial-error" : "success",
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     failed,
     jobs,
-  });
+  };
+  try {
+    await (prisma as any).cronJobRun.updateMany({
+      where: { jobKey: "daily-dispatch", startedAt },
+      data: {
+        status: failed.length ? "failed" : "completed",
+        finishedAt: new Date(),
+        resultJson: JSON.stringify(result),
+      },
+    });
+  } catch (error) {
+    console.warn("[Daily Cron] Failed recording dispatcher result:", error);
+  }
+
+  return NextResponse.json(result);
 }

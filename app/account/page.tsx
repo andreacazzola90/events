@@ -3,7 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Check, Link2, LoaderCircle, Pencil, Unlink, X } from "lucide-react";
+import { CalendarRange, Check, Clock3, Link2, ListChecks, LoaderCircle, Pencil, Unlink, X } from "lucide-react";
 import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import EventPreview from "../components/EventPreview";
@@ -41,9 +41,6 @@ export default function AccountPage() {
     any | null
   >(null);
   const [runningCron, setRunningCron] = useState<
-    "instagram-story" | "visitpedemontana" | null
-  >(null);
-  const [stoppingCron, setStoppingCron] = useState<
     "instagram-story" | "visitpedemontana" | null
   >(null);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -312,7 +309,9 @@ export default function AccountPage() {
         const res = await fetch("/api/admin/cron-status");
         if (!res.ok) return;
         const { runs } = await res.json();
-        const running = (runs as any[]).find((r) => r.status === "running");
+        const running = (runs as any[]).find((r) =>
+          r.status === "running" && ["instagram-story", "visitpedemontana"].includes(r.jobKey),
+        );
         if (running) {
           setRunningCron(running.jobKey as "instagram-story" | "visitpedemontana");
         } else {
@@ -360,26 +359,6 @@ export default function AccountPage() {
     }, 5000);
     return () => clearInterval(interval);
   }, [runningCron]);
-
-  const runCron = async (type: "instagram-story" | "visitpedemontana") => {
-    setRunningCron(type);
-    // Fire-and-forget: il polling rileverà il completamento anche dopo un refresh
-    fetch("/api/admin/run-cron/instagram-story", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target: type }),
-    }).catch(() => { /* il polling gestirà lo stato finale */ });
-  };
-
-  const stopCron = async (type: "instagram-story" | "visitpedemontana") => {
-    setStoppingCron(type);
-    try {
-      await fetch(`/api/admin/cron-status?jobKey=${type}`, { method: "DELETE" });
-      setRunningCron(null);
-    } catch { /* ignora */ } finally {
-      setStoppingCron(null);
-    }
-  };
 
   const handlePasswordRecovery = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -450,7 +429,7 @@ export default function AccountPage() {
 
   const renderCronResult = (result: any) => {
     if (!result) {
-      return <div className="text-gray-400 text-xs">No run yet.</div>;
+      return <div className="text-gray-400 text-xs">Nessuna esecuzione disponibile.</div>;
     }
 
     const payload = (result as any).data ?? result;
@@ -468,10 +447,10 @@ export default function AccountPage() {
       | undefined;
 
     return (
-      <div className="space-y-3 text-xs text-gray-200">
-        <div className="text-[11px] text-gray-300">
-          Status: <span className="font-semibold">{String(status)}</span> •
-          Found: {String(found)} • New: {String(newlyFound)} • Saved:{" "}
+      <div className="space-y-3 text-xs text-gray-700">
+        <div className="text-[11px] text-gray-600">
+          Stato: <span className="font-semibold">{String(status)}</span> •
+          Trovati: {String(found)} • Nuovi: {String(newlyFound)} • Salvati:{" "}
           {String(created)}
         </div>
 
@@ -509,17 +488,17 @@ export default function AccountPage() {
             {events.map((ev: any, idx: number) => (
               <div
                 key={ev.id ?? idx}
-                className="border border-white/10 rounded-lg p-2 bg-white/5 text-[11px]"
+                className="border border-gray-200 rounded-lg p-2 bg-gray-50 text-[11px]"
               >
-                <div className="font-semibold text-white line-clamp-2">
+                <div className="font-semibold text-gray-900 line-clamp-2">
                   {ev.title || "Senza titolo"}
                 </div>
-                <div className="text-gray-300 mt-0.5">
+                <div className="text-gray-700 mt-0.5">
                   {ev.date || "Data non disponibile"}
                   {ev.time ? ` • ${ev.time}` : ""}
                 </div>
                 {ev.location && (
-                  <div className="text-gray-400 mt-0.5 truncate">
+                  <div className="text-gray-600 mt-0.5 truncate">
                     📍 {ev.location}
                   </div>
                 )}
@@ -537,13 +516,13 @@ export default function AccountPage() {
             ))}
           </div>
         ) : (
-          <div className="text-[11px] text-gray-400">
+          <div className="text-[11px] text-gray-600">
             Nessun evento creato in questo run.
           </div>
         )}
 
         {errors.length > 0 && (
-          <details className="text-[11px] text-red-300">
+          <details className="text-[11px] text-red-700">
             <summary className="cursor-pointer">
               Errori ({errors.length})
             </summary>
@@ -553,9 +532,9 @@ export default function AccountPage() {
           </details>
         )}
 
-        <details className="text-[11px] text-gray-500">
+        <details className="text-[11px] text-gray-600">
           <summary className="cursor-pointer">Mostra JSON completo</summary>
-          <pre className="mt-1 bg-black/40 p-2 rounded-lg overflow-auto max-h-40">
+          <pre className="mt-1 bg-gray-100 border border-gray-200 p-2 rounded-lg overflow-auto max-h-40 text-gray-800">
             {JSON.stringify(result, null, 2)}
           </pre>
         </details>
@@ -629,7 +608,7 @@ export default function AccountPage() {
                 onClick={() => setActiveTab("admin")}
                 className={`account-tab ${activeTab === "admin" ? "account-tab-active" : ""}`}
               >
-                Admin tools
+                Amministrazione
               </button>
             )}
             <button
@@ -1046,7 +1025,7 @@ export default function AccountPage() {
         <div id="tab-panel-stats" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
           <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
             <span className="text-2xl">📊</span>
-            Your Stats
+            Le tue statistiche
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="account-stat-card p-6 relative overflow-hidden">
@@ -1055,7 +1034,7 @@ export default function AccountPage() {
                   {userEvents.length}
                 </div>
                 <div className="text-lg font-semibold opacity-90">
-                  Events Created
+                  Eventi creati
                 </div>
               </div>
               <div className="absolute -top-4 -right-4 text-6xl opacity-20">
@@ -1072,7 +1051,7 @@ export default function AccountPage() {
                   }
                 </div>
                 <div className="text-lg font-semibold opacity-90">
-                  Upcoming Events
+                  Eventi in programma
                 </div>
               </div>
               <div className="absolute -top-4 -right-4 text-6xl opacity-20">
@@ -1086,7 +1065,7 @@ export default function AccountPage() {
                   {new Set(userEvents.map((e) => e.category)).size}
                 </div>
                 <div className="text-lg font-semibold opacity-90">
-                  Categories
+                  Categorie
                 </div>
               </div>
               <div className="absolute -top-4 -right-4 text-6xl opacity-20">
@@ -1100,69 +1079,47 @@ export default function AccountPage() {
         {/* Admin Cron Controls */}
         {isAdmin && activeTab === "admin" && (
           <div id="tab-panel-admin" role="tabpanel" className="account-content-panel surface-panel p-5 md:p-8">
-            <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-              <span className="text-2xl">🛠️</span>
-              <span>Admin Tools</span>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Strumenti amministrazione
             </h2>
-            <div className="space-y-6">
-              <div className="flex flex-wrap gap-4">
-                <a href="/cron" className="btn btn-ghost inline-flex items-center gap-2">
-                  Gestione Cron
-                </a>
-                <a href="/admin" className="btn btn-ghost inline-flex items-center gap-2">
-                  📋 Log &amp; Cronologia
-                </a>
-                <button
-                  onClick={() => runCron("instagram-story")}
-                  className="btn btn-accent inline-flex items-center gap-2"
-                  disabled={runningCron !== null}
-                >
-                  {runningCron === "instagram-story"
-                    ? "Generating Instagram Story…"
-                    : "Generate Instagram Story Now"}
-                </button>
-                {runningCron === "instagram-story" && (
-                  <button
-                    onClick={() => stopCron("instagram-story")}
-                    className="btn btn-error btn-sm inline-flex items-center gap-2"
-                    disabled={stoppingCron === "instagram-story"}
-                  >
-                    {stoppingCron === "instagram-story" ? "Stopping…" : "Stop"}
-                  </button>
-                )}
-                <button
-                  onClick={() => runCron("visitpedemontana")}
-                  className="btn btn-secondary inline-flex items-center gap-2"
-                  disabled={runningCron !== null}
-                >
-                  {runningCron === "visitpedemontana"
-                    ? "Running VisitPedemontana Cron…"
-                    : "Run VisitPedemontana Cron Now"}
-                </button>
-                {runningCron === "visitpedemontana" && (
-                  <button
-                    onClick={() => stopCron("visitpedemontana")}
-                    className="btn btn-error btn-sm inline-flex items-center gap-2"
-                    disabled={stoppingCron === "visitpedemontana"}
-                  >
-                    {stoppingCron === "visitpedemontana" ? "Stopping…" : "Stop"}
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <p className="text-sm text-gray-500 mb-6">
+              Apri l’area in base a quello che devi gestire.
+            </p>
+            {runningCron && (
+              <p role="status" className="mb-5 border-l-2 border-amber-600 pl-3 text-sm text-gray-700">
+                {runningCron === "visitpedemontana" ? "Scraping web in corso." : "Generazione Story Instagram in corso."} L’esito apparirà qui al termine.
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+              <a href="/cron" className="group border border-black/10 p-4 hover:border-black/40 transition-colors">
+                <Clock3 size={20} aria-hidden="true" className="mb-3 text-gray-700" />
+                <span className="block font-semibold text-gray-900">Automazioni e scraping</span>
+                <span className="mt-1 block text-sm text-gray-600">Sorgenti web, Telegram, Instagram e test manuali.</span>
+              </a>
+              <a href="/admin" className="group border border-black/10 p-4 hover:border-black/40 transition-colors">
+                <ListChecks size={20} aria-hidden="true" className="mb-3 text-gray-700" />
+                <span className="block font-semibold text-gray-900">Cronologia e log</span>
+                <span className="mt-1 block text-sm text-gray-600">Esiti delle esecuzioni ed eventi importati.</span>
+              </a>
+              <a href="/admin/rassegne" className="group border border-black/10 p-4 hover:border-black/40 transition-colors">
+                <CalendarRange size={20} aria-hidden="true" className="mb-3 text-gray-700" />
+                <span className="block font-semibold text-gray-900">Rassegne</span>
+                <span className="mt-1 block text-sm text-gray-600">Gestione delle rassegne e dei relativi eventi.</span>
+              </a>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <h3 className="font-semibold text-white mb-2">
-                    Instagram Story Result
+                  <h3 className="font-semibold text-gray-900 mb-2">
+                    Ultimo run: Story Instagram
                   </h3>
                   {renderCronResult(instagramStoryResult)}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-white mb-2">
-                    VisitPedemontana Result
+                  <h3 className="font-semibold text-gray-900 mb-2">
+                    Ultimo run: scraping web
                   </h3>
                   {renderCronResult(visitpedemontanaResult)}
                 </div>
-              </div>
             </div>
           </div>
         )}

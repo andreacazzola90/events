@@ -119,6 +119,13 @@ type LiveState = {
   errors: { url: string; error: string }[];
 };
 
+type DispatcherRun = {
+  status: string;
+  startedAt: string;
+  finishedAt: string | null;
+  resultJson: string | null;
+};
+
 const initialForm: FormState = {
   name: "",
   listUrl: "",
@@ -480,6 +487,9 @@ export default function CronAdminClient() {
   const [runningSourceId, setRunningSourceId] = useState<number | null>(null);
   const [sourceResults, setSourceResults] = useState<Record<number, CronRunResult>>({});
   const [sourceLive, setSourceLive] = useState<Record<number, LiveState>>({});
+  const [dispatcherRun, setDispatcherRun] = useState<DispatcherRun | null>(null);
+  const [dispatcherLoading, setDispatcherLoading] = useState(true);
+  const [dispatcherError, setDispatcherError] = useState<string | null>(null);
 
   const isEditing = useMemo(() => typeof form.id === "number", [form.id]);
 
@@ -501,8 +511,24 @@ export default function CronAdminClient() {
     }
   };
 
+  const loadDispatcherRun = async () => {
+    setDispatcherLoading(true);
+    setDispatcherError(null);
+    try {
+      const response = await fetch("/api/admin/cron-status?limit=100", { cache: "no-store" });
+      if (!response.ok) throw new Error("Impossibile leggere lo stato del cron giornaliero");
+      const payload = await response.json();
+      setDispatcherRun((payload.runs as DispatcherRun[]).find((run: any) => run.jobKey === "daily-dispatch") ?? null);
+    } catch (loadError) {
+      setDispatcherError(loadError instanceof Error ? loadError.message : "Stato non disponibile");
+    } finally {
+      setDispatcherLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSources();
+    void loadDispatcherRun();
   }, []);
 
   const handleChange = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -801,19 +827,62 @@ export default function CronAdminClient() {
             title="Cron Admin"
             description="Configura i siti da scrappare giornalmente e monitora i risultati."
             action={
-            <button type="button" onClick={() => router.push("/account")} className="btn btn-ghost">
-              Torna a Profilo
+            <button type="button" onClick={() => router.push("/admin")} className="btn btn-ghost">
+              Console amministrazione
             </button>
             }
           />
         </div>
 
-        <TelegramAdmin />
+        <section aria-labelledby="daily-schedule-heading" className="glass-effect p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <h2 id="daily-schedule-heading" className="text-lg font-semibold text-white">Scraping automatico</h2>
+              <p className="mt-1 text-sm text-gray-300">
+                Una sola esecuzione giornaliera avvia tutte le sorgenti web attive. Vercel la pianifica alle 18:00 UTC; l’avvio può slittare entro l’ora successiva.
+              </p>
+              <p className="mt-2 text-xs text-gray-400">
+                L’orario indicato nelle singole sorgenti è un dato storico e non modifica questa pianificazione.
+              </p>
+            </div>
+            <div className="min-w-52 text-sm" role="status" aria-live="polite">
+              <div className="font-semibold text-white">
+                {dispatcherLoading ? "Lettura ultimo run…" : dispatcherError ? "Stato non disponibile" : dispatcherRun ? `Ultimo run: ${dispatcherRun.status === "completed" ? "completato" : dispatcherRun.status === "failed" ? "fallito" : dispatcherRun.status}` : "Nessun run registrato"}
+              </div>
+              {dispatcherRun && <p className="mt-1 text-xs text-gray-400">{new Date(dispatcherRun.startedAt).toLocaleString("it-IT")}</p>}
+              {dispatcherError && <p className="mt-1 text-xs text-red-300">{dispatcherError}</p>}
+              {dispatcherRun?.resultJson && (() => {
+                try {
+                  const failed = (JSON.parse(dispatcherRun.resultJson) as { failed?: string[] }).failed ?? [];
+                  return failed.length ? <p className="mt-1 text-xs text-red-300">Da controllare: {failed.join(", ")}</p> : null;
+                } catch {
+                  return null;
+                }
+              })()}
+              <button type="button" onClick={() => void loadDispatcherRun()} disabled={dispatcherLoading} className="mt-2 text-xs text-cyan-200 underline disabled:opacity-50">
+                Aggiorna stato
+              </button>
+            </div>
+          </div>
+        </section>
 
-        <InstagramScanAdmin />
+        <nav aria-label="Sezioni automazioni" className="flex flex-wrap gap-2 border-b border-white/15 pb-3">
+          <a href="#web-sources" className="btn btn-ghost btn-sm">Sorgenti web</a>
+          <a href="#telegram-scan" className="btn btn-ghost btn-sm">Telegram</a>
+          <a href="#instagram-scan" className="btn btn-ghost btn-sm">Scansione Instagram</a>
+          <a href="/admin" className="btn btn-ghost btn-sm">Cronologia e log</a>
+        </nav>
+
+        <section id="telegram-scan" className="scroll-mt-24">
+          <TelegramAdmin />
+        </section>
+
+        <section id="instagram-scan" className="scroll-mt-24">
+          <InstagramScanAdmin />
+        </section>
 
         {/* Form */}
-        <div className="glass-effect rounded-2xl p-6 sm:p-8">
+        <div id="web-sources" className="glass-effect rounded-2xl p-6 sm:p-8 scroll-mt-24">
           <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
             <h2 className="text-2xl font-semibold text-white">
               {isEditing ? "Modifica sorgente" : "Nuova sorgente"}
@@ -879,25 +948,10 @@ export default function CronAdminClient() {
               </div>
             </div>
 
-            <label className="text-sm text-gray-200 space-y-2">
-              <span>Cron schedule</span>
-              <input
-                className="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-white"
-                value={form.scheduleCron}
-                onChange={(e) => handleChange("scheduleCron", e.target.value)}
-                placeholder="0 4 * * *"
-              />
-            </label>
-
-            <label className="text-sm text-gray-200 space-y-2">
-              <span>Timezone</span>
-              <input
-                className="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-white"
-                value={form.timezone}
-                onChange={(e) => handleChange("timezone", e.target.value)}
-                placeholder="Europe/Rome"
-              />
-            </label>
+            <div className="text-sm text-gray-200 space-y-2 md:col-span-2">
+              <span>Frequenza automatica</span>
+              <p className="text-gray-400">Questa sorgente viene inclusa nel run giornaliero se è attiva. L’orario è gestito da Vercel, non dalla singola sorgente.</p>
+            </div>
 
             <label className="text-sm text-gray-200 space-y-2">
               <span>Container listing eventi (selector)</span>
@@ -1194,7 +1248,7 @@ export default function CronAdminClient() {
                           >
                             {item.isActive ? "Attivo" : "Disattivo"}
                           </span>
-                          <span className="text-gray-400 text-xs">{item.scheduleCron} ({item.timezone})</span>
+                          <span className="text-gray-400 text-xs">{item.isActive ? "Inclusa nel run giornaliero" : "Esclusa dal run giornaliero"}</span>
                         </div>
                         <a
                           href={item.listUrl}

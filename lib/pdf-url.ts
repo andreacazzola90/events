@@ -30,34 +30,45 @@ export function isPublicPdfAddress(address: string): boolean {
   return false;
 }
 
-export async function validatePublicPdfUrl(value: unknown): Promise<URL> {
-  if (typeof value !== 'string') throw new Error('URL PDF non valido.');
+export async function validatePublicScanUrl(value: unknown): Promise<URL> {
+  if (typeof value !== 'string') throw new Error('URL non valido.');
 
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error('URL PDF non valido.');
+    throw new Error('URL non valido.');
   }
 
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-    throw new Error('Inserisci un URL PDF pubblico valido.');
+    throw new Error('Inserisci un URL pubblico valido.');
   }
 
   const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
   if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
-    throw new Error('Il PDF deve essere ospitato su un server pubblico.');
+    throw new Error('La fonte deve essere ospitata su un server pubblico.');
   }
 
   let addresses: { address: string; family: number }[];
   try {
     addresses = await lookup(hostname, { all: true, verbatim: true });
   } catch {
-    throw new Error('Impossibile raggiungere il server del PDF.');
+    throw new Error('Impossibile raggiungere il server della fonte.');
   }
   if (!addresses.length || addresses.some(({ address }) => !isPublicPdfAddress(address))) {
-    throw new Error('Il PDF deve essere ospitato su un server pubblico.');
+    throw new Error('La fonte deve essere ospitata su un server pubblico.');
   }
 
   return url;
+}
+
+export async function validatePublicPdfUrl(value: unknown): Promise<URL> {
+  try {
+    return await validatePublicScanUrl(value);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'URL non valido.') throw new Error('URL PDF non valido.');
+    if (message === 'Inserisci un URL pubblico valido.') throw new Error('Inserisci un URL PDF pubblico valido.');
+    throw error;
+  }
 }

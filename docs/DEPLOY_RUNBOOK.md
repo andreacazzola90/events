@@ -135,24 +135,33 @@ Keep environment-specific values in platform secrets, never in repository files.
 ## 3) Required secrets
 
 From [.env.example](../.env.example) and runtime code:
-- DATABASE_URL
+- POSTGRES_URL (preferred Prisma runtime and CLI connection URL)
+- POSTGRES_PRISMA_URL and DATABASE_URL (Prisma URL fallbacks)
 - NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
 - GROQ_API_SECRET_KEY
 - NVIDIA_API_SECRET_KEY (recommended; first vision provider in the default order)
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_SECRET_KEY
+- SUPABASE_SECRET_KEY (server-only Supabase Storage/admin key)
+- SUPABASE_PUBLISHABLE_KEY (public API key for Supabase server auth handlers)
+- SUPABASE_JWKS_URL (JWT verification keys; Supabase Server can derive it from SUPABASE_URL)
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
 - CRON_SECRET (Vercel scheduled scraper; manual proxy prefers it)
 - CRON_SECRET_KEY (legacy scraper fallback and existing other cron targets)
+
+Prisma prefers `POSTGRES_URL`, then falls back to `POSTGRES_PRISMA_URL` and `DATABASE_URL`. Server-side Supabase Storage prefers `SUPABASE_URL` and `SUPABASE_SECRET_KEY`; existing deployments can keep using `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_SECRET_KEY` as fallbacks. Keep secret values server-only and out of repository files.
+
+`@supabase/server` requires Node.js 22 or newer. For authenticated handlers, it uses `SUPABASE_PUBLISHABLE_KEY` and verifies user JWTs against `SUPABASE_JWKS_URL` (derived from `SUPABASE_URL` when omitted).
 
 Web search (event verification and cover images), first configured provider wins:
 - BRAVE_SEARCH_API_KEY (recommended; free plan at https://brave.com/search/api/)
 - TAVILY_API_KEY (optional)
 - GOOGLE_API_SECRET_KEY + GOOGLE_CX (optional; the key must allow the Custom Search API, which is closed to new customers)
 
-Scan learning (corrections and manual crops) needs the migration [20261030160000_add_scan_learning](../prisma/migrations/20261030160000_add_scan_learning/migration.sql). SCAN_LEARNING_SECRET_KEY is optional and falls back to NEXTAUTH_SECRET_KEY.
+Text scan learning needs the migration [20261030160000_add_scan_learning](../prisma/migrations/20261030160000_add_scan_learning/migration.sql). SCAN_LEARNING_SECRET_KEY is optional and falls back to NEXTAUTH_SECRET_KEY.
+
+Opt-in crop learning additionally needs [20261105103000_private_poster_crop_learning](../prisma/migrations/20261105103000_private_poster_crop_learning/migration.sql). The first explicitly consented sample creates/verifies the Supabase `crop-learning` bucket as private using the server service-role key. Do not make this bucket public or expose its object paths to clients. `GET /api/cron/cleanup-crop-learning` runs from the existing daily dispatcher and requires `CRON_SECRET` or `CRON_SECRET_KEY`; it removes expired image objects and rows after 180 days. Confirm the deployment's scheduled daily dispatcher is enabled and authorized. No new provider or client-side storage credential is needed.
 
 Instagram story publishing is configured from the admin "Story Instagram" tab (account ID, access token, days and hour). It needs:
 - INSTAGRAM_TOKEN_SECRET_KEY (optional; falls back to NEXTAUTH_SECRET_KEY) to encrypt the stored token
@@ -196,6 +205,8 @@ npx prisma generate
 For CI/production migration execution, use your established deployment pipeline policy.
 
 The event media feature adds `20261012160000_add_event_media`; apply it before deploying the editor/API changes. Event files use the existing public Supabase `events` bucket. Cover and each attachment are uploaded separately to stay within serverless request limits.
+
+The orchestrated PDF scan and optional crop-sample retention require `20261105103000_private_poster_crop_learning`; apply it before deploying the schema-dependent code, then regenerate Prisma. This is additive; do not use `db push` as a substitute. Keep the Supabase `crop-learning` bucket private. The app creates or repairs its privacy setting only when a user explicitly consents and a sample is saved; verify the bucket remains private after setup.
 
 ## 5.3 Vercel deploy
 
@@ -273,6 +284,7 @@ Endpoints:
 - GET /api/cron/scrape-visitpedemontana
 - GET /api/cron/generate-instagram-story
 - GET /api/cron/scan-instagram (`?dryRun=1` per simulazione)
+- GET /api/cron/cleanup-crop-learning (called by the daily dispatcher; deletes crop pairs older than 180 days)
 - POST /api/admin/run-cron/instagram-story (admin session required)
 
 Manual trigger example:
@@ -313,19 +325,25 @@ Focus logs for:
 3. Inspect logs for extraction branch used and fallback path.
 4. Flyer cropping defaults to NVIDIA Vision followed by Groq. Gemini and OpenRouter are excluded from the default order after returning HTTP 429 in the latest live check; they can be explicitly re-enabled with `AI_VISION_PROVIDERS` after verifying their quota. Service failures and truncated output can fall through, but completed privacy rejections cannot. Partial output is never accepted. If no provider completes or bounds are uncertain, the API does not approve an unverified screenshot. Verify with a synthetic screenshot containing social UI and confirm that the crop excludes it while preserving the full flyer.
 
-## 9.2 Scraper failures
+## 9.2 PDF scan or rescan is partial
+
+1. Inspect `debug.scanStatus`, `debug.scanCounts` and `debug.unscannedPages` from `/api/process-pdf`; partial status is expected when extraction fails, the time budget expires, candidate limits are reached or pages are capped.
+2. Confirm the PDF is below 10 MiB and readable, then retry with a public source URL or upload the document again. Uploaded PDFs are intentionally not retained for later rescans.
+3. Check Groq timeout/rate-limit logs and source URL validation. Do not mark pending/unscanned candidates as complete or apply an ambiguous rescan proposal.
+
+## 9.3 Scraper failures
 
 1. Trigger scrape endpoint manually with CRON auth.
 2. Review navigation timeout and parsing logs.
 3. Verify target site structure changes.
 
-## 9.3 DB/API errors
+## 9.4 DB/API errors
 
-1. Check Prisma connectivity and DATABASE_URL.
+1. Check Prisma connectivity and the configured PostgreSQL URL (`POSTGRES_URL`, falling back to `POSTGRES_PRISMA_URL` or `DATABASE_URL`).
 2. Confirm migration compatibility with deployed code.
 3. Roll forward with fix if schema/code mismatch found.
 
-## 9.4 Rollback strategy
+## 9.5 Rollback strategy
 
 - Prefer fast roll-forward when possible.
 - If severe regression, redeploy previous stable commit and re-run smoke tests.
@@ -348,7 +366,7 @@ Calendar preferences require an authenticated EventScanner account. Users connec
 3. Register the exact authorized redirect URI: `http://localhost:3000/api/account/google-calendar/callback` locally, and `https://schiodejaneiro.vercel.app/api/account/google-calendar/callback` in production. Register any additional custom or preview domain separately. The OAuth callback and final account redirect use the request origin, not `NEXTAUTH_URL`; Google requires an exact match for each authorized redirect URI (no wildcards).
 4. Configure server-only secrets: `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET_KEY`, `NEXTAUTH_SECRET_KEY`, `NEXTAUTH_URL`, and `CRON_SECRET_KEY`. `NEXTAUTH_URL` must be the stable canonical application origin.
 5. Optionally set `GOOGLE_CALENDAR_TOKEN_SECRET_KEY` to a dedicated high-entropy encryption secret. Otherwise refresh-token encryption uses `NEXTAUTH_SECRET_KEY`. Rotating the encryption secret requires users to reconnect Google.
-6. Apply `20261012120000_add_google_calendar_sync`, `20261012130000_add_google_calendar_event_type`, and `20261012140000_add_google_calendar_target` before deploying the code, regenerate Prisma, and restart local development after generation. The earlier `calendarCategories` column remains ignored for migration-history compatibility; it is not used by the application. Migration commands must use a non-pooled connection, such as `POSTGRES_URL_NON_POOLING`; runtime Prisma prefers `POSTGRES_PRISMA_URL`. Do not use `db push` as a substitute for these additive migrations. Repair incomplete older migration directories separately before using the full migration-deploy workflow.
+6. Apply `20261012120000_add_google_calendar_sync`, `20261012130000_add_google_calendar_event_type`, and `20261012140000_add_google_calendar_target` before deploying the code, regenerate Prisma, and restart local development after generation. The earlier `calendarCategories` column remains ignored for migration-history compatibility; it is not used by the application. Migration commands must use a non-pooled connection, such as `POSTGRES_URL_NON_POOLING`; runtime Prisma prefers `POSTGRES_URL`, then falls back to `POSTGRES_PRISMA_URL` and `DATABASE_URL`. Do not use `db push` as a substitute for these additive migrations. Repair incomplete older migration directories separately before using the full migration-deploy workflow.
 
 The Google grant requests `openid`, `email`, `https://www.googleapis.com/auth/calendar.events.owned`, and `https://www.googleapis.com/auth/calendar.calendarlist.readonly`. Reconnect an existing Google account once to grant calendar-list access. OAuth uses state, PKCE, a short-lived HttpOnly cookie, and verified email. Only an encrypted refresh token is persisted; tokens never appear in account API responses or application error logs.
 

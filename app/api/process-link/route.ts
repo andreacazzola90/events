@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processEventLink } from '../../../lib/event-processor';
+import { validatePublicScanUrl } from '../../../lib/pdf-url';
 
 export async function POST(request: NextRequest) {
     try {
@@ -12,9 +13,10 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log('Processing URL:', url);
+        const source = await validatePublicScanUrl(url);
+        console.log('Processing URL:', source.toString());
 
-        const result = await processEventLink(url);
+        const result = await processEventLink(source.toString());
 
         return NextResponse.json(result);
 
@@ -23,7 +25,7 @@ export async function POST(request: NextRequest) {
         const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
         
         let status = 500;
-        if (errorMessage.includes('mancante') || errorMessage.includes('Facebook')) {
+        if (errorMessage.includes('mancante') || errorMessage.includes('Facebook') || errorMessage.includes('URL') || errorMessage.includes('pubblico')) {
             status = 400;
         } else if (errorMessage.includes('tempo')) {
             status = 408;

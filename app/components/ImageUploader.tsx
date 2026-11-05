@@ -94,6 +94,12 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
 
             // Handle new response structure { events: [], debug: {} }
             if (data.events && Array.isArray(data.events)) {
+                if (!data.events.length) {
+                    const counts = data.debug?.scanCounts;
+                    throw new Error(counts
+                        ? `Nessun candidato completato (${counts.failed || 0} non riusciti, ${counts.pending || 0} in attesa). Riprova con il documento o un URL sorgente.`
+                        : 'Nessun evento trovato nella fonte selezionata.');
+                }
                 console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
                 onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug, crop);
             } else {

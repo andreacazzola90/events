@@ -1,43 +1,85 @@
 import { extractEventImageFromHtml } from './event-image';
+import { validatePublicScanUrl } from './pdf-url';
+
+const MAX_HTML_BYTES = 2 * 1024 * 1024;
+
+async function readHtml(response: Response): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) {
+    await response.body?.cancel();
+    throw new Error('La pagina della fonte supera il limite consentito.');
+  }
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_HTML_BYTES) {
+        await reader.cancel();
+        throw new Error('La pagina della fonte supera il limite consentito.');
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 export async function httpScraper(url: string): Promise<{ pageText: string; finalImageUrl: string | null }> {
   console.log('🌐 Using HTTP fallback scraper for:', url);
   
   try {
-    // Simple fetch to get the HTML content with AbortController for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeoutId);
+    try {
+      let currentUrl = await validatePublicScanUrl(url);
+      let response: Response | undefined;
+      for (let redirect = 0; redirect <= 5; redirect++) {
+        response = await fetch(currentUrl, {
+          redirect: 'manual',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
+          },
+          signal: controller.signal,
+        });
+        if (![301, 302, 303, 307, 308].includes(response.status)) break;
+        const location = response.headers.get('location');
+        if (!location || redirect === 5) throw new Error('La fonte ha troppi reindirizzamenti.');
+        await response.body?.cancel();
+        currentUrl = await validatePublicScanUrl(new URL(location, currentUrl).toString());
+      }
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (!response?.ok) {
+        throw new Error(`HTTP ${response?.status}: ${response?.statusText || 'risposta non valida'}`);
+      }
+
+      const html = await readHtml(response);
+      const textContent = htmlToEventText(html);
+      const imageUrl = extractEventImageFromHtml(html, currentUrl.toString());
+
+      console.log('✅ HTTP fallback scraping successful');
+      return {
+        pageText: textContent.substring(0, 8000),
+        finalImageUrl: imageUrl
+      };
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const html = await response.text();
-    
-    const textContent = htmlToEventText(html);
-
-    const imageUrl = extractEventImageFromHtml(html, url);
-
-    console.log('✅ HTTP fallback scraping successful');
-    return {
-      pageText: textContent.substring(0, 8000), // Limit text length
-      finalImageUrl: imageUrl
-    };
 
   } catch (error) {
     console.error('❌ HTTP fallback scraping failed:', error);
-    throw new Error(`HTTP scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const message = error && typeof error === 'object' && 'message' in error
+      ? String(error.message)
+      : 'Unknown error';
+    throw new Error(`HTTP scraping failed: ${message}`);
   }
 }
 const NAMED_ENTITIES: Record<string, string> = {

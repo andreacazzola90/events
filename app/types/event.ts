@@ -40,6 +40,8 @@ export interface EventData {
   posterImageUrl?: string;
   /** Signed AI extraction baseline; corrections made before saving are learned for future scans. */
   scanFeedbackToken?: string;
+  /** Source evidence retained with a PDF scan result until the draft is saved. */
+  scanEvidence?: { candidateId: string; pageNumbers: number[]; quote: string };
   sourceUrl?: string;
   origin?: string;
 }

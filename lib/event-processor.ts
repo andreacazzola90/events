@@ -11,6 +11,7 @@ import { selectEventImage } from './event-image';
 import type { EventImageCandidate } from './event-image';
 import { completeMissingEventFields, verifyScannedEvents, SCAN_AGENT_VERSION } from './event-scan-agents';
 import type { ScanAgentCompletion, ScanAgentReport } from './event-scan-agents';
+import { validatePublicScanUrl } from './pdf-url';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -147,13 +148,35 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                 // Images, fonts and media are not needed: image URLs are read from the DOM attributes.
                 try {
                     await page.setRequestInterception(true);
-                    page.on('request', (request: { isInterceptResolutionHandled(): boolean; resourceType(): string; abort(): Promise<void>; continue(): Promise<void> }) => {
+                    page.on('request', (request: {
+                        isInterceptResolutionHandled(): boolean;
+                        resourceType(): string;
+                        url(): string;
+                        abort(): Promise<void>;
+                        continue(): Promise<void>;
+                    }) => {
                         if (request.isInterceptResolutionHandled()) return;
-                        if (['image', 'font', 'media'].includes(request.resourceType())) void request.abort();
-                        else void request.continue();
+                        void (async () => {
+                            try {
+                                if (['image', 'font', 'media'].includes(request.resourceType())) {
+                                    await request.abort();
+                                    return;
+                                }
+                                const requestUrl = request.url();
+                                if (/^https?:/i.test(requestUrl)) await validatePublicScanUrl(requestUrl);
+                                else if (!/^(?:data:|blob:|about:)/i.test(requestUrl)) {
+                                    await request.abort();
+                                    return;
+                                }
+                                await request.continue();
+                            } catch {
+                                if (!request.isInterceptResolutionHandled()) await request.abort().catch(() => undefined);
+                            }
+                        })();
                     });
                 } catch (interceptionError) {
-                    logger.warn('Could not block heavy resources:', interceptionError);
+                    logger.warn('Could not enforce public URL validation:', interceptionError);
+                    throw new Error('Impossibile validare in modo sicuro la navigazione della fonte.');
                 }
                 
                 try {

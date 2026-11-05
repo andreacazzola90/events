@@ -10,6 +10,7 @@ import { STANDARD_CATEGORIES } from '../../lib/constants';
 import EventCategoryBadge from './EventCategoryBadge';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useSession } from 'next-auth/react';
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
 import { MAX_AI_INSTRUCTIONS_LENGTH } from '../../lib/ai-instructions';
 import SaveAnimation from './SaveAnimation';
@@ -64,18 +65,23 @@ function formatDateLong(raw?: string): string {
 const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d1b] focus:outline-none focus:border-[#d65a38] transition-colors';
 
 export default function EventDisplay({ eventData, onSave, onPublish, duplicate, showPublishButton = true, imageProcessing = false, imageCropStatus = imageProcessing ? 'processing' : 'idle', imageCropFailure, onImageChange }: EventDisplayProps) {
+    const { data: session } = useSession();
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
     const [cropSelection, setCropSelection] = useState<{ area: Area; natural: { width: number; height: number } } | null>(null);
+    const [consentCropLearning, setConsentCropLearning] = useState(false);
     const [initialCrop, setInitialCrop] = useState<EventData['originalImageCrop']>();
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
     const [aiInstructions, setAiInstructions] = useState('');
     const [isReprocessing, setIsReprocessing] = useState(false);
+    const [isRescanning, setIsRescanning] = useState(false);
     const [reprocessMessage, setReprocessMessage] = useState('');
     const [reprocessError, setReprocessError] = useState('');
+    const [rescanMessage, setRescanMessage] = useState('');
+    const [rescanError, setRescanError] = useState('');
     const formRef = useRef<HTMLFormElement>(null);
     const cropPreviewUrls = useRef<string[]>([]);
     const originalCropSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
@@ -84,9 +90,11 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
     const draftImageSource = useRef(eventData.originalImageUrl || eventData.imageUrl);
     const currentImageUrl = useRef(eventData.imageUrl);
     const currentOnSave = useRef(onSave);
+    const rescanController = useRef<AbortController | null>(null);
     useEffect(() => { currentOnSave.current = onSave; }, [onSave]);
 
     useEffect(() => () => cropPreviewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
+    useEffect(() => () => rescanController.current?.abort(), []);
 
     const notifyImageChange = (selected: string, original?: string) => {
         cropPreviewUrls.current = cropPreviewUrls.current.filter(url => {
@@ -139,24 +147,37 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
         setCropSource(autoCrop ? eventData.originalImageUrl! : source);
         setCroppedAreaPixels(null);
         setCropSelection(null);
-    };
-
-    const recordCropSample = () => {
-        if (!cropSource || cropSource !== eventData.originalImageUrl || !cropSelection) return;
-        const { area, natural } = cropSelection;
-        void fetch('/api/scan-learning/crop-sample', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ width: natural.width, height: natural.height,
-                x: area.x / 100, y: area.y / 100, w: area.width / 100, h: area.height / 100 }),
-            keepalive: true,
-        }).catch(() => undefined);
+        setConsentCropLearning(false);
     };
 
     const handleApplyCrop = async () => {
         if (!cropSource || !croppedAreaPixels) return;
         try {
             const croppedFile = await cropCoverToFile(cropSource, croppedAreaPixels);
+            if (consentCropLearning && cropSource === eventData.originalImageUrl && cropSelection) {
+                const saveCropExample = async () => {
+                    const sourceBlob = await (await fetch(cropSource)).blob();
+                    const originalFile = new File([sourceBlob], `original.${sourceBlob.type.split('/')[1] || 'jpg'}`, { type: sourceBlob.type });
+                    const formData = new FormData();
+                    formData.append('consent', 'true');
+                    formData.append('sample', JSON.stringify({
+                        width: cropSelection.natural.width,
+                        height: cropSelection.natural.height,
+                        x: cropSelection.area.x / 100,
+                        y: cropSelection.area.y / 100,
+                        w: cropSelection.area.width / 100,
+                        h: cropSelection.area.height / 100,
+                    }));
+                    formData.append('original', originalFile);
+                    formData.append('corrected', croppedFile);
+                    return fetch('/api/scan-learning/crop-sample', { method: 'POST', body: formData });
+                };
+                void saveCropExample()
+                    .then(response => {
+                        if (!response.ok) toast.info('Il ritaglio è stato applicato, ma l’esempio non è stato conservato.');
+                    })
+                    .catch(() => toast.info('Il ritaglio è stato applicato, ma l’esempio non è stato conservato.'));
+            }
             const previewUrl = URL.createObjectURL(croppedFile);
             cropPreviewUrls.current.push(previewUrl);
             setManualImageOverride(true);
@@ -164,7 +185,6 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
             setImageUrl(previewUrl);
             currentImageUrl.current = previewUrl;
             notifyImageChange(previewUrl, originalCropSource.current);
-            recordCropSample();
             setCropSource(null);
         } catch {
             toast.error('Impossibile ritagliare l’immagine o il ritaglio supera il limite di 4 MiB.');
@@ -300,6 +320,61 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
         }
     };
 
+    const handleRescanSource = async () => {
+        const currentEvent = getEditedEvent();
+        if (!currentEvent || !onSave || !currentEvent.sourceUrl) return;
+        rescanController.current?.abort();
+        const controller = new AbortController();
+        rescanController.current = controller;
+        const snapshot = JSON.stringify(currentEvent);
+        const draftIdentity = JSON.stringify({
+            title: eventData.title, sourceUrl: eventData.sourceUrl,
+            candidateId: eventData.scanEvidence?.candidateId,
+        });
+        setIsRescanning(true);
+        setRescanError('');
+        setRescanMessage('');
+        try {
+            const response = await fetch('/api/ai/rescan-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({ event: currentEvent }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.status !== 'matched' || !payload.proposal) {
+                throw new Error(payload.error || 'Impossibile riscansionare la fonte.');
+            }
+
+            const latestEvent = getEditedEvent();
+            const latestIdentity = JSON.stringify({
+                title: eventData.title, sourceUrl: eventData.sourceUrl,
+                candidateId: eventData.scanEvidence?.candidateId,
+            });
+            if (!latestEvent || JSON.stringify(latestEvent) !== snapshot || latestIdentity !== draftIdentity) {
+                setRescanError('La bozza è cambiata durante la riscansione. Nessun dato è stato applicato; riprova.');
+                return;
+            }
+
+            const updatedEvent = { ...currentEvent, ...payload.proposal } as EventData;
+            const form = formRef.current;
+            for (const [field, value] of Object.entries(payload.proposal as Record<string, string>)) {
+                const input = form?.elements.namedItem(field) as HTMLInputElement | HTMLTextAreaElement | null;
+                if (input) input.value = value;
+            }
+            currentOnSave.current?.(updatedEvent);
+            setRescanMessage(Object.keys(payload.proposal).length
+                ? 'Proposta applicata a questa bozza. Controlla i campi e salva o pubblica esplicitamente.'
+                : 'La fonte non propone modifiche per questa bozza.');
+        } catch (error) {
+            if (controller.signal.aborted) return;
+            setRescanError(error instanceof Error ? error.message : 'Impossibile riscansionare la fonte.');
+        } finally {
+            if (rescanController.current === controller) rescanController.current = null;
+            setIsRescanning(false);
+        }
+    };
+
     const handleAddEvent = async () => {
         if (imageProcessing || isSaving) return;
         setIsSaving(true);
@@ -422,7 +497,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(eventData.location || '')}`;
 
     return (
-        <div className="event-display-container space-y-6">
+        <div className="event-display-container space-y-6" data-testid="event-draft-card">
             {duplicate && (
                 <div role="alert" className="event-duplicate-alert flex items-start gap-4 border border-[#d65a38]/50 bg-[#fff7f4] p-5">
                     <AlertIcon className="w-6 h-6 shrink-0 text-[#b84b2d] mt-0.5" />
@@ -616,13 +691,25 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                 <button
                                     type="button"
                                     onClick={handleReprocessWithAi}
-                                    disabled={isReprocessing || !aiInstructions.trim()}
+                                    disabled={isReprocessing || isRescanning || !aiInstructions.trim()}
                                     className="inline-flex items-center gap-2 border border-[#1d1d1b] px-4 py-2 text-sm font-bold text-[#1d1d1b] transition-colors hover:bg-[#1d1d1b] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     {isReprocessing ? 'Rielaborazione…' : 'Rielabora con AI'}
                                 </button>
+                                {eventData.sourceUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={handleRescanSource}
+                                        disabled={isRescanning || isReprocessing}
+                                        className="inline-flex items-center gap-2 border border-[#d65a38] px-4 py-2 text-sm font-bold text-[#8f3823] transition-colors hover:bg-[#fff7f4] disabled:cursor-wait disabled:opacity-50"
+                                    >
+                                        {isRescanning ? 'Riscansione…' : 'Riscansiona fonte'}
+                                    </button>
+                                )}
                                 {reprocessMessage && <p role="status" className="mb-0 text-sm text-green-800">{reprocessMessage}</p>}
                                 {reprocessError && <p role="alert" className="mb-0 text-sm text-red-700">{reprocessError}</p>}
+                                {rescanMessage && <p role="status" className="mb-0 text-sm text-green-800">{rescanMessage}</p>}
+                                {rescanError && <p role="alert" className="mb-0 text-sm text-red-700">{rescanError}</p>}
                             </section>
                         )}
 
@@ -636,7 +723,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                         setIsEditing(true);
                                     }
                                 }}
-                                disabled={isSaving || isReprocessing}
+                                disabled={isSaving || isReprocessing || isRescanning}
                                 className="event-edit-save-button btn btn-outline disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isEditing ? 'Salva modifiche' : 'Modifica dettagli'}
@@ -645,7 +732,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                 <button
                                     type="button"
                                     onClick={handleAddEvent}
-                                    disabled={isSaving || isReprocessing || !!duplicate}
+                                    disabled={isSaving || isReprocessing || isRescanning || !!duplicate}
                                     title={duplicate ? 'Questo evento esiste già' : undefined}
                                     className="event-add-button btn btn-primary sm:ml-auto disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -679,6 +766,19 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                 setCropSelection({ area, natural });
                             }}
                         />
+                        {session?.user && cropSource === eventData.originalImageUrl && (
+                            <label className="flex items-start gap-3 text-sm leading-relaxed text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={consentCropLearning}
+                                    onChange={event => setConsentCropLearning(event.target.checked)}
+                                    className="mt-1"
+                                />
+                                <span>
+                                    Acconsento a conservare privatamente, per 180 giorni, l’originale e il ritaglio corretto per aiutare il ritaglio automatico del mio account. Facoltativo: senza consenso il ritaglio funziona come sempre.
+                                </span>
+                            </label>
+                        )}
                         <div className="flex justify-end gap-3">
                             <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>
                             <button type="button" onClick={handleApplyCrop} disabled={!croppedAreaPixels} className="px-4 py-2 bg-red-700 text-sm font-semibold text-white disabled:opacity-50">Applica ritaglio</button>

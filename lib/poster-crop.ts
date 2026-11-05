@@ -6,6 +6,8 @@ export type PosterCropFailure = 'bounds-rejected' | 'verification-rejected' | 'i
 export type PosterCropMethod = 'ai' | 'learned' | 'heuristic';
 /** Final crop, with the box normalized 0..1 to the EXIF-rotated original image. */
 export type PosterCropResult = { box: CropBox; method: PosterCropMethod; verified: boolean };
+export type CropLearningPair = { original: string; corrected: string };
+type PosterCropAnalyzer = (imageUrl: string, prompt: string, examples?: CropLearningPair[]) => Promise<string>;
 
 type Verdict = 'safe' | 'unsafe' | 'unavailable';
 
@@ -16,13 +18,14 @@ function serviceReason(error: unknown): PosterCropFailure {
 
 export async function createVerifiedPosterCrop(
   file: File,
-  analyze: (imageUrl: string, prompt: string) => Promise<string>,
+  analyze: PosterCropAnalyzer,
   event: { title: string; date: string },
   options: {
     onFailure?: (reason: PosterCropFailure) => void;
     onSuccess?: (result: PosterCropResult) => void;
     /** Manual crops previously made on screenshots of the same pixel size. */
     learned?: LearnedCropProfile | null;
+    learningExamples?: CropLearningPair[];
   } = {},
 ): Promise<Buffer | undefined> {
   const fail = (reason: PosterCropFailure) => {
@@ -125,7 +128,8 @@ Coordinates refer to the entire square image, including white padding, normalize
     First locate any top social story header (progress bar, avatar, account name, playback buttons) or phone screenshot header. Report its bottom edge, including any margin before the poster, as socialHeaderBottom, normalized to the entire square image height; use null when absent. This is the bottom of the social UI, NOT the bottom of the poster.
     Locate any bottom screenshot footer, reply field, reactions or navigation bar. Report its top edge, including any margin after the poster, as socialFooterTop, normalized to the entire square image height; use null when absent. Never include a dark section belonging to the poster itself in these margins.
     Then locate the poster rectangle. Return only a JSON object with fields x, y, width, height, confidence, socialHeaderBottom and socialFooterTop. Coordinates must be normalized to 0..1, not pixels or 0..1000.
-    If there is no safe rectangular crop preserving essential poster content, return {"found":false}.${learnedHint}`);
+    If there is no safe rectangular crop preserving essential poster content, return {"found":false}.${learnedHint}`,
+      options.learningExamples?.slice(0, 3));
     } catch (error) {
       boundsError = error;
     }

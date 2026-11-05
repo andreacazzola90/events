@@ -293,20 +293,15 @@ export default function CreaEvento() {
             imageUrl: crop ? newImageUrl : ev.imageUrl || newImageUrl,
             originalImageUrl: newImageUrl || undefined,
         }));
-
-        // Se ci sono più eventi, controlla se hanno stessa data e orario
-        // In quel caso probabilmente è un duplicato, tieni solo il primo
-        if (eventsWithImage.length > 1) {
-            const firstEvent = eventsWithImage[0];
-            const allSameDateTime = eventsWithImage.every(ev =>
-                ev.date === firstEvent.date && ev.time === firstEvent.time
-            );
-
-            if (allSameDateTime) {
-                console.log('[handleNewEvents] Eventi con stessa data/orario rilevati - probabile duplicato, uso solo il primo');
-                eventsWithImage = [firstEvent];
-            }
-        }
+        const eventIdentities = new Set<string>();
+        eventsWithImage = eventsWithImage.filter(event => {
+            const identity = [event.title, event.date, event.time, event.location]
+                .map(value => value.trim().toLocaleLowerCase('it-IT'))
+                .join('\u0000');
+            if (eventIdentities.has(identity)) return false;
+            eventIdentities.add(identity);
+            return true;
+        });
 
         console.log(`[handleNewEvents] Processati ${eventsWithImage.length} eventi`);
         settledDrafts.current = new WeakSet();
@@ -316,8 +311,12 @@ export default function CreaEvento() {
         setImageUrl(newImageUrl);
         setProcessingSharedImage(false);
         setError(null);
-        if (debug?.pdfTextSummarized) {
-            toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
+        if (debug?.scanStatus === 'partial' && debug?.scanCounts) {
+            const counts = debug.scanCounts;
+            const unscanned = debug.unscannedPages ? ` ${debug.unscannedPages} pagine non lette.` : '';
+            toast.info(`Scansione PDF parziale: ${counts.completed} candidati completati, ${counts.failed} non riusciti, ${counts.pending} in attesa.${unscanned}`, { autoClose: false });
+        } else if (debug?.pdfTextSummarized) {
+            toast.info('Il programma PDF è stato analizzato pagina per pagina. Controlla gli appuntamenti prima di salvare.');
         }
         checkDuplicates(eventsWithImage);
         startAutopilot({ eventCount: eventsWithImage.length, coverMissing: !newImageUrl, needsReview: !!debug?.pdfTextSummarized });
@@ -675,6 +674,7 @@ export default function CreaEvento() {
 
             if (data.events && data.events.length > 0) {
                 if (!scan.isCurrent()) return;
+                const isPdfResult = Boolean(data.previewImageDataUrl);
                 const pdfPreviewUrl = data.previewImageDataUrl
                     ? URL.createObjectURL(await (await fetch(data.previewImageDataUrl)).blob())
                     : null;
@@ -685,22 +685,30 @@ export default function CreaEvento() {
                 // Normalizza i campi estratti
                 const normalized = data.events.map((ev: EventData) => normalizeEventFields({
                     ...ev,
-                    imageUrl: ev.imageUrl || pdfPreviewUrl || undefined,
-                    sourceUrl: ev.sourceUrl || (isPdfLink ? linkUrl : ev.sourceUrl),
+                    imageUrl: ev.imageUrl || (!isPdfResult ? pdfPreviewUrl || data.imageUrl || undefined : undefined),
+                    sourceUrl: ev.sourceUrl || (isPdfResult ? linkUrl : ev.sourceUrl),
                 }));
                 setEvents(normalized);
                 settledDrafts.current = new WeakSet();
                 savedBatch.current = { count: 0, firstSlug: null };
                 setOptimisticEvents(null);
                 setImageUrl(pdfPreviewUrl || data.imageUrl || null);
-                if (data.debug?.pdfTextSummarized) {
-                    toast.info('Il programma PDF è stato riassunto pagina per pagina. Controlla tutti gli appuntamenti estratti prima di salvare.');
+                if (data.debug?.scanStatus === 'partial' && data.debug?.scanCounts) {
+                    const counts = data.debug.scanCounts;
+                    const unscanned = data.debug.unscannedPages ? ` ${data.debug.unscannedPages} pagine non lette.` : '';
+                    toast.info(`Scansione PDF parziale: ${counts.completed} candidati completati, ${counts.failed} non riusciti, ${counts.pending} in attesa.${unscanned}`, { autoClose: false });
+                } else if (data.debug?.pdfTextSummarized) {
+                    toast.info('Il programma PDF è stato analizzato pagina per pagina. Controlla gli appuntamenti prima di salvare.');
                 }
                 setLinkUrl('');
                 checkDuplicates(normalized);
                 startAutopilot({ eventCount: normalized.length, coverMissing: false, needsReview: !!data.debug?.pdfTextSummarized });
             } else {
-                setError('Nessun evento trovato dal link');
+                const counts = data.debug?.scanCounts;
+                const unscanned = data.debug?.unscannedPages ? ` ${data.debug.unscannedPages} pagine non lette.` : '';
+                setError(counts
+                    ? `Nessun candidato completato (${counts.failed || 0} non riusciti, ${counts.pending || 0} in attesa).${unscanned} Riprova con la fonte.`
+                    : 'Nessun evento trovato dal link');
             }
         } catch (error) {
             if (!scan.isCurrent()) return;

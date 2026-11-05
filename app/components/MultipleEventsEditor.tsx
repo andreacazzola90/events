@@ -54,7 +54,7 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
     return (
         <div className="space-y-8">
             {events.map((event, idx) => (
-                <div key={idx} className="border rounded-lg p-4 bg-white shadow">
+                <div key={event.scanEvidence?.candidateId || idx} className="border rounded-lg p-4 bg-white shadow">
                     <EventDisplay eventData={event} imageProcessing={imageProcessing} imageCropStatus={imageCropStatus} imageCropFailure={imageCropFailure} onImageChange={onImageChange ? (image, original) => onImageChange(idx, image, original) : undefined} onPublish={onPublish ? updated => onPublish(idx, updated) : undefined} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} showPublishButton={!isSaving && !imageProcessing} />
                 </div>
             ))}

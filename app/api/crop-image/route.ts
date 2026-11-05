@@ -4,6 +4,9 @@ import sharp from 'sharp';
 import { createVerifiedPosterCrop, type PosterCropFailure, type PosterCropResult } from '../../../lib/poster-crop';
 import { loadLearnedCropProfile } from '../../../lib/scan-learning-store';
 import { createEventImageAnalyzer } from '../../../lib/vision-ai';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../../../pages/api/auth/[...nextauth]';
+import { loadCropLearningExamples } from '../../../lib/scan-learning-store';
 
 export async function POST(request: NextRequest) {
   const headers = { 'Cache-Control': 'no-store' };
@@ -20,25 +23,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Immagine non valida' }, { status: 400, headers });
     }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(35_000)]);
+    const session = await getServerSession(authOptions as never).catch(() => null) as { user?: { id?: string | number } } | null;
+    const userId = Number.parseInt(String(session?.user?.id ?? ''), 10);
+    const accountId = Number.isSafeInteger(userId) && userId > 0 ? userId : undefined;
     let providerStatus = '';
     // No Retry-After wait: a busy provider falls through to the next one or to the local bar detection.
-    const analyze = createEventImageAnalyzer(process.env.AI_VISION_CROP_PROVIDERS || 'groq,nvidia', {
-      budgetMs: 30_000, signal, jsonMode: true, retryRateLimit: false,
-      onProviderFailure: (provider, status) => { providerStatus = `${provider}:${status || 'network'}`; },
-    });
     const learned = await Promise.resolve()
       .then(async () => sharp(Buffer.from(await file.arrayBuffer())).metadata())
       .then(meta => {
         const rotated = (meta.orientation || 1) >= 5;
         const width = (rotated ? meta.height : meta.width) || 0;
         const height = (rotated ? meta.width : meta.height) || 0;
-        return width && height ? loadLearnedCropProfile(width, height) : null;
+        if (!width || !height || !accountId) return { profile: null, examples: [] };
+        return Promise.all([
+          loadLearnedCropProfile(width, height, accountId),
+          loadCropLearningExamples(width, height, accountId),
+        ]).then(([profile, examples]) => ({ profile, examples }));
       })
-      .catch(() => null);
+      .catch(() => ({ profile: null, examples: [] }));
+    const analyze = createEventImageAnalyzer(process.env.AI_VISION_CROP_PROVIDERS || 'groq,nvidia', {
+      budgetMs: 30_000, signal, jsonMode: true, retryRateLimit: false,
+      onProviderFailure: (provider, status) => { providerStatus = `${provider}:${status || 'network'}`; },
+    });
     let reason: PosterCropFailure = 'service-unavailable';
     let result: PosterCropResult | undefined;
     const crop = await createVerifiedPosterCrop(file, analyze, { title: '', date: '' }, {
-      learned,
+      learned: learned.profile,
+      learningExamples: learned.examples,
       onFailure: failure => { reason = failure; },
       onSuccess: success => { result = success; },
     });

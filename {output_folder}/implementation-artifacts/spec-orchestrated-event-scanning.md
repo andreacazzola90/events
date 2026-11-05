@@ -2,7 +2,8 @@
 title: 'Scansione orchestrata e riscansione delle bozze evento'
 type: 'feature'
 created: '2026-10-14'
-status: 'draft'
+status: 'done'
+baseline_commit: '7c06d782c30699953d5a69793da982ae418ecf28'
 context: []
 ---
 
@@ -37,44 +38,121 @@ context: []
 
 </frozen-after-approval>
 
+## Estensione approvata — 2026-11-05
+
+Migliorare i ritagli usando coppie originale/correzione manuale conservate privatamente solo dopo consenso esplicito, separate per account. Riutilizzare al massimo tre coppie recenti dello stesso account e dimensione sorgente nella richiesta di analisi esistente: recupero di esempi, non fine-tuning né nuove chiamate/provider. Cancellare dopo 180 giorni. Guest e utenti senza consenso mantengono il flusso attuale senza salvare immagini.
+
 ## Code Map
 
-- `lib/pdf-event-processing.ts`, `lib/pdf-text.ts`: acquisizione PDF, perdita di contesto e titoli euristici.
-- `lib/event-processor.ts`, `lib/google-search.ts`, `lib/event-image.ts`: scansione link, arricchimento e immagini riutilizzabili.
-- `app/api/process-pdf/route.ts`, `app/api/process-link/route.ts`: ingressi di scansione; timeout e controlli URL da rispettare.
-- `app/api/ai/reprocess-event/route.ts`: rielaborazione senza acquisizione; deve restare distinta dalla riscansione.
-- `app/components/EventDisplay.tsx`, `app/components/MultipleEventsEditor.tsx`, `app/crea/page.tsx`: revisione, stato bozza e pubblicazione.
-- `app/components/ImageUploader.tsx`, `app/types/event.ts`: documento originale e contratto evento.
+- `lib/pdf-event-processing.ts`, `lib/pdf-text.ts`, `app/api/process-pdf/route.ts`: PDF oggi riassunto prima di una singola estrazione Groq.
+- `lib/event-processor.ts`, `lib/google-search.ts`, `lib/event-image.ts`, `app/api/process-link/route.ts`: scansione link e selezione immagini.
+- `app/api/ai/reprocess-event/route.ts`, `app/components/EventDisplay.tsx`, `app/components/MultipleEventsEditor.tsx`, `app/crea/page.tsx`: rielaborazione e bozze; manca la riscansione.
+- `lib/poster-crop.ts`, `lib/poster-crop-learning.ts`, `lib/scan-learning-store.ts`, `app/api/crop-image/route.ts`, `app/api/scan-learning/crop-sample/route.ts`: crop verificato e apprendimento delle coordinate.
+- `app/components/EventImageCropper.tsx`, `app/lib/supabase.ts`, `prisma/schema.prisma`, `prisma/migrations/`, `vercel.json`: editor crop, storage server-only, metadati e cron.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `lib/pdf-text.ts`, `lib/pdf-event-processing.ts` -- mantenere pagine complete e riferimenti dei candidati; separare censimento e dettaglio senza usare la sintesi globale come evidenza unica.
-- [ ] `lib/event-scan-pipeline.ts` -- introdurre orchestratore testabile, ruoli specializzati, concorrenza limitata, conteggi e risultati parziali espliciti; riutilizzare ricerca e immagini verificate.
-- [ ] `lib/event-processor.ts`, `app/api/process-pdf/route.ts`, `app/api/process-link/route.ts`, `app/types/event.ts` -- collegare pipeline e contratti mantenendo compatibilita e budget; dividere in batch quando necessario.
-- [ ] `app/api/ai/rescan-event/route.ts` -- rileggere una fonte pubblica validata, riconoscere il candidato e restituire una proposta senza scritture evento.
-- [ ] `app/components/EventDisplay.tsx`, `app/components/MultipleEventsEditor.tsx`, `app/components/ImageUploader.tsx`, `app/crea/page.tsx` -- aggiungere Riscansione con caricamento ed errori, proteggere modifiche concorrenti, conservare documenti disponibili e sincronizzare bozze multiple e comandi di pubblicazione.
-- [ ] `lib/pdf-text.test.mjs`, `lib/event-scan-pipeline.test.mjs`, `lib/ai-reprocess-api.test.mjs`, `cypress/e2e/` -- coprire perdita contesto, corrispondenze, fallimenti parziali e aggiornamento della sola bozza; riutilizzare test e helper esistenti.
-- [ ] `docs/API_REFERENCE.md` -- documentare nuovi contratti e comportamento in caso di limiti o dati mancanti.
+- [x] `lib/pdf-text.ts`, `lib/pdf-event-processing.ts`, `lib/event-scan-pipeline.ts` -- censire eventi, mantenere riferimenti alle pagine e limitare budget, concorrenza ed errori parziali.
+- [x] `lib/event-processor.ts`, `app/api/process-pdf/route.ts`, `app/api/process-link/route.ts`, `app/types/event.ts` -- integrare la pipeline senza rompere i contratti correnti.
+- [x] `app/api/ai/rescan-event/route.ts`, `app/components/EventDisplay.tsx`, `app/components/MultipleEventsEditor.tsx`, `app/components/ImageUploader.tsx`, `app/crea/page.tsx` -- proporre la riscansione di una fonte validata e proteggere la bozza da risposte obsolete.
+- [x] `lib/poster-crop-learning.ts`, `lib/scan-learning-store.ts`, `app/api/scan-learning/crop-sample/route.ts`, `app/api/crop-image/route.ts`, `lib/vision-ai.ts`, `app/components/EventImageCropper.tsx`, `app/lib/supabase.ts`, `prisma/schema.prisma` -- consenso, esempi privati per account e recupero massimo di tre coppie, mantenendo verifica/fallback.
+- [x] `prisma/migrations/`, `app/api/cron/cleanup-crop-learning/route.ts`, `vercel.json`, `lib/pdf-text.test.mjs`, `lib/event-scan-pipeline.test.mjs`, `lib/scan-learning.test.mjs`, `lib/event-media.test.mjs`, `lib/ai-reprocess-api.test.mjs`, `cypress/e2e/`, `docs/API_REFERENCE.md`, `docs/PROJECT_OVERVIEW.md`, `docs/DEPLOY_RUNBOOK.md` -- scadenza, test e documentazione.
 
 **Acceptance Criteria:**
-- Given un programma con due attivita nella stessa data, when viene scansionato, then restano eventi distinti con dettagli sostenuti dalle rispettive fonti.
-- Given un candidato oltre i primi 3.000 caratteri, when viene estratto, then il suo testo pertinente raggiunge il ruolo di dettaglio senza la perdita osservata nel PDF FESAV.
-- Given piu bozze, when una viene riscansionata, then soltanto quella viene aggiornata e la successiva pubblicazione usa i dati revisionati.
-- Given attivita AI o web fallite, when l'orchestratore conclude, then conteggi e stato distinguono completamento, errori e lavoro pendente.
-- Given una riscansione, when arriva il risultato, then nessun evento viene creato o pubblicato senza comando esplicito dell'utente.
+- Given due attività nella stessa data, when si scansiona il PDF, then restano distinte con prove legate alle rispettive pagine.
+- Given più bozze, when se ne riscansiona una, then solo quella riceve una proposta e la pubblicazione resta esplicita; errori/limiti mostrano stati parziali.
+- Given consenso esplicito, when un account applica un crop manuale, then originale e correzione sono privati e accessibili solo a quell'account.
+- Given esempi recenti dello stesso account e dimensione, when si ritaglia, then al massimo tre coppie aiutano i provider esistenti e il risultato supera la verifica attuale.
+- Given guest, rifiuto del consenso o dati scaduti, when si ritaglia o gira la pulizia, then non si riusano immagini altrui e si cancellano file/righe oltre 180 giorni.
 
 ## Spec Change Log
 
 ## Design Notes
 
-Gli agenti sono ruoli applicativi coordinati, non processi autonomi senza controllo. Le pagine complete restano disponibili; ogni chiamata riceve solo il contesto pertinente al candidato, suddiviso senza perdita quando supera il budget. Titoli euristici e conteggio iniziale sono candidati da verificare, non il numero certo di eventi. Per FESAV verificare anche date e luoghi ereditati da intestazioni condivise. Evitare un nuovo framework agentico quando funzioni tipizzate e dipendenze esistenti bastano.
+Gli agenti sono ruoli coordinati; titoli euristici non sono conteggi certi e le prove restano legate ai candidati. Esempi crop privati, per account e input non fidato; senza consenso/provider si mantiene il flusso corrente.
 
 ## Verification
 
 **Commands:**
-- `node --experimental-strip-types --test lib/pdf-text.test.mjs lib/pdf-url.test.mjs lib/event-scan-pipeline.test.mjs lib/ai-reprocess-api.test.mjs` -- regressioni della pipeline e API superate con servizi esterni simulati.
-- `npx tsc --noEmit --incremental false` -- nessun nuovo errore TypeScript.
-- `npx eslint <file modificati>` -- nessun nuovo errore nei file coinvolti.
+- `node --experimental-strip-types --test lib/pdf-text.test.mjs lib/pdf-url.test.mjs lib/event-scan-pipeline.test.mjs lib/scan-learning.test.mjs lib/event-media.test.mjs lib/ai-reprocess-api.test.mjs lib/pdf-download.test.mjs lib/http-scraper.test.mjs lib/daily-cron.test.mjs lib/event-rescan.test.mjs` -- regressioni con provider simulati.
+- `npx prisma validate && npx prisma generate`; `npx tsc --noEmit --incremental false`; `npx eslint <file modificati>` -- schema, tipi e lint.
+- `npx cypress run --config trashAssetsBeforeRuns=false --spec cypress/e2e/orchestrated-event-scanning.cy.ts` -- flussi browser di riscansione e consenso.
 
-**Browser:** Verificare su desktop e mobile Riscansione, stato occupato, errori, protezione modifiche concorrenti e aggiornamento di una bozza multipla. Sul PDF FESAV confrontare alcuni eventi distribuiti tra inizio, centro e fine con il testo originale; non pubblicare dati di prova. La verifica live AI dipende da disponibilita e quote dei provider, da dichiarare se impediscono la prova.
+**Manual checks:** Desktop/mobile, bucket Supabase privato attivo e isolamento su account reali, pulizia 180 giorni e confronto eventi FESAV su pagine distribuite non verificati in questa sessione; i test automatici coprono bozza multipla, consenso, isolamento e retention con provider/storage simulati. Nessuna pubblicazione di prova.
+
+## Suggested Review Order
+
+**PDF e link: acquisizione, prove e limiti**
+
+- Inizia dal confine API che distingue upload PDF e URL pubblici.
+  [`process-pdf/route.ts:8`](../../app/api/process-pdf/route.ts#L8)
+
+- La pipeline conserva prove per pagina e rende visibili i risultati parziali.
+  [`pdf-event-processing.ts:25`](../../lib/pdf-event-processing.ts#L25)
+
+- Censimento e batch limitati impediscono di dichiarare completa una scansione incompleta.
+  [`event-scan-pipeline.ts:119`](../../lib/event-scan-pipeline.ts#L119)
+
+- Download e redirect sono limitati prima di passare il contenuto al parser.
+  [`pdf-download.ts:6`](../../lib/pdf-download.ts#L6)
+
+- Il link scanner riutilizza le fonti esistenti e blocca navigazioni non validate.
+  [`process-link/route.ts:8`](../../app/api/process-link/route.ts#L8)
+
+**Riscansione delle bozze**
+
+- L’endpoint rilegge una fonte pubblica e restituisce solo una proposta prudente.
+  [`rescan-event/route.ts:38`](../../app/api/ai/rescan-event/route.ts#L38)
+
+- Il matching rifiuta i risultati mancanti o ambigui invece di scegliere arbitrariamente.
+  [`event-rescan.ts:53`](../../lib/event-rescan.ts#L53)
+
+- Il client scarta risposte obsolete e richiede applicazione esplicita alla bozza.
+  [`EventDisplay.tsx:323`](../../app/components/EventDisplay.tsx#L323)
+
+- Chiavi stabili preservano lo stato dell’editor quando cambia il draft selezionato.
+  [`MultipleEventsEditor.tsx:57`](../../app/components/MultipleEventsEditor.tsx#L57)
+
+**Ritagli privati con consenso**
+
+- Autenticazione, consenso e validazione precedono qualunque salvataggio.
+  [`crop-sample/route.ts:30`](../../app/api/scan-learning/crop-sample/route.ts#L30)
+
+- Recupero per account/dimensione e retention limitano l’uso degli esempi.
+  [`scan-learning-store.ts:72`](../../lib/scan-learning-store.ts#L72)
+
+- Gli oggetti sono conservati nel bucket privato, senza URL pubblici.
+  [`supabase.ts:156`](../../app/lib/supabase.ts#L156)
+
+- Al massimo tre coppie vengono aggiunte alla richiesta vision già esistente.
+  [`vision-ai.ts:87`](../../lib/vision-ai.ts#L87)
+
+- I crop appresi restano soggetti alla verifica visiva e al fallback esistenti.
+  [`poster-crop.ts:19`](../../lib/poster-crop.ts#L19)
+
+- Lo schema lega i campioni all’account e consente la cancellazione correlata.
+  [`schema.prisma:416`](../../prisma/schema.prisma#L416)
+
+- La pulizia giornaliera elimina gli oggetti scaduti prima delle righe.
+  [`cleanup-crop-learning/route.ts:7`](../../app/api/cron/cleanup-crop-learning/route.ts#L7)
+
+**Verifica e operatività**
+
+- I test browser coprono bozze multiple, risposte obsolete e consenso facoltativo.
+  [`orchestrated-event-scanning.cy.ts:3`](../../cypress/e2e/orchestrated-event-scanning.cy.ts#L3)
+
+- I test unitari esercitano prove pagina, limiti e scansioni parziali.
+  [`event-scan-pipeline.test.mjs:44`](../../lib/event-scan-pipeline.test.mjs#L44)
+
+- I casi missing/ambiguous proteggono la bozza da aggiornamenti non sicuri.
+  [`event-rescan.test.mjs:18`](../../lib/event-rescan.test.mjs#L18)
+
+- I test di account e dimensione verificano il limite di tre coppie.
+  [`scan-learning.test.mjs:207`](../../lib/scan-learning.test.mjs#L207)
+
+- Le istruzioni distinguono setup richiesto e verifiche ancora da fare dopo il deploy.
+  [`DEPLOY_RUNBOOK.md:164`](../../docs/DEPLOY_RUNBOOK.md#L164)
+
+- La reference documenta i contratti PDF, riscansione e consenso crop.
+  [`API_REFERENCE.md:388`](../../docs/API_REFERENCE.md#L388)

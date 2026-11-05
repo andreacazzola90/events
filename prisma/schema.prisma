@@ -104,6 +104,7 @@ model User {
   updatedAt       DateTime   @updatedAt
   createdEvents   Event[]
   favorites       Favorite[]
+  posterCropPairs PosterCropLearningPair[]
   googleCalendar  GoogleCalendarConnection?
   calendarDeliveries GoogleCalendarDelivery[]
   telegramConnection TelegramConnection?
@@ -410,4 +411,23 @@ model PosterCropSample {
   createdAt DateTime @default(now())
 
   @@index([width, height, createdAt])
+}
+
+model PosterCropLearningPair {
+  id            String   @id @default(cuid())
+  userId        Int
+  width         Int
+  height        Int
+  x             Float
+  y             Float
+  w             Float
+  h             Float
+  originalPath  String   @unique
+  correctedPath String   @unique
+  consentedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  owner         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, width, height, createdAt])
+  @@index([createdAt])
 }

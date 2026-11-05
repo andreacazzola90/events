@@ -381,18 +381,33 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - Evidence must associate the proposed value with the event within one sentence or consecutive lines of that sentence. Sources mixing editions without an extracted date, multiple candidate times, negated/unconfirmed times and conditional free-entry prices are rejected conservatively. Price evidence preserves decimal separators and must not borrow a bare number from a date. Accepted local dates are normalized to ISO. These heuristics deliberately trade some enrichment coverage for fewer unsupported overwrites; they do not guarantee semantic interpretation of every source.
 - Responses preserve `events`, `debug.ocrRaw`, `debug.groqRaw` and `debug.googleRaw`. New `debug.scanAgents` reports contain role, `version: "evidence-v1"`, status (`reviewed`, `skipped`, `failed`), accepted corrections with citations and rejected proposals with reasons. `reviewed` means the agent returned a usable proposal list, not that all event details were independently verified. With no search configuration, `verification` is `{ "status": "skipped", "reason": "not-configured" }` instead of an array. Link scans also include per-event `completion` reports.
 - On images, a URL printed on the flyer remains authoritative. When no source URL exists, search can supply only a matching HTTP(S) result after review; unrelated first results and secondary unverified URL searches are not used. Image cropping is no longer part of this endpoint.
-- Reports are returned for inspection, not stored as training data. This release does not implement persistent learning, automatic prompt updates or model fine-tuning. Such changes require a separately reviewed correction store and evaluation set. No additional provider, paid service or database migration is required; cron consumers of the link scanner inherit the same conservative checks.
+- PDF scans retain candidate/page evidence in the draft. They inventory up to 100 candidates, extract at most 48 in batches of eight with concurrency capped at three, and report completed, failed, pending and unscanned pages rather than treating a partial scan as complete. PDF upload size is limited to 10 MiB; URL downloads enforce public-address/redirect validation, response limits and timeouts. Link scans keep the existing completion and evidence-based verification reports.
+- `POST /api/ai/rescan-event` accepts `{ "event": <draft> }` only when the draft has a public `sourceUrl`. It rereads a validated public PDF or page and returns a proposal only for a safe, unambiguous event match. The response is a draft proposal; the editor rejects stale responses and the user must apply edits and publish explicitly. Missing/ambiguous matches leave the draft unchanged.
+- Scan reports/corrections are not used for model training or fine-tuning. Crop learning is a separate, optional consent-based feature described below; it uses only an existing vision analysis request.
+
+### POST /api/process-pdf
+- File: [app/api/process-pdf/route.ts](../app/api/process-pdf/route.ts)
+- Purpose: extract event drafts from an uploaded PDF or a public PDF URL. JSON input is `{ "url": "https://example.com/program.pdf" }`; multipart input uses `document`.
+- Public URL input is revalidated on redirects and downloaded with bounded size/time. Uploaded documents are limited to 10 MiB and are not persisted.
+- The response includes `events` plus `debug.scanStatus` (`completed`, `partial` or `failed`), `debug.scanCounts` (`candidates`, `completed`, `failed`, `pending`) and `debug.unscannedPages`. Each event can include `scanEvidence` with candidate ID, page numbers and a literal supporting quote. Candidates not completed within bounded batches remain pending; capped/unread pages force a partial status rather than appearing complete.
+
+### POST /api/ai/rescan-event
+- File: [app/api/ai/rescan-event/route.ts](../app/api/ai/rescan-event/route.ts)
+- Input JSON: `{ "event": <current draft> }`; the draft must include a public `sourceUrl`. Only supported draft text fields and bounded page evidence are read.
+- Revalidates the public link/PDF and redirects, reruns the existing source extraction, then matches the selected event conservatively. Returns `{ status: "matched", proposal, matchedEvent, scan? }`; missing or ambiguous matches return an error without changing the draft. The client protects against a response for a stale draft.
+- This endpoint only returns proposed editable fields. It does not update the database or publish an event; users review/apply the proposal and publish through the normal flow.
 
 ### POST /api/crop-image
 - File: [app/api/crop-image/route.ts](../app/api/crop-image/route.ts)
 - Purpose: best-effort verified poster crop for a draft, before publishing.
 - Input: multipart `image`, supported JPEG/PNG/WebP with matching MIME/signature, at most 4 MiB.
 - Responses: `200 image/jpeg` for an accepted crop, with `X-Image-Crop-Box` (`x,y,width,height` normalized 0..1 to the EXIF-rotated original) and `X-Image-Crop-Method` (`ai`, `learned` or `heuristic`); `204` for unavailable, uncertain or failed analysis; `400` invalid image; `413` oversized image. All responses are `no-store`.
-- Crop order: (1) a consistent learned crop for screenshots with the same pixel size, if the verifier approves it; (2) vision bounds, snapped to the plain screen bars detected locally in the pixels and verified; (3) local bar detection alone when the poster sits between unambiguous uniform bars. Without a verifier answer, a crop is accepted only when the local pixel analysis independently agrees.
+- Crop order: (1) a same-account learned crop for a source with the same pixel dimensions, if the verifier approves it; (2) vision bounds, snapped to the plain screen bars detected locally in the pixels and verified; (3) local bar detection alone when the poster sits between unambiguous uniform bars. Without a verifier answer, a crop is accepted only when the local pixel analysis independently agrees.
+- For a signed-in account that explicitly consented while making a manual crop, at most three recent original/corrected image pairs for that account and source dimensions are retrieved from private storage. They are passed only into the existing vision analysis request; guest/opt-out requests retrieve no examples. A returned crop still passes the existing verification and fallback rules.
 - Screenshot crops are refined on all four edges before JPEG encoding and visual verification, including learned crops. Only uniform neutral outer bands with a sharp content boundary and a maximum depth of 20% per edge are removed; ambiguous borders and nonuniform poster details are retained. The returned crop box includes all horizontal and vertical refinement offsets.
 - Uses `AI_VISION_CROP_PROVIDERS` (default `groq,nvidia`), a shared 30-second AI budget and 35-second server cancellation. Client cancellation is 55 seconds and also occurs when a draft is replaced or closed. Rate-limited providers are not retried: the next provider or the local detection is used instead.
 - A fallback response includes `X-Image-Crop-Reason`: `rate-limited`, `timeout`, `not-configured`, `bounds-rejected`, `verification-rejected`, `image-invalid` or `service-unavailable`. Provider HTTP failures may include a sanitized `X-Image-Crop-Service-Status`. These contain no credentials or image content; the browser shows the reason and offers manual cropping or web-image search.
-- Does not create events, write to the database, upload to storage or schedule a background job. The browser applies the returned blob to the current draft only, preserves manual cover edits, and keeps the original available only as a temporary crop source. Manual cropping is available after both successful and failed automatic crops.
+- Does not create events or store the current image. The browser applies the returned blob to the current draft only, preserves manual cover edits, and keeps the original available only as a temporary crop source. Manual cropping is available after both successful and failed automatic crops. If the user is signed in and has opted in, the separate sample endpoint may store a private original/corrected pair.
 - The original image is sent to the configured vision provider. This endpoint does not guarantee anonymity or bypass provider quotas.
 
 ### POST /api/poster-sections
@@ -405,14 +420,15 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 
 ### POST /api/scan-learning/crop-sample
 - File: [app/api/scan-learning/crop-sample/route.ts](../app/api/scan-learning/crop-sample/route.ts)
-- Purpose: records a manual crop made on an original draft image, so screenshots of the same size are cropped alike in the future.
-- Input: JSON `{ width, height, x, y, w, h }` (natural pixel size and box normalized 0..1). Same-origin only, 20 requests/hour per IP, `204` on success, `400` for invalid boxes.
-- Needs the `PosterCropSample` table from migration `20261030160000_add_scan_learning`; without it the call is a no-op.
+- Purpose: optionally saves an explicitly consented manual crop as a private original/corrected pair for the signed-in account.
+- Input: same-origin multipart `original`, `corrected`, `sample` (JSON `{ width, height, x, y, w, h }`, dimensions in oriented natural pixels, box normalized 0..1), and `consent=true`. Requires authentication; rate-limited to 20 requests/hour per account/IP. `204` on success or absent consent, `401` without a session, `400` for invalid images/boxes and `503` if private storage fails.
+- Pairs are kept in the private Supabase `crop-learning` bucket, scoped to the account, and removed after 180 days. Only the three most recent pairs for the same account and source dimensions can be reused. No consent means no image samples are uploaded.
 
 ### Scan learning
 - `POST /api/process-image` adds `scanFeedbackToken` (HMAC-signed AI output, 7-day TTL, key `SCAN_LEARNING_SECRET_KEY` or `NEXTAUTH_SECRET_KEY`) to each draft and includes up to 8 relevant past corrections in the extraction prompt.
 - `POST /api/events` compares the token with the published fields after the response; title, location and organizer corrections are stored only when grounded in the scanned text, and date/time only when well-formed (`ScanCorrection` table).
 - `PUT /api/events/[id]` learns only with a valid `scanFeedbackToken` whose signed title, date, time, location, organizer, category and price match the actual stored pre-edit fields. Lesson context comes exclusively from the verified token, never from request or stored `rawText`. Missing, forged, expired or mismatched tokens skip learning without rejecting the edit; learning failures do not fail a committed edit. Arbitrary saved edits without signed scan evidence do not learn automatically. General extraction guidance and separately authorized maintenance lessons are independent of this path.
+- Crop-image examples are separate from text corrections: only a signed-in user who explicitly opts in can store manual original/corrected crop pairs. They are private, account-isolated, dimension-matched, limited to three recent examples in the existing vision request, and deleted after 180 days.
 
 ### POST /api/event-cover-search
 - File: [app/api/event-cover-search/route.ts](../app/api/event-cover-search/route.ts)
@@ -490,9 +506,15 @@ curl -X POST "http://localhost:3000/api/process-link" \
 ### GET /api/cron/daily
 - File: [app/api/cron/daily/route.ts](../app/api/cron/daily/route.ts)
 - The only Vercel cron (`0 18 * * *` in [vercel.json](../vercel.json)), compatible with the Hobby plan's one-run-per-day limit.
-- Calls in parallel, forwarding the same bearer token: `scrape-visitpedemontana`, `sync-google-calendar`, `generate-instagram-story`, `scan-instagram` (each runs in its own function with its own `maxDuration`).
+- Calls in parallel, forwarding the same bearer token: `scrape-visitpedemontana`, `sync-google-calendar`, `generate-instagram-story`, `scan-instagram`, and `cleanup-crop-learning` (each runs in its own function with its own `maxDuration`).
 - Accepts `CRON_SECRET` or `CRON_SECRET_KEY`; 503 when neither is configured, 401 for an invalid token.
 - Returns `{ status: "success" | "partial-error", failed: [...], jobs: [{ key, ok, httpStatus, data }] }`; a failing job does not stop the others.
+
+### GET /api/cron/cleanup-crop-learning
+- File: [app/api/cron/cleanup-crop-learning/route.ts](../app/api/cron/cleanup-crop-learning/route.ts)
+- Requires the same `CRON_SECRET` or legacy `CRON_SECRET_KEY` bearer authorization as the dispatcher.
+- Removes expired private crop image pairs before deleting their database rows, retaining failed storage deletions for a later retry; also expires legacy coordinate-only crop samples.
+- Scheduled through `/api/cron/daily`, so the deployment retains one Vercel cron entry.
 
 ### GET /api/cron/scrape-visitpedemontana
 - File: [app/api/cron/scrape-visitpedemontana/route.ts](../app/api/cron/scrape-visitpedemontana/route.ts)

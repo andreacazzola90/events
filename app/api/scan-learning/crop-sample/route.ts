@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
+import { MAX_EVENT_MEDIA_BYTES, validateEventMediaFile } from '../../../../lib/event-media';
 import { parseCropSample } from '../../../../lib/poster-crop-learning';
-import { recordCropSample } from '../../../../lib/scan-learning-store';
+import { recordCropLearningPair } from '../../../../lib/scan-learning-store';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
+const MAX_PAIR_REQUEST_BYTES = 14 * 1024 * 1024;
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
 function isRateLimited(key: string): boolean {
@@ -20,19 +23,58 @@ function isRateLimited(key: string): boolean {
   return entry.count > RATE_LIMIT_MAX_REQUESTS;
 }
 
-/** Stores a manual crop made on an original screenshot, so future screenshots of the same size crop alike. */
-export async function POST(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  if (origin && origin !== request.nextUrl.origin) return new NextResponse(null, { status: 403 });
-  const client = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  if (isRateLimited(client)) return new NextResponse(null, { status: 429 });
-  if (Number(request.headers.get('content-length')) > 1024) return new NextResponse(null, { status: 413 });
+function orientedSize(width: number, height: number, orientation = 1) {
+  return orientation >= 5 && orientation <= 8 ? { width: height, height: width } : { width, height };
+}
 
-  const sample = parseCropSample(await request.json().catch(() => null));
-  if (!sample) return NextResponse.json({ error: 'Ritaglio non valido' }, { status: 400 });
+export async function POST(request: NextRequest) {
+  const headers = { 'Cache-Control': 'no-store' };
+  const origin = request.headers.get('origin');
+  if (origin && origin !== request.nextUrl.origin) return new NextResponse(null, { status: 403, headers });
+  if (Number(request.headers.get('content-length')) > MAX_PAIR_REQUEST_BYTES) {
+    return NextResponse.json({ error: 'Le immagini superano il limite consentito.' }, { status: 413, headers });
+  }
 
   const session = await getServerSession(authOptions as never).catch(() => null) as { user?: { id?: string | number } } | null;
   const userId = Number.parseInt(String(session?.user?.id ?? ''), 10);
-  await recordCropSample(sample, Number.isNaN(userId) ? null : userId);
-  return new NextResponse(null, { status: 204 });
+  if (!Number.isSafeInteger(userId) || userId < 1) return new NextResponse(null, { status: 401, headers });
+
+  const client = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  if (isRateLimited(`${userId}:${client}`)) return new NextResponse(null, { status: 429, headers });
+
+  const form = await request.formData().catch(() => null);
+  if (!form || form.get('consent') !== 'true') return new NextResponse(null, { status: 204, headers });
+  const original = form.get('original');
+  const corrected = form.get('corrected');
+  let sample: ReturnType<typeof parseCropSample> = null;
+  try {
+    sample = parseCropSample(form.get('sample') ? JSON.parse(String(form.get('sample'))) : null);
+  } catch {
+    return NextResponse.json({ error: 'Esempio di ritaglio non valido.' }, { status: 400, headers });
+  }
+  if (!(original instanceof File) || !(corrected instanceof File) || !sample ||
+      original.size > 10 * 1024 * 1024 || corrected.size > MAX_EVENT_MEDIA_BYTES) {
+    return NextResponse.json({ error: 'Esempio di ritaglio non valido.' }, { status: 400, headers });
+  }
+
+  const originalBytes = new Uint8Array(await original.arrayBuffer());
+  const correctedBytes = new Uint8Array(await corrected.arrayBuffer());
+  const originalMedia = validateEventMediaFile(original.name, original.type, originalBytes, original.size);
+  const correctedMedia = validateEventMediaFile(corrected.name, corrected.type, correctedBytes, corrected.size);
+  if (!originalMedia.ok || originalMedia.kind !== 'image' || !correctedMedia.ok || correctedMedia.kind !== 'image') {
+    return NextResponse.json({ error: 'Immagini di ritaglio non valide.' }, { status: 400, headers });
+  }
+
+  try {
+    const metadata = await sharp(Buffer.from(originalBytes)).metadata();
+    const size = orientedSize(metadata.width || 0, metadata.height || 0, metadata.orientation);
+    if (Math.abs(size.width - sample.width) > 1 || Math.abs(size.height - sample.height) > 1) {
+      return NextResponse.json({ error: 'Le dimensioni del ritaglio non corrispondono alla fonte.' }, { status: 400, headers });
+    }
+    const saved = await recordCropLearningPair(Buffer.from(originalBytes), Buffer.from(correctedBytes), sample, userId);
+    if (!saved) return NextResponse.json({ error: 'Non è stato possibile conservare l’esempio in modo privato.' }, { status: 503, headers });
+    return new NextResponse(null, { status: 204, headers });
+  } catch {
+    return NextResponse.json({ error: 'Non è stato possibile validare o conservare l’esempio.' }, { status: 503, headers });
+  }
 }

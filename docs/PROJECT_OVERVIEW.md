@@ -38,7 +38,7 @@ The platform includes:
 2. Frontend calls POST /api/process-image.
 3. OCR extracts text. In parallel, visual analysis identifies the full flyer inside the uploaded image; confident bounds produce an automatically cropped cover. The original remains available for free manual cropping during draft review, including after AI text reprocessing.
 4. Groq parses text into one or multiple events; relevant corrections from past scans are added to the prompt.
-5. Frontend confirms/edits data. Manual crops made on the original screenshot are stored as crop samples.
+5. Frontend confirms/edits data. A manual crop is retained as a private original/corrected pair only for signed-in users who explicitly consent. Samples are isolated to the account, matched by source dimensions, limited to three recent pairs in the existing vision analysis request, and deleted after 180 days. Guests and users who opt out keep the existing crop flow without sample storage.
 6. Frontend saves via POST /api/events (JSON or multipart). Differences between the signed AI output and the published event are learned as corrections.
 7. API stores event in DB, uploads image if needed, geocodes location, revalidates caches.
 
@@ -50,7 +50,13 @@ The platform includes:
 4. One or more candidate events are returned.
 5. User confirms and saves via POST /api/events.
 
-### 3.3 Browse and favorites
+### 3.3 Create event from PDF and rescan a draft
+
+- [app/api/process-pdf/route.ts](../app/api/process-pdf/route.ts) extracts up to 50 PDF pages and inventories event candidates with page references. Detail extraction runs in bounded batches/concurrency and returns completion, failure, pending and unscanned-page counts; capped documents are explicitly marked partial. Candidate evidence remains attached to each draft so events on the same day stay distinct.
+- [app/api/ai/rescan-event/route.ts](../app/api/ai/rescan-event/route.ts) rereads only a validated public source URL attached to the selected draft. It returns an editable proposal only for a safe, unambiguous match; uploaded PDFs without a persistent source URL must be provided again. Applying a proposal never publishes automatically, and stale responses are discarded.
+- Public PDF/link fetching validates addresses and redirects and applies size/time limits. The PDF itself is not persisted.
+
+### 3.4 Browse and favorites
 
 - Event list UI uses [app/components/EventList.tsx](../app/components/EventList.tsx).
 - Data source: GET /api/events.
@@ -78,6 +84,11 @@ Defined in [prisma/schema.prisma](../prisma/schema.prisma).
 - origin
 - createdById (nullable FK -> User)
 - createdAt, updatedAt
+
+### PosterCropLearningPair
+- Account-owned crop metadata and paths to the private original/corrected JPEG pair
+- Explicit consent timestamp, source width/height and normalized crop box
+- Samples are matched only within the owning account and same source dimensions; the vision call uses at most three recent pairs, and the cleanup cron removes pairs older than 180 days
 
 ### EventMedia
 - id (PK), eventId (FK -> Event, cascade delete)
@@ -117,6 +128,7 @@ Main pages (App Router):
 Base env reference: [.env.example](../.env.example).
 
 Core variables:
+- POSTGRES_URL (preferred Prisma runtime and CLI connection URL; falls back to POSTGRES_PRISMA_URL, then DATABASE_URL)
 - DATABASE_URL
 - NEXTAUTH_SECRET_KEY
 - NEXTAUTH_URL
@@ -124,9 +136,14 @@ Core variables:
 - GROQ_VISION_MODEL (optional; defaults to `qwen/qwen3.8-27b` for the vision checks)
 - NVIDIA_API_SECRET_KEY and NVIDIA_VISION_MODEL (optional; NVIDIA is first in the default vision order)
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_SECRET_KEY
+- SUPABASE_SECRET_KEY (server-only Supabase Storage key; falls back to SUPABASE_SERVICE_ROLE_SECRET_KEY)
+- SUPABASE_PUBLISHABLE_KEY (public API key for Supabase server auth handlers)
+- SUPABASE_JWKS_URL (user JWT verification; derived from SUPABASE_URL by @supabase/server when omitted)
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
+- Server-side Storage also accepts NEXT_PUBLIC_SUPABASE_URL as a legacy URL fallback; keep secret keys server-only.
+- `@supabase/server` requires Node.js 22 or newer.
+- Private `crop-learning` Supabase Storage bucket (created/kept private by the server on first opted-in sample write)
 - CRON_SECRET_KEY (for protected cron routes)
 - Instagram Graph vars (for story publishing)
 - BRAVE_SEARCH_API_KEY (web search for verification and cover images; Tavily and Google are fallbacks)

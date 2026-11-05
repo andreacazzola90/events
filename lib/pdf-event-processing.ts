@@ -3,15 +3,23 @@ import Groq from 'groq-sdk';
 import type { EventData } from '../app/types/event';
 import { extractTextFromImage } from '../app/lib/ocr';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
-import { extractPdfTitleCandidates, isNonEventPdfTitle, summarizePdfPages } from './pdf-text';
+import { scanPdfEventPages } from './event-scan-pipeline';
+import { MAX_EVENT_PDF_BYTES } from './pdf-download';
 
-export const MAX_EVENT_PDF_BYTES = 10 * 1024 * 1024;
+export { MAX_EVENT_PDF_BYTES } from './pdf-download';
 const MAX_PDF_PAGES = 50;
 
 export interface ProcessedPdfEventDocument {
   events: EventData[];
   previewImageDataUrl: string;
-  debug: { pdfPages: number; textLength: number; pdfTextSummarized: boolean };
+  debug: {
+    pdfPages: number;
+    textLength: number;
+    pdfTextSummarized: boolean;
+    scanStatus: 'completed' | 'partial' | 'failed';
+    scanCounts: { candidates: number; completed: number; failed: number; pending: number };
+    unscannedPages: number;
+  };
 }
 
 export async function processPdfEventDocument(
@@ -29,11 +37,9 @@ export async function processPdfEventDocument(
   }
 
   const parser = new PDFParse({ data: pdfBytes, verbosity: 0 });
-  let rawText = '';
-  let titleCandidates: string[] = [];
+  let pageTexts: string[] = [];
   let pageCount = 0;
   let previewImageDataUrl = '';
-  let pdfTextSummarized = false;
 
   try {
     const info = await parser.getInfo();
@@ -44,18 +50,14 @@ export async function processPdfEventDocument(
       parser.getText({ first: MAX_PDF_PAGES }),
       parser.getScreenshot({ first: 3, desiredWidth: 1600, imageDataUrl: false }),
     ]);
-    const pageTexts = textResult.pages.map(page => page.text || '');
-    const summarizedText = summarizePdfPages(pageTexts, 3000);
-    pdfTextSummarized = summarizedText.summarized || pageCount > MAX_PDF_PAGES;
-    rawText = summarizedText.text;
-    titleCandidates = extractPdfTitleCandidates(pageTexts).filter(title => !isNonEventPdfTitle(title));
+    pageTexts = textResult.pages.map(page => page.text || '');
 
     const firstPageImage = screenshotResult.pages[0]?.data;
     if (!firstPageImage?.length) throw new Error('Impossibile creare l’anteprima del PDF.');
     previewImageDataUrl = `data:image/png;base64,${Buffer.from(firstPageImage).toString('base64')}`;
 
-    if (rawText.length < 10) {
-      const recognizedPages: string[] = [];
+    if (pageTexts.join('\n').trim().length < 10) {
+      const recognizedPages = Array.from({ length: screenshotResult.pages.length }, () => '');
       for (const [index, page] of screenshotResult.pages.entries()) {
         if (!page.data?.length) continue;
         const imageBuffer = new ArrayBuffer(page.data.byteLength);
@@ -64,7 +66,7 @@ export async function processPdfEventDocument(
         try {
           const text = await extractTextFromImageSimple(image);
           if (text.trim().length >= 10) {
-            recognizedPages.push(text.trim());
+            recognizedPages[index] = text.trim();
             continue;
           }
         } catch {
@@ -72,86 +74,50 @@ export async function processPdfEventDocument(
         }
         try {
           const text = await extractTextFromImage(image);
-          if (text.trim().length >= 10) recognizedPages.push(text.trim());
+          if (text.trim().length >= 10) recognizedPages[index] = text.trim();
         } catch {
           // Other pages can still provide usable text.
         }
       }
-      const summarizedOcrText = summarizePdfPages(recognizedPages, 3000);
-      rawText = summarizedOcrText.text;
-      titleCandidates = extractPdfTitleCandidates(recognizedPages).filter(title => !isNonEventPdfTitle(title));
-      pdfTextSummarized = summarizedOcrText.summarized;
+      pageTexts = recognizedPages;
     }
   } finally {
     await parser.destroy();
   }
 
-  if (rawText.length < 10) {
+  if (pageTexts.join('\n').trim().length < 10) {
     throw new Error('Non è stato trovato testo leggibile nel PDF. Prova con un PDF con testo selezionabile o più nitido.');
   }
 
-  const currentDate = new Date().toISOString().slice(0, 10);
   const groq = new Groq({ apiKey: process.env.GROQ_API_SECRET_KEY });
-  const completion = await groq.chat.completions.create({
-    model: 'openai/gpt-oss-20b',
-    messages: [
-      {
-        role: 'system',
-        content: 'Sei un assistente esperto nell’estrazione di eventi da programmi PDF. Non inventare informazioni. Restituisci sempre JSON valido con un array events.',
-      },
-      {
-        role: 'user',
-        content: `Crea un evento distinto per ogni titolo proprio nel seguente indice. Non raggruppare attività diverse della stessa giornata. Copia il titolo nel campo t. Usa il contesto pagina per assegnare data, ora, luogo e organizzatore; se un dato non è chiaro usa non trovato. La data di riferimento è ${currentDate}.
+  const scan = await scanPdfEventPages(pageTexts, async (messages, signal) => {
+    const completion = await groq.chat.completions.create({
+      model: 'openai/gpt-oss-20b',
+      messages,
+      response_format: { type: 'json_object' },
+      temperature: 0,
+      max_tokens: 4000,
+      reasoning_effort: 'low',
+    }, { signal, timeout: 12_000, maxRetries: 0 });
+    if (completion.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete PDF detail response');
+    return completion.choices[0]?.message?.content || '';
+  }, { budgetMs: 30_000 });
 
-      Restituisci solo JSON compatto: {"events":[{"t":"titolo","d":"data YYYY-MM-DD o non trovato","h":"ora HH:MM o non trovato","l":"luogo o non trovato","o":"organizzatore o non trovato","c":"categoria o non trovato","p":"prezzo o non trovato","x":"descrizione breve"}]}.
-
-      TITOLI:
-      ${titleCandidates.map((title, index) => `${index + 1}. ${title}`).join('\n')}
-
-      CONTESTO DELLE PAGINE:
-      ${rawText}`,
-      },
-    ],
-        response_format: { type: 'json_object' },
-        temperature: 0,
-        max_tokens: 5000,
-    reasoning_effort: 'low',
-  });
-
-  const content = completion.choices[0]?.message?.content || '';
-  const first = content.indexOf('{');
-  const last = content.lastIndexOf('}');
-  if (first < 0 || last <= first) throw new Error('L’AI non ha restituito un JSON valido per il PDF.');
-
-  const parsed = JSON.parse(content.slice(first, last + 1)) as Record<string, unknown>;
-  const eventList = Array.isArray(parsed.events) ? parsed.events : [parsed];
-  const events = eventList.slice(0, 100).flatMap((item): EventData[] => {
-    if (!item || typeof item !== 'object') return [];
-    const event = item as Record<string, unknown>;
-    const title = typeof (event.title ?? event.t) === 'string' ? String(event.title ?? event.t).trim().slice(0, 160) : '';
-    if (!title || isNonEventPdfTitle(title)) return [];
-    const textValue = (value: unknown, fallback: string, max = 500) =>
-      typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : fallback;
-
-    return [{
-      title,
-      description: textValue(event.description ?? event.x, 'non trovato', 5000),
-      date: textValue(event.date ?? event.d, 'non trovato', 40),
-      time: textValue(event.time ?? event.h, 'non trovato', 40),
-      location: textValue(event.location ?? event.l, 'non trovato', 300),
-      organizer: textValue(event.organizer ?? event.o, 'non trovato', 200),
-      category: textValue(event.category ?? event.c, 'non trovato', 100),
-      price: textValue(event.price ?? event.p, 'non definito, ma speriamo gratis', 100),
-      rawText,
-      sourceUrl,
-    }];
-  });
-
-  if (!events.length) throw new Error('Nessun evento trovato nel PDF.');
+  const totalTextLength = pageTexts.reduce((total, page) => total + page.length, 0);
+  const unscannedPages = Math.max(0, pageCount - pageTexts.length);
+  const scanStatus = unscannedPages > 0 && scan.status === 'completed' ? 'partial' : scan.status;
+  const pdfTextSummarized = totalTextLength > 3_000 || unscannedPages > 0 || scan.counts.pending > 0;
 
   return {
-    events,
+    events: scan.events.map(event => ({ ...event, sourceUrl })),
     previewImageDataUrl,
-    debug: { pdfPages: pageCount, textLength: rawText.length, pdfTextSummarized },
+    debug: {
+      pdfPages: pageCount,
+      textLength: totalTextLength,
+      pdfTextSummarized,
+      scanStatus,
+      scanCounts: scan.counts,
+      unscannedPages,
+    },
   };
 }

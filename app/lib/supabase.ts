@@ -14,8 +14,8 @@ export function getSupabaseClient() {
 
 function createSupabaseClient(signal?: AbortSignal) {
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_SECRET_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_SECRET_KEY;
   if (!supabaseUrl || !supabaseServiceKey) {
     throw new Error('Missing Supabase environment variables');
   }
@@ -150,6 +150,60 @@ export async function deleteEventMediaFromSupabase(storagePath: string, options:
   options.signal?.throwIfAborted();
   const client = options.signal ? createSupabaseClient(options.signal) : getSupabaseClient();
   const { error } = await client.storage.from("events").remove([storagePath]);
+  if (error) throw error;
+}
+
+export async function uploadPrivateCropLearningPair(
+  userId: number,
+  original: Buffer,
+  corrected: Buffer,
+  sample: { width: number; height: number; x: number; y: number; w: number; h: number },
+) {
+  const client = getSupabaseClient();
+  const bucketName = 'crop-learning';
+  const bucket = await client.storage.getBucket(bucketName);
+  if (bucket.data?.public) {
+    const updated = await client.storage.updateBucket(bucketName, { public: false });
+    if (updated.error) throw updated.error;
+  } else if (!bucket.data) {
+    const created = await client.storage.createBucket(bucketName, {
+      public: false,
+      fileSizeLimit: '8MB',
+      allowedMimeTypes: ['image/jpeg'],
+    });
+    if (created.error) {
+      const existing = await client.storage.getBucket(bucketName);
+      if (!existing.data) throw created.error;
+      if (existing.data.public) {
+        const updated = await client.storage.updateBucket(bucketName, { public: false });
+        if (updated.error) throw updated.error;
+      }
+    }
+  }
+
+  const folder = `${userId}/${randomUUID()}`;
+  const originalPath = `${folder}/original.jpg`;
+  const correctedPath = `${folder}/corrected.jpg`;
+  const storage = client.storage.from(bucketName);
+  const originalUpload = await storage.upload(originalPath, original, { contentType: 'image/jpeg', upsert: false });
+  if (originalUpload.error) throw originalUpload.error;
+  const correctedUpload = await storage.upload(correctedPath, corrected, { contentType: 'image/jpeg', upsert: false });
+  if (correctedUpload.error) {
+    await storage.remove([originalPath]);
+    throw correctedUpload.error;
+  }
+  return { originalPath, correctedPath, sample };
+}
+
+export async function downloadPrivateCropLearningImage(path: string): Promise<Buffer> {
+  const { data, error } = await getSupabaseClient().storage.from('crop-learning').download(path);
+  if (error || !data) throw error ?? new Error('Crop learning object unavailable');
+  return Buffer.from(await data.arrayBuffer());
+}
+
+export async function deletePrivateCropLearningImages(paths: string[]): Promise<void> {
+  if (!paths.length) return;
+  const { error } = await getSupabaseClient().storage.from('crop-learning').remove(paths);
   if (error) throw error;
 }
 

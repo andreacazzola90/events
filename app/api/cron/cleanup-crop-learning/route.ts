@@ -20,6 +20,9 @@ export async function GET(request: NextRequest) {
   }
   try {
     const deleted = await deleteExpiredCropLearningSamples();
+    if (deleted.remainingPairs) {
+      return NextResponse.json({ ok: false, deleted }, { status: 503 });
+    }
     return NextResponse.json({ ok: true, deleted });
   } catch (error) {
     console.error('[cron/cleanup-crop-learning] Cleanup failed:', error instanceof Error ? error.message : 'unknown');

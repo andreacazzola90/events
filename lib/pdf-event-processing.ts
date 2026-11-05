@@ -104,9 +104,10 @@ export async function processPdfEventDocument(
   }, { budgetMs: 30_000 });
 
   const totalTextLength = pageTexts.reduce((total, page) => total + page.length, 0);
-  const unscannedPages = Math.max(0, pageCount - pageTexts.length);
+  const unscannedPages = Math.max(0, pageCount - pageTexts.length) +
+    pageTexts.filter(page => page.trim().length < 10).length;
   const scanStatus = unscannedPages > 0 && scan.status === 'completed' ? 'partial' : scan.status;
-  const pdfTextSummarized = totalTextLength > 3_000 || unscannedPages > 0 || scan.counts.pending > 0;
+  const pdfTextSummarized = totalTextLength > 3_000 || unscannedPages > 0 || scanStatus !== 'completed';
 
   return {
     events: scan.events.map(event => ({ ...event, sourceUrl })),

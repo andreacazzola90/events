@@ -2,7 +2,7 @@
 title: 'Scansione orchestrata e riscansione delle bozze evento'
 type: 'feature'
 created: '2026-10-14'
-status: 'done'
+status: 'in-review'
 baseline_commit: '7c06d782c30699953d5a69793da982ae418ecf28'
 context: []
 ---

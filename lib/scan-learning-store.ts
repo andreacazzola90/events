@@ -117,7 +117,10 @@ export async function recordCropLearningPair(original: Buffer, corrected: Buffer
   }
 }
 
-export async function deleteExpiredCropLearningSamples(now = new Date(), maxBatches = 10): Promise<{ pairs: number; coordinateSamples: number }> {
+export async function deleteExpiredCropLearningSamples(
+  now = new Date(),
+  maxBatches = 10,
+): Promise<{ pairs: number; coordinateSamples: number; remainingPairs: boolean }> {
   const cutoff = new Date(now.getTime() - CROP_SAMPLE_MAX_AGE_MS);
   let pairs = 0;
   for (let batch = 0; batch < maxBatches; batch++) {
@@ -134,5 +137,10 @@ export async function deleteExpiredCropLearningSamples(now = new Date(), maxBatc
     if (deleted.count === 0) break;
   }
   const coordinateSamples = await prisma.posterCropSample.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  return { pairs, coordinateSamples: coordinateSamples.count };
+  const remaining = await prisma.posterCropLearningPair.findMany({
+    where: { createdAt: { lt: cutoff } },
+    take: 1,
+    select: { id: true },
+  });
+  return { pairs, coordinateSamples: coordinateSamples.count, remainingPairs: remaining.length > 0 };
 }

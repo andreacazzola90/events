@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processEventLink } from '../../../lib/event-processor';
 import { validatePublicScanUrl } from '../../../lib/pdf-url';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from '../../../lib/request-body-limit';
+
+const MAX_LINK_REQUEST_BYTES = 8 * 1024;
 
 export async function POST(request: NextRequest) {
     try {
-        const { url } = await request.json();
+        const body = await readBoundedRequestBody(request, MAX_LINK_REQUEST_BYTES);
+        const payload: unknown = JSON.parse(new TextDecoder().decode(body));
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            return NextResponse.json({ error: 'Richiesta non valida.' }, { status: 400 });
+        }
+        const url = (payload as Record<string, unknown>).url;
         
-        if (!url) {
+        if (typeof url !== 'string' || !url.trim()) {
             return NextResponse.json(
                 { error: 'URL mancante' },
                 { status: 400 }
@@ -21,6 +29,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(result);
 
     } catch (error) {
+        if (error instanceof RequestBodyTooLargeError) {
+            return NextResponse.json({ error: 'Richiesta troppo grande.' }, { status: 413 });
+        }
         console.error('Error processing link:', error);
         const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
         

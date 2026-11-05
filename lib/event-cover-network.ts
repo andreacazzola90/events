@@ -55,11 +55,12 @@ const network: NetworkDependencies = {
 
 export async function fetchCoverResource(
   value: string,
-  options: { signal: AbortSignal; maxBytes: number; kind: 'page' | 'image' },
+  options: { signal: AbortSignal; maxBytes: number; kind: 'page' | 'image' | 'scan'; maxRedirects?: number },
   dependencies: NetworkDependencies = network,
-): Promise<{ bytes: Buffer; url: string }> {
+): Promise<{ bytes: Buffer; url: string; contentType: string }> {
   let url = coverUrl(value);
-  for (let hop = 0; hop <= 3; hop++) {
+  const maxRedirects = options.maxRedirects ?? 3;
+  for (let hop = 0; hop <= maxRedirects; hop++) {
     options.signal.throwIfAborted();
     const hostname = url.hostname.replace(/^\[|\]$/g, '');
     const addresses = isIP(hostname)
@@ -70,7 +71,9 @@ export async function fetchCoverResource(
     }
     const pinned = addresses[0];
     const currentUrl = url;
-    const result = await new Promise<{ bytes: Buffer; redirect?: string }>((resolve, reject) => {
+    const result = await new Promise<
+      { bytes: Buffer; redirect: string } | { bytes: Buffer; contentType: string }
+    >((resolve, reject) => {
       const request = (url.protocol === 'https:' ? dependencies.https : dependencies.http)(url, {
         agent: false,
         signal: options.signal,
@@ -79,9 +82,13 @@ export async function fetchCoverResource(
           else callback(null, pinned.address, pinned.family);
         },
         headers: {
-          Accept: options.kind === 'page' ? 'text/html,application/xhtml+xml' : 'image/jpeg,image/png,image/webp,image/gif',
+          Accept: options.kind === 'page' ? 'text/html,application/xhtml+xml' : options.kind === 'image'
+            ? 'image/jpeg,image/png,image/webp,image/gif' : 'text/html,application/xhtml+xml,application/pdf,application/octet-stream',
           'Accept-Encoding': 'identity',
-          'User-Agent': 'EventCover/1.0',
+          'User-Agent': options.kind === 'page'
+            ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+            : 'EventCover/1.0',
+          ...(options.kind === 'page' ? { 'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7' } : {}),
         },
       }, response => {
         response.on('error', reject);
@@ -89,7 +96,7 @@ export async function fetchCoverResource(
         if ([301, 302, 303, 307, 308].includes(status)) {
           const location = response.headers.location;
           response.destroy();
-          if (!location || hop === 3) reject(new Error('Redirect limit'));
+          if (!location || hop === maxRedirects) reject(new Error('Redirect limit'));
           else {
             try { resolve({ bytes: Buffer.alloc(0), redirect: coverUrl(new URL(location, currentUrl).href).href }); }
             catch { reject(new Error('Invalid redirect')); }
@@ -97,12 +104,19 @@ export async function fetchCoverResource(
           return;
         }
         const contentType = (response.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+        const contentLength = Number(response.headers['content-length']);
         const allowed = options.kind === 'page'
           ? ['text/html', 'application/xhtml+xml']
-          : ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
+          : options.kind === 'image'
+            ? ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']
+            : ['text/html', 'application/xhtml+xml', 'application/pdf', 'application/octet-stream'];
         const encoding = response.headers['content-encoding'];
-        if (status !== 200 || !allowed.includes(contentType) || (encoding && encoding !== 'identity') ||
-            Number(response.headers['content-length']) > options.maxBytes) {
+        if (Number.isFinite(contentLength) && contentLength > options.maxBytes) {
+          response.destroy();
+          reject(new Error('Resource too large'));
+          return;
+        }
+        if (status !== 200 || !allowed.includes(contentType) || (encoding && encoding !== 'identity')) {
           response.destroy();
           reject(new Error('Invalid resource'));
           return;
@@ -119,14 +133,14 @@ export async function fetchCoverResource(
         response.on('aborted', () => reject(new Error('Truncated response')));
         response.on('end', () => {
           if (!response.complete) reject(new Error('Truncated response'));
-          else resolve({ bytes: Buffer.concat(chunks) });
+          else resolve({ bytes: Buffer.concat(chunks), contentType });
         });
       });
       request.on('error', reject);
       request.setTimeout(5000, () => request.destroy(new Error('Idle timeout')));
       request.end();
     });
-    if (!result.redirect) return { bytes: result.bytes, url: url.href };
+    if (!('redirect' in result)) return { bytes: result.bytes, url: url.href, contentType: result.contentType };
     url = coverUrl(result.redirect);
   }
   throw new Error('Redirect limit');

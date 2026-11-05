@@ -5,8 +5,10 @@ import { processPdfEventDocument } from '../../../../lib/pdf-event-processing';
 import { downloadPublicPdf } from '../../../../lib/pdf-download';
 import { validatePublicPdfUrl, validatePublicScanUrl } from '../../../../lib/pdf-url';
 import { buildRescanProposal, matchRescannedEvent } from '../../../../lib/event-rescan';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from '../../../../lib/request-body-limit';
 
 export const maxDuration = 60;
+const MAX_RESCAN_REQUEST_BYTES = 32 * 1024;
 
 const textFields = {
   title: 160, description: 5_000, date: 40, time: 40, location: 300, organizer: 200,
@@ -36,20 +38,30 @@ function readEvent(value: unknown): EventData | null {
 }
 
 export async function POST(request: NextRequest) {
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    const bytes = await readBoundedRequestBody(request, MAX_RESCAN_REQUEST_BYTES);
+    body = JSON.parse(new TextDecoder().decode(bytes));
+  } catch (error) {
+    const tooLarge = error instanceof RequestBodyTooLargeError ||
+      Number(request.headers.get('content-length')) > MAX_RESCAN_REQUEST_BYTES;
+    return NextResponse.json(
+      { error: tooLarge ? 'Richiesta troppo grande.' : 'Richiesta non valida.' },
+      { status: tooLarge ? 413 : 400 },
+    );
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'Richiesta non valida.' }, { status: 400 });
   }
-  const current = readEvent(body.event);
+  const current = readEvent((body as Record<string, unknown>).event);
   if (!current?.title) return NextResponse.json({ error: 'Bozza non valida.' }, { status: 400 });
   const sourceUrl = current.sourceUrl;
   if (!sourceUrl) return NextResponse.json({ error: 'Aggiungi un URL pubblico della fonte prima di riscansionare.' }, { status: 400 });
 
   try {
     const url = await validatePublicScanUrl(sourceUrl);
-    const isPdf = url.pathname.toLowerCase().endsWith('.pdf');
+    const isPdf = url.pathname.toLowerCase().endsWith('.pdf') ||
+      [...url.searchParams.values()].some(value => /\.pdf(?:$|[?#])/i.test(value));
     let candidates: EventData[];
     let scan: { status?: string; counts?: unknown; unscannedPages?: number } | undefined;
     if (isPdf) {
@@ -61,6 +73,14 @@ export async function POST(request: NextRequest) {
         counts: result.debug.scanCounts,
         ...(result.debug.unscannedPages ? { unscannedPages: result.debug.unscannedPages } : {}),
       };
+      if (scan.status !== 'completed' || result.debug.scanCounts.failed > 0 ||
+          result.debug.scanCounts.pending > 0 || result.debug.unscannedPages > 0) {
+        return NextResponse.json({
+          status: 'partial',
+          error: 'La scansione della fonte è incompleta; nessuna proposta applicata. Controlla la fonte e riprova.',
+          scan,
+        }, { status: 422 });
+      }
     } else {
       const result = await processEventLink(url.toString(), { verbose: false });
       candidates = result.events;

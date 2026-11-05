@@ -15,7 +15,7 @@ function normalize(value: unknown): string {
 }
 
 function missing(value: unknown): boolean {
-  return !normalize(value) || /^non trovato$/.test(normalize(value));
+  return !normalize(value) || /^(?:non trovato|non definito ma speriamo gratis)$/.test(normalize(value));
 }
 
 function titleScore(current: string, candidate: string): number {
@@ -36,18 +36,21 @@ function scoreMatch(current: EventData, candidate: EventData): number {
   const title = titleScore(normalize(current.title), normalize(candidate.title));
   if (!title) return 0;
   let score = title;
+  let corroborated = false;
   for (const field of ['date', 'time', 'location'] as const) {
     const expected = normalize(current[field]);
     const found = normalize(candidate[field]);
     if (!expected || !found || missing(expected) || missing(found)) continue;
-    if (expected === found) score += field === 'date' ? 4 : field === 'time' ? 3 : 2;
-    else if (field === 'location' && (expected.includes(found) || found.includes(expected))) score += 1;
+    if (expected === found) {
+      score += field === 'date' ? 4 : field === 'time' ? 3 : 2;
+      corroborated = true;
+    } else if (field === 'location' && (expected.includes(found) || found.includes(expected))) {
+      score += 1;
+      corroborated = true;
+    }
     else score -= 2;
   }
-  const currentPages = current.scanEvidence?.pageNumbers ?? [];
-  const candidatePages = candidate.scanEvidence?.pageNumbers ?? [];
-  if (currentPages.some(page => candidatePages.includes(page))) score += 5;
-  return score;
+  return corroborated && score >= 6 ? score : 0;
 }
 
 export function matchRescannedEvent(current: EventData, candidates: EventData[]): EventRescanMatch {

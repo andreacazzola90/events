@@ -5,6 +5,7 @@ import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 import { MAX_EVENT_MEDIA_BYTES, validateEventMediaFile } from '../../../../lib/event-media';
 import { parseCropSample } from '../../../../lib/poster-crop-learning';
 import { recordCropLearningPair } from '../../../../lib/scan-learning-store';
+import { readBoundedRequestBody, requestWithBoundedBody, RequestBodyTooLargeError } from '../../../../lib/request-body-limit';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
@@ -42,7 +43,15 @@ export async function POST(request: NextRequest) {
   const client = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   if (isRateLimited(`${userId}:${client}`)) return new NextResponse(null, { status: 429, headers });
 
-  const form = await request.formData().catch(() => null);
+  let form: FormData | null = null;
+  try {
+    const body = await readBoundedRequestBody(request, MAX_PAIR_REQUEST_BYTES);
+    form = await requestWithBoundedBody(request, body).formData();
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ error: 'Le immagini superano il limite consentito.' }, { status: 413, headers });
+    }
+  }
   if (!form || form.get('consent') !== 'true') return new NextResponse(null, { status: 204, headers });
   const original = form.get('original');
   const corrected = form.get('corrected');

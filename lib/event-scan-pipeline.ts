@@ -46,6 +46,11 @@ export function censusPdfCandidates(pages: string[], maxCandidates = MAX_PDF_SCA
   return candidates;
 }
 
+export function countPdfCandidates(pages: string[]): number {
+  return pages.reduce((total, pageText) =>
+    total + extractPdfTitleCandidates([pageText]).filter(title => !isNonEventPdfTitle(title)).length, 0);
+}
+
 function normalize(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('it-IT')
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
@@ -55,6 +60,8 @@ function dateAppears(value: string, quote: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return normalize(quote).includes(normalize(value));
   const [, year, month, day] = match;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) return false;
   const text = normalize(quote);
   const months = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
   return new RegExp(`(?:^| )${Number(day)} (?:${months[Number(month) - 1]}|${months[Number(month) - 1].slice(0, 3)}) ${year}(?: |$)`).test(text) ||
@@ -73,7 +80,7 @@ function fieldSupported(field: string, value: string, quote: string): boolean {
 }
 
 function missing(value: unknown): boolean {
-  return typeof value !== 'string' || !value.trim() || /^non trovato$/i.test(value.trim());
+  return typeof value !== 'string' || !value.trim() || /^(?:non trovato|non definito, ma speriamo gratis)$/i.test(value.trim());
 }
 
 function cleanEvent(value: unknown, candidate: PdfScanCandidate): EventData | null {
@@ -121,6 +128,7 @@ export async function scanPdfEventPages(
   complete: PdfScanCompletion,
   options: { signal?: AbortSignal; maxCandidates?: number; budgetMs?: number } = {},
 ): Promise<PdfScanResult> {
+  const totalCandidates = countPdfCandidates(pages);
   const allCandidates = censusPdfCandidates(pages, 100);
   const candidates = allCandidates.slice(0, options.maxCandidates ?? MAX_PDF_SCAN_CANDIDATES);
   if (!candidates.length) return {
@@ -190,12 +198,12 @@ export async function scanPdfEventPages(
   const failedIds = new Set(results.flatMap(result => result.failed));
   const completed = completedIds.size;
   const failed = failedIds.size;
-  const pending = Math.max(0, allCandidates.length - completed - failed);
+  const pending = Math.max(0, totalCandidates - completed - failed);
   const status = pending > 0 || failed > 0 || completed < candidates.length ? completed ? 'partial' : 'failed' : 'completed';
 
   return {
     events: completedEvents,
     status,
-    counts: { candidates: allCandidates.length, completed, failed, pending },
+    counts: { candidates: totalCandidates, completed, failed, pending },
   };
 }

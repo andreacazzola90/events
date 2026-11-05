@@ -59,7 +59,7 @@ Manual prerequisites, in order:
 1. Review [the prepared SQL](../prisma/migrations/20261029130000_add_telegram_scanning/migration.sql). It adds owner-bound connections, source revisions/`removedAt`, versioned message jobs and unique publication receipts. Receipt message/event foreign keys are nullable `ON DELETE SET NULL`, preserving opaque dedup tombstones when sensitive history or events are deleted. Applying this migration requires separate authorization through the deployment process. If an earlier draft was already applied elsewhere, inspect that database and prepare an authorized additive migration rather than rerunning CREATE TABLE statements. `prisma validate` and `prisma generate` do not apply SQL. Do not run `migrate dev` against a shared/production database. Until applied, Telegram APIs return a sanitized storage error and the existing web cron can still proceed with a partial-error Telegram result.
 2. Configure server-only `TELEGRAM_ENCRYPTION_KEY`: exactly 64 hexadecimal characters (32 random bytes), stored in the platform secret manager. No default, derivation from public configuration or client exposure. Keep a secure backup. Replacing the key without re-encryption makes existing tokens unreadable; disconnect/reconnect affected bots through an authorized maintenance procedure. Never paste keys or tokens into chat, source code, task output or shell command arguments retained in history.
 3. Configure `TELEGRAM_WEBHOOK_BASE_URL` as a stable public HTTPS origin, with no path/query/fragment/userinfo. The app builds `/api/telegram/webhook?connection=...` from this trusted environment value, never from request `Origin`/`Host`. Use a valid public certificate, no redirects and preferably port 443. Ensure the route is reachable through deployment protection/firewalls and that `X-Telegram-Bot-Api-Secret-Token` reaches the application unchanged. Never disable verification to work around a proxy.
-4. Configure `TELEGRAM_ADMIN_ORIGIN` to the browser application's exact origin, or use the existing server `NEXTAUTH_URL` fallback. Configure server-only `CRON_SECRET` for Vercel scheduled scraping: Vercel sends `Authorization: Bearer <CRON_SECRET>`. The scraper also accepts configured legacy `CRON_SECRET_KEY`; both missing/empty denies all requests. The admin manual scraper proxy prefers `CRON_SECRET`, falls back to `CRON_SECRET_KEY`, and refuses to call the scraper without either. Other cron endpoints still require their existing legacy key. No new scheduler is introduced; the existing daily cron handles Telegram publication.
+4. Configure `TELEGRAM_ADMIN_ORIGIN` to the browser application's exact origin, or use the existing server `NEXTAUTH_URL` fallback. Configure server-only `CRON_SECRET_KEY`: all cron endpoints and the admin manual proxy read only this variable and fail closed without it. For Vercel's native scheduler, also set `CRON_SECRET` to the exact same value in Production and redeploy: Vercel uses that platform variable to send the bearer token, but application code does not read it. No new scheduler is introduced; the existing daily cron handles Telegram publication.
 5. Ensure the designated owner's persisted `User.role` or `User.type` is `admin`. The Telegram API intentionally does not grant administrator access via legacy email-prefix matching. No user/role was seeded or changed by this implementation.
 6. Confirm the existing centralized cloud AI provider configuration and quota (`AI_VISION_EXTRACTION_PROVIDERS`/`AI_VISION_PROVIDERS` and the selected server provider keys). Verified cover cropping uses `AI_VISION_CROP_PROVIDERS`, default `groq,nvidia`. Do not enable a paid provider, add secrets or change quotas without approval. Authorized source text and original photos may be sent to these cloud services; consent to public republication is not an anonymity guarantee.
 7. Obtain a bot token through the organization's authorized Telegram administrator. Enter it only in the protected Cron Admin password field. The app verifies `getMe` before official `setWebhook` registration. An unconfirmed registration is not active and requires remote cleanup before reconnect; its encrypted token is retained solely for that cleanup. This flow connects a bot, not the operator's personal Telegram account. Use a dedicated bot not shared with another webhook consumer. `getUpdates` must not run while the webhook is active.
@@ -104,7 +104,7 @@ Prerequisiti manuali:
 2. Creare un'app Meta (tipo Business) con prodotto Facebook Login for Business. Redirect URI OAuth valido: `<origine>/api/admin/instagram-scan/oauth/callback`, dove l'origine e `INSTAGRAM_SCAN_REDIRECT_ORIGIN` oppure `NEXTAUTH_URL` (HTTPS; HTTP solo per localhost). L'header Host non viene mai usato.
 3. Permessi: `instagram_basic`, `pages_show_list`, `pages_read_engagement`, `business_management`. Per Business Discovery su account non gestiti servono App Review e accesso avanzato (Advanced Access) di `instagram_basic`/`pages_read_engagement`; fino ad allora funziona solo con utenti con ruolo nell'app.
 4. L'account Instagram dell'admin deve essere professionale (Business/Creator) e collegato a una Pagina Facebook gestita.
-5. Variabili d'ambiente server-only: `META_APP_ID`, `META_APP_SECRET_KEY`, `INSTAGRAM_SCAN_ENCRYPTION_KEY` (esattamente 64 caratteri esadecimali, es. `openssl rand -hex 32`; nessun default, fail closed). Opzionali: `INSTAGRAM_SCAN_REDIRECT_ORIGIN`, `INSTAGRAM_GRAPH_API_VERSION` (default `v22.0`). Servono anche `CRON_SECRET` (o `CRON_SECRET_KEY`) e la configurazione AI esistente.
+5. Variabili d'ambiente server-only: `META_APP_ID`, `META_APP_SECRET_KEY`, `INSTAGRAM_SCAN_ENCRYPTION_KEY` (esattamente 64 caratteri esadecimali, es. `openssl rand -hex 32`; nessun default, fail closed). Opzionali: `INSTAGRAM_SCAN_REDIRECT_ORIGIN`, `INSTAGRAM_GRAPH_API_VERSION` (default `v22.0`). Servono anche `CRON_SECRET_KEY` e la configurazione AI esistente. Per il cron nativo Vercel, impostare anche `CRON_SECRET` allo stesso valore in Production e fare un nuovo deploy.
 6. Da `/cron` (sessione admin) premere "Collega Instagram", poi aggiungere le fonti indicando username e consenso esplicito.
 
 Limiti e comportamento:
@@ -147,8 +147,8 @@ From [.env.example](../.env.example) and runtime code:
 - SUPABASE_JWKS_URL (JWT verification keys; Supabase Server can derive it from SUPABASE_URL)
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
-- CRON_SECRET (Vercel scheduled scraper; manual proxy prefers it)
-- CRON_SECRET_KEY (legacy scraper fallback and existing other cron targets)
+- CRON_SECRET_KEY (the only cron secret read by application code, including manual triggers)
+- CRON_SECRET (Vercel scheduler only; must equal CRON_SECRET_KEY in Production, then redeploy)
 
 Prisma prefers `POSTGRES_URL`, then falls back to `POSTGRES_PRISMA_URL` and `DATABASE_URL`. Server-side Supabase Storage prefers `SUPABASE_URL` and `SUPABASE_SECRET_KEY`; existing deployments can keep using `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_SECRET_KEY` as fallbacks. Keep secret values server-only and out of repository files.
 
@@ -161,7 +161,7 @@ Web search (event verification and cover images), first configured provider wins
 
 Text scan learning needs the migration [20261030160000_add_scan_learning](../prisma/migrations/20261030160000_add_scan_learning/migration.sql). SCAN_LEARNING_SECRET_KEY is optional and falls back to NEXTAUTH_SECRET_KEY.
 
-Opt-in crop learning additionally needs [20261105103000_private_poster_crop_learning](../prisma/migrations/20261105103000_private_poster_crop_learning/migration.sql). The first explicitly consented sample creates/verifies the Supabase `crop-learning` bucket as private using the server service-role key. Do not make this bucket public or expose its object paths to clients. `GET /api/cron/cleanup-crop-learning` runs from the existing daily dispatcher and requires `CRON_SECRET` or `CRON_SECRET_KEY`; it removes expired image objects and rows after 180 days. Confirm the deployment's scheduled daily dispatcher is enabled and authorized. No new provider or client-side storage credential is needed.
+Opt-in crop learning additionally needs [20261105103000_private_poster_crop_learning](../prisma/migrations/20261105103000_private_poster_crop_learning/migration.sql). The first explicitly consented sample creates/verifies the Supabase `crop-learning` bucket as private using the server service-role key. Do not make this bucket public or expose its object paths to clients. `GET /api/cron/cleanup-crop-learning` runs from the existing daily dispatcher and requires `CRON_SECRET_KEY`; it removes expired image objects and rows after 180 days. Confirm the deployment's scheduled daily dispatcher is enabled and authorized. No new provider or client-side storage credential is needed.
 
 Instagram story publishing is configured from the admin "Story Instagram" tab (account ID, access token, days and hour). It needs:
 - INSTAGRAM_TOKEN_SECRET_KEY (optional; falls back to NEXTAUTH_SECRET_KEY) to encrypt the stored token
@@ -180,7 +180,7 @@ Legacy env fallback, used only when the tab has no value:
 2. Run lint and tests where applicable.
 3. Validate API changes against [API_REFERENCE.md](./API_REFERENCE.md).
 4. Confirm all required environment variables exist in target environment.
-5. If cron/auth changes were made, validate scheduled scraping with CRON_SECRET and legacy fallback with CRON_SECRET_KEY using mocks; authorize any live calls separately.
+5. If cron/auth changes were made, validate CRON_SECRET_KEY authorization and rejection of missing/wrong keys using mocks, including when only CRON_SECRET is present. Authorize any live calls separately.
 
 ## 5) Build and deploy
 
@@ -274,9 +274,9 @@ Run smoke checks:
 
 ## 7) Cron operations
 
-Daily scraping requires `Authorization: Bearer <CRON_SECRET>` for Vercel scheduling, or configured legacy `CRON_SECRET_KEY`. Both absent/empty fails closed. The admin scraper proxy prefers CRON_SECRET then KEY. Other cron endpoints retain `Authorization: Bearer <CRON_SECRET_KEY>`.
+All cron endpoints require `Authorization: Bearer <CRON_SECRET_KEY>`. Application code and the admin manual proxy read only `CRON_SECRET_KEY` and fail closed when it is absent/empty. There is no fallback to `CRON_SECRET`.
 
-Vercel Hobby only allows daily cron jobs, so [vercel.json](../vercel.json) defines a single cron, `GET /api/cron/daily` at 18:00 UTC (Vercel may start it any time within that hour). It calls all jobs below in parallel with the same bearer token. The Instagram story cron, the Google Calendar sync and the dispatcher accept `CRON_SECRET` (sent by Vercel) or legacy `CRON_SECRET_KEY`. The story only generates/publishes on the weekdays set in the admin tab (Europe/Rome, default Wednesday), once per day. Configure at least one of these server-side secrets.
+Vercel Hobby only allows daily cron jobs, so [vercel.json](../vercel.json) defines a single cron, `GET /api/cron/daily` at 18:00 UTC (Vercel may start it any time within that hour). It calls all jobs below in parallel with the same bearer token. For native Vercel scheduling, set both `CRON_SECRET_KEY` and `CRON_SECRET` to the exact same value in Production and redeploy. Vercel reads `CRON_SECRET` to send the bearer; the application validates it only against `CRON_SECRET_KEY`. KEY alone supports authenticated manual/external calls but does not configure Vercel's automatic bearer. The story only generates/publishes on the weekdays set in the admin tab (Europe/Rome, default Wednesday), once per day.
 
 Endpoints:
 - GET /api/cron/daily (Vercel scheduled entry point)
@@ -380,7 +380,7 @@ The Google grant requests `openid`, `email`, `https://www.googleapis.com/auth/ca
 - Database uniqueness and stable Google event IDs prevent duplicates during retries. Temporary errors use backoff and persistent pending records. Expired or revoked grants preserve pending deliveries until reconnection; explicit disconnection cancels them.
 - The Profile selector displays each owned Google calendar's actual name and color. Selecting a different calendar affects future or undelivered events; already created events are not moved.
 - Disconnecting Google cancels pending deliveries and removes stored credentials; already inserted Google events remain in the user's calendar. Remote revocation is attempted after disconnect.
-- `GET /api/cron/sync-google-calendar` requires `Authorization: Bearer <CRON_SECRET or CRON_SECRET_KEY>` and refuses to run if the secret is missing. Admins can also use same-origin `POST /api/cron/sync-google-calendar` with their session.
+- `GET /api/cron/sync-google-calendar` requires `Authorization: Bearer <CRON_SECRET_KEY>` and refuses to run if the key is missing. Admins can also use same-origin `POST /api/cron/sync-google-calendar` with their session.
 - The retry job runs once a day at 18:00 UTC through `GET /api/cron/daily`, preserving daily cron compatibility. For timely recovery and higher volume, schedule the protected endpoint every five minutes using a supported Vercel plan or an external scheduler. Each run is time-bounded; remaining deliveries stay queued.
 
 ### Verification

@@ -19,7 +19,7 @@ function isAuthorized(header: string | null, secrets: string[]): boolean {
 
 export async function GET(request: NextRequest) {
   const startedAt = Date.now();
-  const secrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_KEY].filter((value): value is string => Boolean(value));
+  const secrets = [process.env.CRON_SECRET_KEY].filter((value): value is string => Boolean(value));
   if (!secrets.length) return NextResponse.json({ error: 'cron_secret_not_configured' }, { status: 503 });
   if (!isAuthorized(request.headers.get('authorization'), secrets)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const dryRun = request.nextUrl.searchParams.get('dryRun') === '1';

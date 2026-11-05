@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         // Body opzionale: default instagram-story
       }
 
-      const secret = process.env.CRON_SECRET || process.env.CRON_SECRET_KEY;
+      const secret = process.env.CRON_SECRET_KEY;
       if (!secret) {
         return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 503 });
       }

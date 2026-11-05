@@ -83,7 +83,7 @@ Queue identity is `(sourceId, messageId)` plus the most recent `updateId` and a 
 
 ### Daily Cron Telegram Result
 
-`GET /api/cron/scrape-visitpedemontana` accepts exact Bearer authorization against either configured `CRON_SECRET` or legacy `CRON_SECRET_KEY`. Both absent/empty always returns 401, including requests with a Vercel user-agent. Vercel scheduling uses `CRON_SECRET`; the protected manual proxy prefers it, falls back to `CRON_SECRET_KEY`, and returns 503 without calling the scraper if neither exists. Other cron targets retain their existing auth contracts. The scraper returns a separate `telegram` summary with `visited`, `published`, `duplicates`, `discarded`, `retried`, `failed`, `wouldPublish`, `deferred`, `imageOmitted`, `status`, `dryRun`. Telegram failures do not prevent web sources from running and do affect the aggregate partial/error status.
+`GET /api/cron/scrape-visitpedemontana` accepts exact bearer authorization against `CRON_SECRET_KEY` only. Missing/empty KEY always returns 401, including requests with a Vercel user-agent or a configured `CRON_SECRET`. The protected manual proxy reads KEY only and returns 503 without calling the scraper if it is missing. For native Vercel scheduling, set the platform variable `CRON_SECRET` to the same value as `CRON_SECRET_KEY` in Production and redeploy; application code never reads `CRON_SECRET`. The scraper returns a separate `telegram` summary with `visited`, `published`, `duplicates`, `discarded`, `retried`, `failed`, `wouldPublish`, `deferred`, `imageOmitted`, `status`, `dryRun`. Telegram failures do not prevent web sources from running and do affect the aggregate partial/error status.
 
 One bounded Telegram lot starts alongside web scraping, with a 90-second deadline and at most two messages, one per visited source, oldest-scan-first. Each message's API/AI phase is capped at 40 seconds and by remaining time minus a 17-second commit reserve (2-second transaction maxWait plus 15-second timeout). Transport calls are capped at 8 seconds. Publication is refused if the full commit reserve no longer fits after verification/AI. The overall 260-second cron budget reserves 15 seconds after web work; web sources retain their 120-second minimum and oldest-first rotation. A crashed lease expires after 60 seconds; three attempts maximum, exponential retry delay. Expired raw payloads become ineligible after 72 hours and are destroyed at the next non-dry cron cleanup. Completed/terminal messages are cleared immediately. Non-sensitive IDs, counts, timestamps and dedupe tombstones remain.
 
@@ -120,7 +120,7 @@ Implementazione: [connessione Graph/OAuth](../lib/instagram-scan-connection.ts),
 - Reindirizza sempre a `/cron?instagram=connected|state_invalid|denied|oauth_failed|no_business_account|not_configured`, senza segreti nell'URL.
 
 ### GET /api/cron/scan-instagram
-- Auth: `Authorization: Bearer <CRON_SECRET|CRON_SECRET_KEY>`; 503 se nessun segreto configurato, 401 se errato. `maxDuration` 300 s, budget interno 260 s.
+- Auth: `Authorization: Bearer <CRON_SECRET_KEY>`; 503 se KEY non configurato, 401 se errato. `maxDuration` 300 s, budget interno 260 s.
 - `?dryRun=1`: nessuna scrittura (elementi, eventi, ricevute, calendario, stato connessione); restituisce `wouldPublish`.
 - Risultato: `{ status: "success"|"partial"|"partial-error"|"dry-run"|"skipped", dryRun, reason?, connections, visited, published, duplicates, discarded, failed, wouldPublish, skipped, deferred, sourceErrors, expired, imageOmitted }`.
 - Legge le stories proprie (ultime 24 h) e i post delle fonti attive con consenso via Business Discovery (ultimi 7 giorni), max 12 media per esecuzione; ogni media e registrato in `InstagramScanItem`: gli errori transitori (AI, download, budget esaurito, run interrotto da oltre 10 minuti) vengono ritentati fino a 3 tentativi totali, gli esiti deterministici (estrazione non valida, media rifiutato) sono definitivi. Un media viene avviato solo se restano almeno 77 s di budget. Lo scambio OAuth usa POST con body form, mai segreti nella query. Errore Graph 190 => connessione `expired`, job interrotto; errore su una fonte => solo quella fonte in errore.
@@ -507,19 +507,19 @@ curl -X POST "http://localhost:3000/api/process-link" \
 - File: [app/api/cron/daily/route.ts](../app/api/cron/daily/route.ts)
 - The only Vercel cron (`0 18 * * *` in [vercel.json](../vercel.json)), compatible with the Hobby plan's one-run-per-day limit.
 - Calls in parallel, forwarding the same bearer token: `scrape-visitpedemontana`, `sync-google-calendar`, `generate-instagram-story`, `scan-instagram`, and `cleanup-crop-learning` (each runs in its own function with its own `maxDuration`).
-- Accepts `CRON_SECRET` or `CRON_SECRET_KEY`; 503 when neither is configured, 401 for an invalid token.
+- Accepts only `CRON_SECRET_KEY`; 503 when KEY is not configured, 401 for an invalid token. For native Vercel scheduling, configure `CRON_SECRET` with the same value in Production and redeploy; it is a platform alias, not an application fallback.
 - Returns `{ status: "success" | "partial-error", failed: [...], jobs: [{ key, ok, httpStatus, data }] }`; a failing job does not stop the others.
 
 ### GET /api/cron/cleanup-crop-learning
 - File: [app/api/cron/cleanup-crop-learning/route.ts](../app/api/cron/cleanup-crop-learning/route.ts)
-- Requires the same `CRON_SECRET` or legacy `CRON_SECRET_KEY` bearer authorization as the dispatcher.
+- Requires the same `CRON_SECRET_KEY` bearer authorization as the dispatcher.
 - Removes expired private crop image pairs before deleting their database rows, retaining failed storage deletions for a later retry; also expires legacy coordinate-only crop samples.
 - Scheduled through `/api/cron/daily`, so the deployment retains one Vercel cron entry.
 
 ### GET /api/cron/scrape-visitpedemontana
 - File: [app/api/cron/scrape-visitpedemontana/route.ts](../app/api/cron/scrape-visitpedemontana/route.ts)
 - Purpose: scrape and ingest events from visitpedemontana source
-- Requires Bearer `CRON_SECRET` or legacy `CRON_SECRET_KEY`; no configured secret means 401.
+- Requires bearer authorization matching `CRON_SECRET_KEY`; missing KEY means 401.
 
 Example request:
 
@@ -532,10 +532,10 @@ curl -X GET "http://localhost:3000/api/cron/scrape-visitpedemontana" \
 - File: [app/api/cron/generate-instagram-story/route.ts](../app/api/cron/generate-instagram-story/route.ts)
 - Purpose: build the weekly story image (events Thursday → Wednesday, with poster thumbnails; events that do not fit are summarized as "+ altri N eventi") and optionally publish it to the Instagram Graph API
 - Called once a day by [GET /api/cron/daily](#get-apicrondaily); it only runs on the weekdays (Europe/Rome) configured in the admin "Story Instagram" tab, once per day. Other calls return `{ "status": "skipped", "reason": "not_scheduled" }`.
-- Accepts `CRON_SECRET` or legacy `CRON_SECRET_KEY`.
+- Accepts only `CRON_SECRET_KEY`.
 - Query params: `force=1` bypasses the schedule (manual runs); `publish=1` / `publish=0` overrides the saved auto-publish setting.
 - Credentials come from the admin tab (token stored AES-256-GCM encrypted) and fall back to the `INSTAGRAM_*` env vars.
-- Requires a bearer token matching `CRON_SECRET` or legacy `CRON_SECRET_KEY`; returns 503 when neither is configured and 401 for an invalid token.
+- Requires a bearer token matching `CRON_SECRET_KEY`; returns 503 when KEY is not configured and 401 for an invalid token.
 
 Example request:
 
@@ -555,7 +555,7 @@ curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
 ### POST /api/admin/run-cron/instagram-story
 - File: [app/api/admin/run-cron/instagram-story/route.ts](../app/api/admin/run-cron/instagram-story/route.ts)
 - Purpose: admin-triggered proxy endpoint to run cron targets
-- Uses `CRON_SECRET` first, then legacy `CRON_SECRET_KEY`; without either, returns 503.
+- Uses only `CRON_SECRET_KEY`; without KEY, returns 503 without calling a job.
 - target values:
   - instagram-story (always forced; optional body `publish: true|false`)
   - visitpedemontana
@@ -573,7 +573,7 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 
 - Extension-specific CORS is applied in extension login and events/image flows.
 - User/admin protection is handled by auth helpers in protected routes.
-- Daily scraping requires Bearer `CRON_SECRET` or `CRON_SECRET_KEY` and fails closed without either. Other cron routes retain their documented legacy authorization.
+- All cron routes validate bearer authorization against `CRON_SECRET_KEY` only and fail closed without KEY.
 
 ## 7) Calendar preferences and Google connection
 
@@ -615,7 +615,7 @@ curl -X POST "http://localhost:3000/api/admin/run-cron/instagram-story" \
 - Existing Google events are not deleted.
 
 ### GET /api/cron/sync-google-calendar
-- Requires `CRON_SECRET` or `CRON_SECRET_KEY` bearer authorization; missing configuration returns 503, invalid authorization returns 401.
+- Requires `CRON_SECRET_KEY` bearer authorization; missing KEY returns 503, invalid authorization returns 401.
 - Drains eligible delivery records with concurrency leases and a bounded execution budget.
 - Returns `{ "delivered": 0, "skipped": 0, "retried": 0 }` counters.
 - Same-origin POST is also available to authenticated admins.

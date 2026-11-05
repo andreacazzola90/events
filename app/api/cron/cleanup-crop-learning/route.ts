@@ -5,7 +5,7 @@ import { deleteExpiredCropLearningSamples } from '../../../../lib/scan-learning-
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const secrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_KEY].filter(
+  const secrets = [process.env.CRON_SECRET_KEY].filter(
     (value): value is string => Boolean(value),
   );
   const authorization = request.headers.get('authorization');

@@ -448,7 +448,7 @@ async function publishInstagramStory(
 }
 
 export async function GET(request: NextRequest) {
-  const cronSecrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_KEY].filter(Boolean);
+  const cronSecrets = [process.env.CRON_SECRET_KEY].filter(Boolean);
   if (!cronSecrets.length) {
     return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 503 });
   }

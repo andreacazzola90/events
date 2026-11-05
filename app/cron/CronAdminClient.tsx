@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import TelegramAdmin from "./TelegramAdmin";
 import InstagramScanAdmin from "./InstagramScanAdmin";
 import PageHeading from "../components/PageHeading";
+import CronJobLauncher from "./CronJobLauncher";
 
 type CronSource = {
   id: number;
@@ -865,6 +866,8 @@ export default function CronAdminClient() {
             </div>
           </div>
         </section>
+
+        <CronJobLauncher />
 
         <nav aria-label="Sezioni automazioni" className="flex flex-wrap gap-2 border-b border-white/15 pb-3">
           <a href="#web-sources" className="btn btn-ghost btn-sm">Sorgenti web</a>

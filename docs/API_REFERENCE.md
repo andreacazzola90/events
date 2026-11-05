@@ -552,6 +552,16 @@ curl -X GET "http://localhost:3000/api/cron/generate-instagram-story" \
 - POST: checks the saved credentials against the Graph API and returns `{ ok, username }`.
 - Returns 503 until the `InstagramStorySettings` migration is applied.
 
+### POST /api/admin/run-cron
+- File: [app/api/admin/run-cron/route.ts](../app/api/admin/run-cron/route.ts)
+- Requires an admin session; rejects a foreign Origin header. Uses server-only `CRON_SECRET_KEY`; returns 503 when missing.
+- Input: `{ "jobs": ["visitpedemontana", "google-calendar", "instagram-story", "instagram-scan", "crop-learning-cleanup"] }`. Choose any nonempty subset; malformed JSON, unknown keys, empty selections and duplicates return 400 without launching anything.
+- Runs only selected jobs in parallel, with a 295-second timeout per request. A failing job does not stop the others.
+- Response: `{ status: "success" | "partial-error", failed: [...], jobs: [{ key, ok, httpStatus?, data?, error? }] }`.
+- The Cron admin page provides one checkbox per job and an "Avvia selezionati" button, disabled while running or when nothing is selected. Results and details are shown per job; skipped jobs are distinct from completed jobs.
+- Manual Story execution uses `force=1` (ignores the scheduled weekday) and retains the configured publication behavior. `visitpedemontana` includes active web sources and the Telegram queue.
+- Does not change the daily schedule, persist checkbox choices, or replace the existing individual manual controls.
+
 ### POST /api/admin/run-cron/instagram-story
 - File: [app/api/admin/run-cron/instagram-story/route.ts](../app/api/admin/run-cron/instagram-story/route.ts)
 - Purpose: admin-triggered proxy endpoint to run cron targets

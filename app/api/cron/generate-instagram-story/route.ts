@@ -106,28 +106,48 @@ const LIST_BOTTOM = 1775;
 const HEADING_HEIGHT = 54;
 const ROW_HEIGHT = 104;
 const THUMB_SIZE = 88;
-const MORE_HEIGHT = 56;
 const THUMB_MAX_BYTES = 8 * 1024 * 1024;
+const COMPACT_HEADING_HEIGHT = 36;
 
 type StoryBlock =
   | { kind: "heading"; text: string }
   | { kind: "event"; event: StoryEvent };
 
-/** Fits date headings + event rows in the available height; returns hidden count. */
-function layoutStoryBlocks(events: StoryEvent[]): { blocks: StoryBlock[]; hidden: number } {
+type StoryLayout = {
+  blocks: StoryBlock[];
+  headingHeight: number;
+  rowHeight: number;
+  headingFontSize: number;
+  titleFontSize: number;
+  detailsFontSize: number;
+  includeThumbnails: boolean;
+};
+
+/** Fits every date heading and event row in the available height. */
+function layoutStoryBlocks(events: StoryEvent[]): StoryLayout {
   const blocks: StoryBlock[] = [];
   const budget = LIST_BOTTOM - LIST_TOP;
-  let used = 0;
-  let shown = 0;
+  const dateGroups = events.reduce(
+    (count, event, index) => count + (index === 0 || event.date !== events[index - 1].date ? 1 : 0),
+    0,
+  );
+  const fitsStandardLayout = events.length * ROW_HEIGHT + dateGroups * HEADING_HEIGHT <= budget;
+  const includeThumbnails = fitsStandardLayout;
+  const headingHeight = fitsStandardLayout ? HEADING_HEIGHT : COMPACT_HEADING_HEIGHT;
+  const rowHeight = fitsStandardLayout
+    ? ROW_HEIGHT
+    : Math.max(1, Math.floor((budget - dateGroups * headingHeight) / Math.max(events.length, 1)));
+  const headingFontSize = fitsStandardLayout ? 30 : Math.min(24, Math.floor(headingHeight * 0.65));
+  const titleFontSize = fitsStandardLayout ? 30 : Math.max(10, Math.min(30, Math.floor(rowHeight * 0.48)));
+  const detailsFontSize = fitsStandardLayout
+    ? 23
+    : rowHeight >= 38
+      ? Math.max(10, Math.floor(titleFontSize * 0.4))
+      : 0;
   let currentDate: string | null = null;
 
-  for (let index = 0; index < events.length; index++) {
-    const event = events[index];
+  for (const event of events) {
     const needsHeading = event.date !== currentDate;
-    const cost = ROW_HEIGHT + (needsHeading ? HEADING_HEIGHT : 0);
-    const remainingAfter = events.length - index - 1;
-    const reserve = remainingAfter > 0 ? MORE_HEIGHT : 0;
-    if (used + cost + reserve > budget) break;
 
     if (needsHeading) {
       const dateObj = parseEventDate(event.date);
@@ -138,11 +158,17 @@ function layoutStoryBlocks(events: StoryEvent[]): { blocks: StoryBlock[]; hidden
       currentDate = event.date;
     }
     blocks.push({ kind: "event", event });
-    used += cost;
-    shown++;
   }
 
-  return { blocks, hidden: events.length - shown };
+  return {
+    blocks,
+    headingHeight,
+    rowHeight,
+    headingFontSize,
+    titleFontSize,
+    detailsFontSize,
+    includeThumbnails,
+  };
 }
 
 async function loadThumbnail(imageUrl: string | null | undefined): Promise<string | null> {
@@ -172,11 +198,12 @@ async function renderStoryJpeg(
   start: Date,
   end: Date,
 ): Promise<Buffer> {
-  const { blocks, hidden } = layoutStoryBlocks(events);
+  const layout = layoutStoryBlocks(events);
+  const { blocks } = layout;
   const thumbnails = new Map<number, string | null>();
   await Promise.all(
     blocks.map(async (block) => {
-      if (block.kind === "event") {
+      if (block.kind === "event" && layout.includeThumbnails) {
         thumbnails.set(block.event.id, await loadThumbnail(block.event.imageUrl));
       }
     }),
@@ -199,41 +226,59 @@ async function renderStoryJpeg(
       "div",
       {
         key: `event-${event.id}`,
-        style: { display: "flex", alignItems: "center", height: ROW_HEIGHT, gap: 24 },
+        style: {
+          display: "flex",
+          alignItems: "center",
+          height: layout.rowHeight,
+          gap: layout.includeThumbnails ? 24 : 0,
+        },
       },
-      thumb
-        ? h("img", {
-            src: thumb,
-            width: THUMB_SIZE,
-            height: THUMB_SIZE,
-            style: { width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: 14, objectFit: "cover" },
-          })
-        : h(
-            "div",
-            {
-              style: {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: THUMB_SIZE,
-                height: THUMB_SIZE,
-                borderRadius: 14,
-                background: "rgba(255,255,255,0.12)",
-                color: "#FDE68A",
-                fontSize: 40,
+      layout.includeThumbnails
+        ? thumb
+          ? h("img", {
+              src: thumb,
+              width: THUMB_SIZE,
+              height: THUMB_SIZE,
+              style: { width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: 14, objectFit: "cover" },
+            })
+          : h(
+              "div",
+              {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: THUMB_SIZE,
+                  height: THUMB_SIZE,
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.12)",
+                  color: "#FDE68A",
+                  fontSize: 40,
+                },
               },
-            },
-            (event.title.trim()[0] || "•").toUpperCase(),
-          ),
+              (event.title.trim()[0] || "•").toUpperCase(),
+            )
+        : null,
       h(
         "div",
-        { style: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 6 } },
+        {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minWidth: 0,
+            gap: layout.detailsFontSize > 0 ? 2 : 0,
+          },
+        },
         text(truncateText(event.title.replace(/\s+/g, " ").trim(), 50), {
-          fontSize: 30,
+          fontSize: layout.titleFontSize,
           color: "#FFFFFF",
         }),
-        details
-          ? text(truncateText(details.replace(/\s+/g, " "), 62), { fontSize: 23, color: "#CBD5E1" })
+        details && layout.detailsFontSize > 0
+          ? text(truncateText(details.replace(/\s+/g, " "), 62), {
+              fontSize: layout.detailsFontSize,
+              color: "#CBD5E1",
+            })
           : null,
       ),
     );
@@ -295,22 +340,14 @@ async function renderStoryJpeg(
         block.kind === "heading"
           ? text(block.text, {
               key: `heading-${index}`,
-              height: HEADING_HEIGHT,
+              height: layout.headingHeight,
               alignItems: "flex-end",
-              paddingBottom: 8,
-              fontSize: 30,
+              paddingBottom: layout.includeThumbnails ? 8 : 3,
+              fontSize: layout.headingFontSize,
               color: "#FDE68A",
             })
           : renderEventRow(block.event),
       ),
-      hidden > 0
-        ? text(`+ altri ${hidden} ${hidden === 1 ? "evento" : "eventi"} sul sito`, {
-            height: MORE_HEIGHT,
-            alignItems: "flex-end",
-            fontSize: 28,
-            color: "#93C5FD",
-          })
-        : null,
     ),
     text("EventScanner • Schio e Alto Vicentino", {
       position: "absolute",

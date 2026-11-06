@@ -692,6 +692,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                     type="button"
                                     onClick={handleReprocessWithAi}
                                     disabled={isReprocessing || isRescanning || !aiInstructions.trim()}
+                                    aria-busy={isReprocessing}
                                     className="inline-flex items-center gap-2 border border-[#1d1d1b] px-4 py-2 text-sm font-bold text-[#1d1d1b] transition-colors hover:bg-[#1d1d1b] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     {isReprocessing ? 'Rielaborazione…' : 'Rielabora con AI'}
@@ -701,6 +702,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                         type="button"
                                         onClick={handleRescanSource}
                                         disabled={isRescanning || isReprocessing}
+                                        aria-busy={isRescanning}
                                         className="inline-flex items-center gap-2 border border-[#d65a38] px-4 py-2 text-sm font-bold text-[#8f3823] transition-colors hover:bg-[#fff7f4] disabled:cursor-wait disabled:opacity-50"
                                     >
                                         {isRescanning ? 'Riscansione…' : 'Riscansiona fonte'}
@@ -733,6 +735,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                     type="button"
                                     onClick={handleAddEvent}
                                     disabled={isSaving || isReprocessing || isRescanning || !!duplicate}
+                                    aria-busy={isSaving}
                                     title={duplicate ? 'Questo evento esiste già' : undefined}
                                     className="event-add-button btn btn-primary sm:ml-auto disabled:opacity-50 disabled:cursor-not-allowed"
                                 >

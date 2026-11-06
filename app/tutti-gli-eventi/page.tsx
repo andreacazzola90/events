@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
 import { TransitionLink } from "../components/TransitionLink";
 import PageHeading from "../components/PageHeading";
+import LoadingAnimation from "../components/LoadingAnimation";
 import { useSiteSettings } from "../components/SiteSettingsProvider";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import { getCategoryPresentation } from "../../lib/site-presentation";
@@ -189,7 +190,7 @@ export default function TuttiGliEventiPage() {
             </div>
           </div>
           <h2 ref={headingRef} tabIndex={-1} className="calendar-period-title" aria-live="polite">{calendarPeriodLabel(anchorDate, view)}</h2>
-          {loading && <p className="calendar-status" role="status">Caricamento eventi...</p>}
+          {loading && <LoadingAnimation compact message="Caricamento eventi..." className="calendar-status" />}
           {loadError && <div className="calendar-status" role="alert">Impossibile caricare gli eventi. <button type="button" onClick={() => setReload(previous => previous + 1)}>Riprova</button></div>}
           <div className="calendar-scroll" tabIndex={0} aria-label="Eventi del periodo">
             {view === "month" ? (

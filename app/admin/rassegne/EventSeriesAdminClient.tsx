@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Plus, Save, Trash2 } from "lucide-react";
 import PageHeading from "../../components/PageHeading";
+import LoadingAnimation from "../../components/LoadingAnimation";
 
 type EventOption = {
   id: number;
@@ -183,7 +184,7 @@ export default function EventSeriesAdminClient() {
         <div className="grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside aria-label="Rassegne esistenti">
             <h2 className="mb-3 text-xs font-bold uppercase text-black/55">Esistenti</h2>
-            {loading ? <p className="py-4 text-sm text-black/50">Caricamento…</p> : (
+            {loading ? <LoadingAnimation compact message="Caricamento rassegne..." className="py-4" /> : (
               <ul className="divide-y divide-black/10 border-y border-black/10 bg-white">
                 {series.map((item) => (
                   <li key={item.id}>

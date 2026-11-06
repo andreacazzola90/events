@@ -8,6 +8,7 @@ import { toast } from "react-toastify";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import EventPreview from "../components/EventPreview";
 import PageHeading from "../components/PageHeading";
+import LoadingAnimation from "../components/LoadingAnimation";
 import { groupEventsByScanOriginAndDate } from "../../lib/event-scan-groups";
 import type { DbEvent } from "../types/event";
 
@@ -28,6 +29,8 @@ export default function AccountPage() {
   const router = useRouter();
   const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
   const [favoriteEvents, setFavoriteEvents] = useState<UserEvent[]>([]);
+  const [userEventsLoadError, setUserEventsLoadError] = useState(false);
+  const [favoriteEventsLoadError, setFavoriteEventsLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profileName, setProfileName] = useState("");
   const [profileNameDraft, setProfileNameDraft] = useState("");
@@ -203,6 +206,9 @@ export default function AccountPage() {
   }, [status, router]);
 
   const fetchUserEvents = async () => {
+    setUserEventsLoadError(false);
+    setFavoriteEventsLoadError(false);
+    setLoading(true);
     try {
       const userData = session?.user as any;
       const userId = userData?.id;
@@ -225,14 +231,20 @@ export default function AccountPage() {
       if (eventsRes.ok) {
         const data = await eventsRes.json();
         setUserEvents(data);
+      } else {
+        setUserEventsLoadError(true);
       }
 
       if (favoritesRes.ok) {
         const favData = await favoritesRes.json();
         setFavoriteEvents(favData);
+      } else {
+        setFavoriteEventsLoadError(true);
       }
     } catch (error) {
       console.error("Error fetching user events:", error);
+      setUserEventsLoadError(true);
+      setFavoriteEventsLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -543,11 +555,7 @@ export default function AccountPage() {
   };
 
   if (status === "loading" || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-2xl">
-        Caricamento...
-      </div>
-    );
+    return <LoadingAnimation message="Caricamento account..." className="account-page min-h-screen" />;
   }
 
   if (!session) {
@@ -656,7 +664,7 @@ export default function AccountPage() {
                         />
                       </label>
                       <div className="flex flex-wrap gap-2">
-                        <button type="submit" disabled={savingProfile} className="btn btn-primary inline-flex items-center gap-2 disabled:opacity-50">
+                        <button type="submit" disabled={savingProfile} aria-busy={savingProfile} className="btn btn-primary inline-flex items-center gap-2 disabled:opacity-50">
                           <Check size={16} aria-hidden="true" />
                           {savingProfile ? "Salvataggio..." : "Salva profilo"}
                         </button>
@@ -758,16 +766,21 @@ export default function AccountPage() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-5 !mt-5">
                 <div className="min-w-0">
                   <h3 className="text-white font-semibold text-base">Google Calendar</h3>
-                  <p className="text-sm text-gray-400 break-all" role="status">
-                    {!calendarSettingsLoaded ? "Caricamento..." : googleCalendarEmail
-                      ? `${googleCalendarEmail} · Collegato`
-                      : googleCalendarConfigured ? "Non collegato" : "Configurazione Google non disponibile"}
-                  </p>
+                  {!calendarSettingsLoaded ? (
+                    <LoadingAnimation compact message="Caricamento preferenze Google Calendar..." />
+                  ) : (
+                    <p className="text-sm text-gray-400 break-all" role="status">
+                      {googleCalendarEmail
+                        ? `${googleCalendarEmail} · Collegato`
+                        : googleCalendarConfigured ? "Non collegato" : "Configurazione Google non disponibile"}
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={googleCalendarEmail ? handleDisconnectGoogleCalendar : handleConnectGoogleCalendar}
                   disabled={!calendarSettingsLoaded || googleCalendarBusy || savingGoogleCalendar || (!googleCalendarEmail && !googleCalendarConfigured)}
+                  aria-busy={googleCalendarBusy || savingGoogleCalendar}
                   className="btn btn-outline inline-flex items-center justify-center gap-2 shrink-0 text-white"
                 >
                   {googleCalendarBusy ? <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />
@@ -801,7 +814,7 @@ export default function AccountPage() {
                     </select>
                   </div>
                   {googleCalendarListError && (
-                    <div className="space-y-2" role="status">
+                    <div className="space-y-2" role="alert">
                       <p className="text-sm text-red-400">
                         {googleCalendarListError === "google_calendar_reconnect_required"
                           ? "Ricollega Google Calendar per autorizzare l’elenco dei calendari."
@@ -819,12 +832,12 @@ export default function AccountPage() {
                   {!googleCalendarListLoading && !googleCalendarListError && googleCalendars.length === 0 && (
                     <p className="text-sm text-gray-400" role="status">Nessun calendario Google scrivibile trovato.</p>
                   )}
-                  {googleCalendarListLoading && <p className="text-sm text-gray-400" role="status">Caricamento calendari...</p>}
-                  {savingGoogleCalendar && <p className="text-sm text-gray-400" role="status">Salvataggio calendario...</p>}
+                  {googleCalendarListLoading && <LoadingAnimation compact message="Caricamento calendari..." />}
+                  {savingGoogleCalendar && <LoadingAnimation compact message="Salvataggio calendario..." />}
                 </div>
               )}
               {calendarDeliveryError && (
-                <p className="text-sm text-red-500" role="status">
+                <p className="text-sm text-red-500" role="alert">
                   {calendarDeliveryError === "google_reconnect_required" ? "Autorizzazione Google scaduta"
                     : calendarDeliveryError === "google_event_time_required" ? "Il tipo selezionato richiede un evento con orario"
                     : ["google_http_400", "google_http_403", "google_event_type_invalid"].includes(calendarDeliveryError)
@@ -893,6 +906,7 @@ export default function AccountPage() {
               <button
                 type="submit"
                 disabled={changingPassword}
+                aria-busy={changingPassword}
                 className="btn btn-primary"
               >
                 {changingPassword ? "Aggiornamento..." : "Aggiorna password"}
@@ -901,6 +915,7 @@ export default function AccountPage() {
 
             {passwordMessage && (
               <div
+                role={passwordMessage.type === "error" ? "alert" : "status"}
                 className={`md:col-span-2 rounded-xl px-4 py-3 text-sm ${
                   passwordMessage.type === "success"
                     ? "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40"
@@ -921,7 +936,12 @@ export default function AccountPage() {
             <span className="text-2xl">🎵</span>
             {isAdmin ? 'All Events (Admin)' : 'Your Events'}
           </h2>
-          {userEvents.length === 0 ? (
+          {userEventsLoadError ? (
+            <div role="alert" className="space-y-3">
+              <p className="mb-0">Impossibile caricare i tuoi eventi. Riprova.</p>
+              <button type="button" onClick={fetchUserEvents} className="btn btn-outline">Riprova</button>
+            </div>
+          ) : userEvents.length === 0 ? (
             <div className="text-center py-16">
               <div className="text-6xl mb-4">🎭</div>
               <h3 className="text-2xl font-bold text-white mb-2">
@@ -988,7 +1008,12 @@ export default function AccountPage() {
             <span className="text-2xl">❤️</span>
             Favorite Events
           </h2>
-          {favoriteEvents.length === 0 ? (
+          {favoriteEventsLoadError ? (
+            <div role="alert" className="space-y-3">
+              <p className="mb-0">Impossibile caricare i preferiti. Riprova.</p>
+              <button type="button" onClick={fetchUserEvents} className="btn btn-outline">Riprova</button>
+            </div>
+          ) : favoriteEvents.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               Nessun evento tra i preferiti al momento.
             </div>

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import PageHeading from '../components/PageHeading';
+import LoadingAnimation from '../components/LoadingAnimation';
 
 const authInputClassName = 'w-full border border-black/20 px-4 py-3 text-black placeholder:text-black/40 caret-black focus:outline-none focus:border-black transition-colors bg-white text-sm';
 
@@ -25,11 +26,7 @@ function AuthPageContent() {
     }, [session, router]);
 
     if (status === 'loading') {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-black/20 border-t-black animate-spin" />
-            </div>
-        );
+        return <LoadingAnimation message="Verifica dell’accesso in corso..." className="min-h-screen" />;
     }
 
     return (
@@ -111,9 +108,7 @@ function AuthPageContent() {
 export default function AuthPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-black/20 border-t-black animate-spin" />
-            </div>
+            <LoadingAnimation message="Caricamento accesso..." className="min-h-screen" />
         }>
             <AuthPageContent />
         </Suspense>
@@ -189,6 +184,7 @@ function LoginForm() {
                 type="submit"
                 className="btn btn-primary w-full disabled:opacity-50"
                 disabled={loading}
+                aria-busy={loading}
             >
                 {loading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -276,6 +272,7 @@ function ForgotPasswordForm() {
                 type="submit"
                 className="btn btn-primary w-full disabled:opacity-50"
                 disabled={loading}
+                aria-busy={loading}
             >
                 {loading ? 'Invio in corso...' : 'Invia link di recupero'}
             </button>
@@ -386,6 +383,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
                 type="submit"
                 className="btn btn-primary w-full disabled:opacity-50"
                 disabled={loading}
+                aria-busy={loading}
             >
                 {loading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -399,4 +397,3 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         </form>
     );
 }
-

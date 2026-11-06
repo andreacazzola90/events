@@ -8,6 +8,7 @@ import SiteSettingsTab from "./SiteSettingsTab";
 import InstagramStoryTab from "./InstagramStoryTab";
 import MessagingAccountsTab from "./MessagingAccountsTab";
 import PageHeading from "../components/PageHeading";
+import LoadingAnimation from "../components/LoadingAnimation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ function CronHistoryTab() {
       return next;
     });
 
-  if (loading) return <p className="text-gray-400 text-sm py-8 text-center">Caricamento…</p>;
+  if (loading) return <LoadingAnimation message="Caricamento esecuzioni..." className="py-8 justify-center" />;
   if (error) return <p className="text-red-400 text-sm py-4">{error}</p>;
   if (runs.length === 0) return <p className="text-gray-400 text-sm py-8 text-center">Nessuna esecuzione registrata.</p>;
 
@@ -283,7 +284,9 @@ function EventLogTab() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-gray-500 text-sm">Caricamento…</td>
+                <td colSpan={8} className="px-3 py-10 text-center text-sm">
+                  <LoadingAnimation compact message="Caricamento eventi..." className="justify-center" />
+                </td>
               </tr>
             ) : events.length === 0 ? (
               <tr>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import PageHeading from "../../components/PageHeading";
+import LoadingAnimation from "../../components/LoadingAnimation";
 
 const inputClassName = "w-full rounded-2xl bg-white/95 border border-white/70 px-4 py-3 text-gray-900 placeholder:text-gray-500 caret-gray-900 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-sm focus:outline-none focus:bg-white focus:border-transparent focus:ring-2 focus:ring-pink-500 focus:shadow-[0_16px_40px_rgba(15,23,42,0.14)] transition-all";
 
@@ -126,7 +127,7 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-2xl">Caricamento...</div>}>
+    <Suspense fallback={<LoadingAnimation message="Caricamento reimpostazione password..." className="min-h-screen" />}>
       <ResetPasswordContent />
     </Suspense>
   );

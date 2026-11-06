@@ -28,6 +28,7 @@ import { STANDARD_CATEGORIES } from "../../lib/constants";
 import { parseEventDate } from "../../lib/calendar-ics";
 import { calendarToday } from "../../lib/calendar-view";
 import { generateUniqueSlug } from "../../lib/slug-utils";
+import LoadingAnimation from "./LoadingAnimation";
 
 // Fix for default marker icons in Leaflet with Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -541,33 +542,26 @@ export default function EventMap() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-[#f5f2ec]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d65a38] mx-auto mb-4"></div>
-          <p className="text-[#5f5b56]">Caricamento mappa...</p>
-        </div>
+      <div className="flex h-full w-full items-center justify-center bg-[var(--background)]">
+        <LoadingAnimation message="Caricamento mappa..." />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-[#fff7f4]">
-        <div className="text-center">
-          <p className="text-[#b84b2d]">{error}</p>
-        </div>
+      <div role="alert" className="flex h-full w-full items-center justify-center bg-[var(--background)] p-6 text-center text-[#ef9c8c]">
+        <p className="mb-0">{error}</p>
       </div>
     );
   }
 
   if (allEvents.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-[#f5f2ec]">
-        <div className="text-center">
-          <p className="text-[#5f5b56]">
-            Nessun evento da visualizzare sulla mappa
-          </p>
-        </div>
+      <div className="flex h-full w-full items-center justify-center bg-[var(--background)] p-6 text-center">
+        <p className="mb-0 text-[var(--foreground-muted)]" role="status">
+          Nessun evento da visualizzare sulla mappa
+        </p>
       </div>
     );
   }

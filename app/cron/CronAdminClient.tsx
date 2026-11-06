@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import TelegramAdmin from "./TelegramAdmin";
 import InstagramScanAdmin from "./InstagramScanAdmin";
 import PageHeading from "../components/PageHeading";
+import LoadingAnimation from "../components/LoadingAnimation";
 import CronJobLauncher from "./CronJobLauncher";
 import CronSourceRunStatus, { type CronJobRun } from "./CronSourceRunStatus";
 
@@ -1280,7 +1281,7 @@ export default function CronAdminClient() {
           </div>
 
           {loading ? (
-            <div className="text-gray-300">Caricamento sorgenti...</div>
+            <LoadingAnimation compact message="Caricamento sorgenti..." />
           ) : items.length === 0 ? (
             <div className="text-gray-300">Nessuna sorgente configurata.</div>
           ) : (

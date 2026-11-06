@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #101010;
-  --background-secondary: #191919;
-  --background-soft: #202020;
+  --background: #121212;
+  --background-secondary: #1c1c1c;
+  --background-soft: #252525;
   --foreground: #f5f2ec;
-  --foreground-muted: #aaa7a1;
+  --foreground-muted: #b2afa9;
   --accent: #d65a38;
   --accent-strong: #b9432b;
   --accent-soft: rgba(214, 90, 56, 0.14);
   --ink-soft: #dedbd5;
-  --surface: rgba(30, 30, 30, 0.94);
-  --surface-strong: #242424;
-  --line: rgba(255, 255, 255, 0.14);
-  --shadow-soft: 0 18px 42px rgba(0, 0, 0, 0.28);
-  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.22);
+  --surface: rgba(34, 34, 34, 0.94);
+  --surface-strong: #292929;
+  --line: rgba(255, 255, 255, 0.16);
+  --shadow-soft: 0 18px 42px rgba(0, 0, 0, 0.24);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.18);
   --page-gutter: clamp(1.25rem, 4vw, 4rem);
   --rounded: 0px;
   --space-1: 0.25rem;
@@ -132,53 +132,6 @@ button {
   font-family: inherit;
 }
 
-/* Global unified button style */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 2.75rem;
-  padding: 0.65rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  border-radius: 0 !important;
-  background: #202020 !important;
-  color: #f5f2ec !important;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  line-height: 1;
-  transition: all 0.2s ease;
-}
-
-.btn-primary,
-.btn-accent {
-  background: var(--accent-strong) !important;
-  color: #ffffff !important;
-  border-color: var(--accent-strong) !important;
-}
-
-.btn-secondary {
-  background: #292929 !important;
-  color: #f5f2ec !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-}
-
-.btn-outline,
-.btn-ghost {
-  background: #202020 !important;
-  color: #f5f2ec !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-}
-
-.btn:hover {
-  opacity: 0.9;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  border: 1px solid var(--border);
-}
-
 /* Auth/account pages follow the same monochrome visual language as the rest of the site */
 .auth-page {
   background: var(--background);
@@ -287,47 +240,11 @@ button {
   color: #9ca3af;
 }
 
-/* Squared monochrome buttons */
+/* Keep auth and account controls aligned with the shared dark editorial system. */
 .auth-page .btn,
 .account-page .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 2.75rem;
-  padding: 0.65rem 1rem;
-  border-radius: 0;
-  border: 1px solid #111111;
-  font-weight: 700;
-  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  transition: all 0.2s ease;
-}
-
-.auth-page .btn-primary,
-.account-page .btn-primary,
-.auth-page .btn-accent,
-.account-page .btn-accent,
-.auth-page .btn-secondary,
-.account-page .btn-secondary {
-  background: #111111;
-  color: #ffffff !important;
-  border-color: #111111;
-}
-
-.auth-page .btn-outline,
-.account-page .btn-outline,
-.auth-page .btn-ghost,
-.account-page .btn-ghost {
-  background: #ffffff;
-  color: #111111 !important;
-  border-color: #111111;
-}
-
-.auth-page .btn:hover,
-.account-page .btn:hover {
-  opacity: 0.9;
 }
 
 .account-tabs-shell {
@@ -364,7 +281,7 @@ button {
 .account-profile-card,
 .account-content-panel {
   border-color: var(--line);
-  background: rgba(255, 255, 255, 0.76);
+  background: var(--surface);
   box-shadow: var(--shadow-card);
   animation: none;
 }
@@ -395,17 +312,22 @@ button {
   gap: 0.5rem;
   min-height: 2.75rem;
   padding: 0.65rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border: 1px solid var(--line) !important;
   border-radius: 0 !important;
-  background: #202020 !important;
-  color: #f5f2ec !important;
-  letter-spacing: 0.08em;
+  background: var(--background-soft) !important;
+  color: var(--foreground) !important;
+  letter-spacing: 0.06em;
   font-weight: 700;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
-.btn-primary,
+.btn-primary {
+  background: var(--accent-strong) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-strong) !important;
+}
+
 .btn-accent {
   background: var(--accent) !important;
   color: #ffffff !important;
@@ -413,31 +335,30 @@ button {
 }
 
 .btn-secondary {
-  background: #292929 !important;
-  color: #f5f2ec !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: var(--surface-strong) !important;
+  color: var(--foreground) !important;
+  border-color: var(--line) !important;
 }
 
 .btn-outline,
 .btn-ghost {
-  background: #202020 !important;
-  color: #f5f2ec !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: var(--background-soft) !important;
+  color: var(--foreground) !important;
+  border-color: var(--line) !important;
 }
 
 .btn:hover {
-  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
 }
 
 ::-webkit-scrollbar {
   width: 8px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: var(--background-soft);
-  color: var(--foreground);
-  padding: 0.35rem 0.55rem;
-  font-size: 0.6rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
 }
 
 .account-stat-card {
@@ -536,7 +457,7 @@ button {
 }
 
 .surface-panel {
-  background: rgba(30, 30, 30, 0.78);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-card);
 }
@@ -552,11 +473,12 @@ button {
 .section-title {
   margin: 0;
   color: var(--foreground);
-  font-size: clamp(2.3rem, 5vw, 4.5rem);
-  line-height: 0.94;
+  font-size: clamp(1.9rem, 4.1vw, 3.6rem);
+  line-height: 1.02;
   letter-spacing: 0;
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 500;
+  margin: 0 0 0.7rem;
 }
 
 .section-lead {
@@ -1184,13 +1106,14 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   flex-direction: column;
   gap: 0;
   border: 0;
-  background: #151515;
-  box-shadow: none;
-  transition: transform var(--event-card-motion);
+  background: var(--background-secondary);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--event-card-motion), box-shadow var(--event-card-motion);
 }
 
 .event-card:hover {
   transform: translateY(-3px);
+  box-shadow: var(--shadow-soft);
 }
 
 .event-card-media {
@@ -1200,14 +1123,14 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   min-height: 0;
   height: 300px;
   overflow: hidden;
-  background: #151515;
+  background: var(--background-secondary);
 }
 
 .event-card-image-backdrop {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #151515;
+  background: var(--background-secondary);
 }
 
 .event-card-backdrop-image {
@@ -1345,7 +1268,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 .event-card-actions {
   order: 2;
   padding: 0 1rem 1rem;
-  background: #151515;
+  background: var(--background-secondary);
 }
 
 .event-card-action {
@@ -1687,7 +1610,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1.5rem;
-  min-height: 17rem;
+  min-height: clamp(12rem, 24vw, 17rem);
   border-bottom: 1px solid rgba(255, 255, 255, 0.16);
   padding-bottom: clamp(1.25rem, 3vw, 2rem);
   margin-bottom: clamp(2rem, 4vw, 3rem);
@@ -1758,7 +1681,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   .page-heading {
     align-items: flex-start;
     flex-direction: column;
-    min-height: 19rem;
+    min-height: 12rem;
   }
 
   .page-heading-action {
@@ -2136,9 +2059,10 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  min-height: 88px;
+  min-height: 5.5rem;
   width: 100%;
   color: var(--foreground);
+  padding: 0.75rem 1rem;
 }
 
 .request-status-icon {
@@ -2147,6 +2071,19 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   height: 24px;
   flex: 0 0 24px;
   animation: spin 1.2s linear infinite;
+}
+
+.request-status-compact {
+  min-height: 0;
+  justify-content: flex-start;
+  padding: 0;
+  gap: 0.5rem;
+}
+
+.request-status-compact .request-status-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-basis: 1rem;
 }
 
 .request-status-message {
@@ -2452,7 +2389,8 @@ body:has(.rocket-scene-overlay) {
   .event-card,
   .account-event-card,
   .account-profile-card,
-  .account-content-panel {
+  .account-content-panel,
+  .btn {
     animation: none !important;
     transition: none !important;
     transform: none !important;
@@ -2472,13 +2410,6 @@ body:has(.rocket-scene-overlay) {
 [class~="animate-ping"],
 [class~="animate-pulse"] {
   border-radius: 9999px !important;
-}
-
-.section-title {
-  font-size: clamp(1.9rem, 4.1vw, 3.6rem);
-  line-height: 1.02;
-  color: var(--foreground);
-  margin-bottom: 0.7rem;
 }
 
 .mono-divider {
@@ -3240,14 +3171,5 @@ html[data-theme="dicefm"] .auth-page .text-white,
 html[data-theme="dicefm"] .account-page .text-white,
 html[data-theme="dicefm"] .cron-page .text-white,
 html[data-theme="dicefm"] .cron-page .text-gray-200 {
-  color: #f5f2ec !important;
-}
-
-html[data-theme="dicefm"] .auth-page .btn-outline,
-html[data-theme="dicefm"] .auth-page .btn-ghost,
-html[data-theme="dicefm"] .account-page .btn-outline,
-html[data-theme="dicefm"] .account-page .btn-ghost {
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  background: #202020 !important;
   color: #f5f2ec !important;
 }

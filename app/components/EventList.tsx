@@ -11,6 +11,7 @@ import EventPreview from "./EventPreview";
 import { useSiteSettings } from "./SiteSettingsProvider";
 import { calendarToday } from "../../lib/calendar-view";
 import type { PublicListEvent } from "../../lib/public-event-list";
+import LoadingAnimation from "./LoadingAnimation";
 
 type EventListMode = "full" | "quick";
 type QuickDateFilter = "today" | "tomorrow" | "weekend" | "week";
@@ -495,13 +496,7 @@ export default function EventList({ mode = "full", initialEvents, initialToday }
           <>
             <div className={gridClasses}>
               {loading ? (
-                <div role="status" className="col-span-full flex flex-col items-center justify-center py-16 text-center">
-                  <span
-                    aria-hidden="true"
-                    className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-black/15 border-t-[#d65a38]"
-                  />
-                  <span className="text-sm text-black/60">Caricamento eventi...</span>
-                </div>
+                <LoadingAnimation message="Caricamento eventi..." className="col-span-full py-16 text-center" />
               ) : filteredEvents.length === 0 ? (
                 <div className="col-span-full text-center py-16">
                   <h3 className="text-2xl font-bold text-black mb-2">

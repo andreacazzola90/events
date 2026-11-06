@@ -71,9 +71,9 @@ export default function RocketLaunchAnimation({
 
     const waiting = !compact && stage !== 'launch' && stage !== 'stopped';
     useEffect(() => {
-        if (!waiting) return;
+        if (!waiting || reducedMotion) return;
         const interval = window.setInterval(() => {
-            if (!reducedMotion) setSceneBeat(beat => (beat + 1) % 3);
+            setSceneBeat(beat => (beat + 1) % 3);
             setMessageIndex(index => (index + 1) % messages.length);
         }, 3000);
         return () => window.clearInterval(interval);

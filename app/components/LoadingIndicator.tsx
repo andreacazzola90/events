@@ -9,14 +9,15 @@ export function LoadingIndicator() {
 
     return (
         <div
-            className="fixed top-0 left-0 right-0 z-[9999] h-[2px] bg-black/10"
+            className="fixed top-0 left-0 right-0 z-[9999] h-[2px] bg-[var(--line)]"
             role="progressbar"
+            aria-label="Caricamento pagina"
             aria-valuenow={Math.round(transitionProgress)}
             aria-valuemin={0}
             aria-valuemax={100}
         >
             <div
-                className="h-full bg-black transition-all duration-200 ease-out"
+                className="h-full bg-[var(--accent)] transition-all duration-200 ease-out"
                 style={{ width: `${transitionProgress}%` }}
             />
         </div>

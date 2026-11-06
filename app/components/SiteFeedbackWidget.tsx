@@ -92,7 +92,7 @@ export default function SiteFeedbackWidget() {
             </button>
           </header>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-3" aria-busy={isSending}>
             <label className="block text-sm font-semibold">
               Titolo
               <input
@@ -136,7 +136,7 @@ export default function SiteFeedbackWidget() {
               disabled={isSending || !title.trim() || !message.trim()}
               className="inline-flex min-h-11 w-full items-center justify-center gap-2 bg-[#171717] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#d65a38] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" aria-hidden="true" />}
+              {isSending ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
               {isSending ? 'Invio…' : 'Invia segnalazione'}
             </button>
           </form>

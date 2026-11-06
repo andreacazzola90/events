@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import PageHeading from "../../components/PageHeading";
+import LoadingAnimation from "../../components/LoadingAnimation";
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -51,7 +52,7 @@ function VerifyEmailContent() {
             />
 
             {status === "loading" && (
-              <p className="text-gray-400">Verifica in corso...</p>
+              <LoadingAnimation compact message="Verifica dell’email in corso..." />
             )}
             {status === "success" && (
               <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-emerald-200 text-sm">
@@ -78,7 +79,7 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-2xl">Caricamento...</div>}>
+    <Suspense fallback={<LoadingAnimation message="Caricamento verifica email..." className="min-h-screen" />}>
       <VerifyEmailContent />
     </Suspense>
   );

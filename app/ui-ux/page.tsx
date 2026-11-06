@@ -10,18 +10,18 @@ export const metadata: Metadata = publicPageMetadata({
 });
 
 const palette = [
-  { name: "Sfondo", value: "#f1eee7", variable: "--background" },
-  { name: "Sfondo secondario", value: "#e8e4db", variable: "--background-secondary" },
-  { name: "Superficie soft", value: "#faf7f2", variable: "--background-soft" },
-  { name: "Testo", value: "#1d1d1b", variable: "--foreground" },
-  { name: "Testo secondario", value: "#5f5b56", variable: "--foreground-muted" },
-  { name: "Inchiostro soft", value: "#2b2a28", variable: "--ink-soft" },
+  { name: "Sfondo", value: "#121212", variable: "--background" },
+  { name: "Sfondo secondario", value: "#1c1c1c", variable: "--background-secondary" },
+  { name: "Superficie soft", value: "#252525", variable: "--background-soft" },
+  { name: "Testo", value: "#f5f2ec", variable: "--foreground" },
+  { name: "Testo secondario", value: "#b2afa9", variable: "--foreground-muted" },
+  { name: "Inchiostro soft", value: "#dedbd5", variable: "--ink-soft" },
   { name: "Accento", value: "#d65a38", variable: "--accent" },
-  { name: "Accento forte", value: "#b84b2d", variable: "--accent-strong" },
-  { name: "Accento soft", value: "#f4d9d3", variable: "--accent-soft" },
-  { name: "Superficie", value: "rgba(255, 255, 255, 0.82)", variable: "--surface" },
-  { name: "Superficie piena", value: "#ffffff", variable: "--surface-strong" },
-  { name: "Bordo", value: "rgba(29, 29, 27, 0.12)", variable: "--line" },
+  { name: "Accento forte", value: "#b9432b", variable: "--accent-strong" },
+  { name: "Accento soft", value: "rgba(214, 90, 56, 0.14)", variable: "--accent-soft" },
+  { name: "Superficie", value: "rgba(34, 34, 34, 0.94)", variable: "--surface" },
+  { name: "Superficie piena", value: "#292929", variable: "--surface-strong" },
+  { name: "Bordo", value: "rgba(255, 255, 255, 0.16)", variable: "--line" },
 ];
 
 const spacing = [
@@ -74,10 +74,10 @@ export default function UiUxPage() {
 
         <RuleSection number="01" title="Palette">
             <p className="mb-5 text-sm leading-relaxed text-[#5f5b56]">
-            Usa i neutrali caldi per le superfici e il terracotta per azioni,
-            focus e dettagli in evidenza. Il fondo pagina aggiunge un gradiente
-            molto tenue; il testo secondario non sostituisce quello principale
-            per i contenuti essenziali.
+            Il sistema effettivo è scuro: superfici carbone leggermente differenziate,
+            testo avorio e terracotta per azioni, focus e dettagli in evidenza.
+            Il testo secondario non sostituisce quello principale per i contenuti
+            essenziali; errori e conferme mantengono colori semantici distinti.
           </p>
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             {palette.map((color) => (
@@ -110,8 +110,8 @@ export default function UiUxPage() {
         <RuleSection number="03" title="Spaziatura e layout">
           <p className="mb-5 text-sm leading-relaxed text-[#5f5b56]">
             Usa la scala <code>--space-*</code> per distanze ripetute. Il contenuto editoriale
-            resta centrato entro 1320 px; il padding orizzontale e quello verticale
-            si adattano al viewport.
+            usa la larghezza disponibile con gutter fluidi; intestazioni e spazi
+            verticali si adattano al viewport.
           </p>
           <div className="grid grid-cols-2 gap-x-6 sm:grid-cols-3 lg:grid-cols-4">
             {spacing.map(([token, size]) => (
@@ -125,7 +125,7 @@ export default function UiUxPage() {
 
         <RuleSection number="04" title="Superfici e controlli">
           <ul className="m-0 list-none space-y-3 p-0 text-sm leading-relaxed text-[#5f5b56]">
-            <li><strong className="text-[#1d1d1b]">Pannelli:</strong> fondo chiaro, bordo sottile e ombra contenuta; evita pannelli annidati e sezioni trasformate in card.</li>
+            <li><strong className="text-[#1d1d1b]">Pannelli:</strong> superfici carbone, bordo sottile e ombra contenuta; evita pannelli annidati e sezioni trasformate in card.</li>
             <li><strong className="text-[#1d1d1b]">Ombre:</strong> <code>--shadow-card</code> per superfici ripetute, <code>--shadow-soft</code> per elevazioni più ampie; usarle con moderazione.</li>
             <li><strong className="text-[#1d1d1b]">Angoli:</strong> tema squadrato, raggio zero; le forme circolari sono riservate a indicatori e spinner.</li>
             <li><strong className="text-[#1d1d1b]">Azioni:</strong> comandi primari ad alto contrasto; CTA editoriali in terracotta. Mantieni almeno 44 px di altezza per i pulsanti principali.</li>
@@ -136,7 +136,8 @@ export default function UiUxPage() {
         <RuleSection number="05" title="Motion e accessibilità">
           <ul className="m-0 list-none space-y-3 p-0 text-sm leading-relaxed text-[#5f5b56]">
             <li>Preferisci transizioni brevi e feedback leggibile; gli hover possono sollevare leggermente le card, senza spostare il layout.</li>
-            <li>Rispetta <code>prefers-reduced-motion</code>: animazioni e transizioni vengono ridotte quasi a zero.</li>
+            <li>Per le attese usa <code>LoadingAnimation</code> con un messaggio contestuale e un annuncio <code>role="status"</code>; le scansioni mantengono animazione e messaggi dedicati.</li>
+            <li>Rispetta <code>prefers-reduced-motion</code>: gli indicatori diventano statici e le animazioni decorative si fermano.</li>
             <li>Ogni link e controllo da tastiera mostra un focus visibile terracotta di 2 px con offset.</li>
             <li>Su mobile, impila le colonne, lascia respirare i controlli e verifica che nessun testo causi overflow orizzontale.</li>
           </ul>

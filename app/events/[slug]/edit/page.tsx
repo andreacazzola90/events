@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { type Area } from "react-easy-crop";
 import EventImageCropper from "../../../components/EventImageCropper";
 import PageHeading from "../../../components/PageHeading";
+import LoadingAnimation from "../../../components/LoadingAnimation";
 import {
   CalendarIcon,
   ClockIcon,
@@ -271,11 +272,7 @@ export default function EditEventPage() {
   };
 
   if (status === "loading" || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-2xl">
-        Caricamento...
-      </div>
-    );
+    return <LoadingAnimation message="Caricamento evento..." className="min-h-screen" />;
   }
   if (!session) {
     return (

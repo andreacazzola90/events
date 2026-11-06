@@ -31,9 +31,16 @@ const SCAN_MESSAGES: Record<Exclude<LoadingPhase, 'generic' | 'saving' | 'receiv
 interface LoadingAnimationProps {
     message?: string;
     phase?: LoadingPhase;
+    compact?: boolean;
+    className?: string;
 }
 
-export default function LoadingAnimation({ message = 'Elaborazione in corso', phase = 'generic' }: LoadingAnimationProps) {
+export default function LoadingAnimation({
+    message = 'Elaborazione in corso',
+    phase = 'generic',
+    compact = false,
+    className = '',
+}: LoadingAnimationProps) {
     if (phase in SCAN_MESSAGES) {
         const scanPhase = phase as keyof typeof SCAN_MESSAGES;
         return (
@@ -47,7 +54,13 @@ export default function LoadingAnimation({ message = 'Elaborazione in corso', ph
         );
     }
     return (
-        <div className="request-status" role="status" aria-live="polite" data-loading-phase={phase}>
+        <div
+            className={`request-status${compact ? ' request-status-compact' : ''}${className ? ` ${className}` : ''}`}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-loading-phase={phase}
+        >
             <Loader2 className="request-status-icon" aria-hidden="true" />
             <p className="request-status-message">{message}</p>
         </div>

@@ -1,15 +1,12 @@
 "use client";
 import { useSession, signOut } from 'next-auth/react';
+import LoadingAnimation from './LoadingAnimation';
 
 export default function UserMenu() {
     const { data: session, status } = useSession();
 
     if (status === 'loading') {
-        return (
-            <div className="flex items-center gap-4">
-                <span className="text-gray-500">Caricamento...</span>
-            </div>
-        );
+        return <LoadingAnimation compact message="Caricamento sessione..." />;
     }
 
     return (

@@ -2160,6 +2160,8 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 }
 
 .rocket-scene {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2167,7 +2169,49 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   gap: 8px;
   width: 100%;
   min-height: 210px;
+  overflow: hidden;
+  padding: 18px;
+  border-radius: 12px;
+  background: var(--background-secondary);
   color: var(--foreground);
+}
+
+.rocket-scene::before,
+.rocket-scene::after {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+}
+
+.rocket-scene::before {
+  inset: -35%;
+  background:
+    radial-gradient(ellipse at 24% 30%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 38%),
+    radial-gradient(ellipse at 76% 68%, color-mix(in srgb, var(--foreground-muted) 13%, transparent), transparent 42%);
+}
+
+.rocket-scene::after {
+  width: min(76vw, 460px);
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 50%;
+}
+
+.rocket-scene-overlay {
+  position: fixed;
+  inset: 64px 0 0;
+  z-index: 40;
+  display: grid;
+  overflow: hidden;
+  background: var(--background-secondary);
+  isolation: isolate;
+  overscroll-behavior: contain;
+}
+
+html:has(.rocket-scene-overlay),
+body:has(.rocket-scene-overlay) {
+  overflow: hidden !important;
 }
 
 .rocket-scene-compact {
@@ -2175,13 +2219,46 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   flex-direction: row;
   justify-content: flex-start;
   gap: 12px;
+  overflow: visible;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rocket-scene-compact::before,
+.rocket-scene-compact::after {
+  display: none;
+}
+
+.rocket-scene-fullscreen {
+  min-height: 100%;
+  height: 100%;
+  border-radius: 0;
+  padding: clamp(24px, 6vw, 72px);
 }
 
 .rocket-scene-art {
   display: block;
+  position: relative;
+  z-index: 1;
   width: min(100%, 260px);
   height: 170px;
   overflow: visible;
+}
+
+.rocket-scene-details {
+  fill: var(--accent);
+  opacity: 0.2;
+  transition: opacity 450ms ease, transform 450ms ease;
+  transform-box: view-box;
+  transform-origin: center;
+}
+
+[data-scene-beat="0"] .rocket-scene-details [data-scene-detail="0"],
+[data-scene-beat="1"] .rocket-scene-details [data-scene-detail="1"],
+[data-scene-beat="2"] .rocket-scene-details [data-scene-detail="2"] {
+  opacity: 1;
+  transform: scale(1.35);
 }
 
 .rocket-scene-compact .rocket-scene-art {
@@ -2200,6 +2277,10 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   font-weight: 600;
   line-height: 1.5;
   color: inherit;
+}
+
+.rocket-scene-fullscreen .rocket-scene-message {
+  font-size: clamp(15px, 2.2vw, 18px);
 }
 
 .rocket-scene-compact .rocket-scene-message {
@@ -2267,6 +2348,13 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 [data-rocket-stage="stopped"] .rocket-kid { transform: rotate(-3deg); }
 
 @media (prefers-reduced-motion: no-preference) {
+  .rocket-scene:not(.rocket-scene-compact)::before {
+    animation: rocket-sky-drift 12s ease-in-out infinite alternate;
+  }
+  .rocket-scene:not(.rocket-scene-compact)::after {
+    animation: rocket-orbit-drift 18s ease-in-out infinite alternate;
+  }
+
   [data-rocket-stage="build"] .rocket-part { animation: rocket-assemble 2.4s ease-in-out infinite both; }
   [data-rocket-stage="build"] .rocket-part-body { animation-delay: 0.3s; }
   [data-rocket-stage="build"] .rocket-part-window { animation-delay: 0.6s; }
@@ -2283,6 +2371,16 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   [data-rocket-stage="launch"] .rocket { animation: rocket-liftoff 0.9s cubic-bezier(0.55, 0, 0.75, 0.2) forwards; }
   [data-rocket-stage="launch"] .rocket-smoke circle { animation: rocket-smoke 0.9s ease-out forwards; }
   [data-rocket-stage="launch"] .rocket-kid { animation: rocket-kid-jump 0.45s ease-out 2 alternate; }
+}
+
+@keyframes rocket-sky-drift {
+  from { transform: translate(-2%, -1%) scale(0.98); }
+  to { transform: translate(2%, 1%) scale(1.03); }
+}
+
+@keyframes rocket-orbit-drift {
+  from { transform: translate(-5%, 2%) rotate(-12deg); }
+  to { transform: translate(5%, -2%) rotate(12deg); }
 }
 
 @keyframes rocket-assemble {

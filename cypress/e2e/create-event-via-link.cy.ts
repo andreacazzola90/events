@@ -7,7 +7,12 @@ const describeByTitle = (title: string, suite: () => void) => {
 
 describeByTitle('Event Creation via Link - AI Testing', () => {
   beforeEach(() => {
-    cy.visit('/crea', { failOnStatusCode: false });
+    cy.visit('/crea', {
+      failOnStatusCode: false,
+      onBeforeLoad(window) {
+        window.localStorage.setItem('eventscanner:autopublish', '0');
+      },
+    });
     cy.wait(2000);
   });
 
@@ -38,7 +43,7 @@ describeByTitle('Event Creation via Link - AI Testing', () => {
       .type('https://www.dice.fm/event/test-concert-2025');
     
     // Click the extract button
-    cy.contains('button', /Extract Event/i).click();
+    cy.contains('button', 'Estrai evento').click();
     
     // Wait for AI processing (with longer timeout)
     cy.wait('@processLink', { timeout: 40000 }).then((interception) => {
@@ -99,14 +104,14 @@ describeByTitle('Event Creation via Link - AI Testing', () => {
       .clear()
       .type('https://www.eventbrite.com/e/test-event-tickets');
     
-    cy.contains('button', /Extract Event/i).click();
+    cy.contains('button', 'Estrai evento').click();
     cy.wait('@processLink', { timeout: 40000 });
     
     // Wait for event display
     cy.get('.event-display-container', { timeout: 10000 }).should('be.visible');
     
     // Click "Aggiungi evento" button
-    cy.contains('button', /Aggiungi evento/i, { timeout: 10000 }).should('be.visible').click();
+    cy.contains('button', 'Pubblica', { timeout: 10000 }).should('be.visible').click();
     
     // Wait for save
     cy.wait('@createEvent', { timeout: 30000 }).then((interception) => {
@@ -122,7 +127,7 @@ describeByTitle('Event Creation via Link - AI Testing', () => {
 
   it('should handle invalid or empty URLs gracefully', () => {
     // Try with empty URL
-    cy.contains('button', /Extract Event/i).click();
+    cy.contains('button', 'Estrai evento').click();
     
     // Should stay on same page
     cy.url().should('include', '/crea');
@@ -133,7 +138,7 @@ describeByTitle('Event Creation via Link - AI Testing', () => {
       .clear()
       .type('not-a-valid-url');
     
-    cy.contains('button', /Extract Event/i).click();
+    cy.contains('button', 'Estrai evento').click();
     cy.wait(2000);
     
     // Should handle gracefully
@@ -141,8 +146,8 @@ describeByTitle('Event Creation via Link - AI Testing', () => {
   });
 });
 
-describeByTitle('Fullscreen 3D scanning', () => {
-  const scene = '[data-scan-scene]';
+describeByTitle('Unified 2D scanning', () => {
+  const scene = '[data-loading-scene]';
   const draft = { title: 'Scansione mock 3D', date: '2026-12-20', time: '21:00', location: 'Schio', category: 'music' };
   const submitLink = (url = 'https://example.com/evento') => {
     cy.get('input[type="url"]').clear().type(url);
@@ -296,7 +301,7 @@ describeByTitle('Fullscreen 3D scanning', () => {
     cy.focused().should('have.attr', 'aria-label', 'Apri menu');
   });
 
-  it('does not reopen the image picker or accept another drop through the scanning portal', () => {
+  it('does not reopen the image picker or accept another drop through the scanning portal', { defaultCommandTimeout: 30000 }, () => {
     let finish: () => void;
     let scans = 0;
     cy.viewport(390, 844);
@@ -368,39 +373,50 @@ describeByTitle('Fullscreen 3D scanning', () => {
     cy.document().should(document => expect(document.documentElement.scrollWidth).to.equal(document.documentElement.clientWidth));
   });
 
-  it('renders real WebGL geometry and handles context loss without losing status', () => {
+  it('uses the shared 2D illustration without a WebGL canvas', () => {
     mockLink({ events: [] }, 200, 12000);
     visit();
     submitLink();
-    cy.get(scene).should('have.attr', 'data-scene-state', 'ready');
-    cy.get(`${scene} canvas`).should('be.visible').then(canvas => {
-      const element = canvas[0] as HTMLCanvasElement;
-      expect(element.width).to.be.greaterThan(0);
-      expect(element.height).to.be.greaterThan(0);
-      const context = element.getContext('webgl2');
-      expect(context).not.to.equal(null);
-      expect(context!.getParameter(context!.VERSION)).to.contain('WebGL');
-      element.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
-    });
-    cy.get(scene).should('have.attr', 'data-scene-state', 'fallback');
-    cy.get(`${scene} [role="status"]`).should('be.visible');
+    cy.get(scene).should('be.visible').and('have.attr', 'data-loading-phase', 'scan-link');
+    cy.get(`${scene} [data-event-animation="2d"]`).should('be.visible').and('have.attr', 'data-rocket-stage', 'build');
+    cy.get(`${scene} svg.rocket-scene-art`).should('be.visible');
+    cy.get(`${scene} canvas`).should('not.exist');
+    cy.get(`${scene} [role="status"]`).should('contain', 'Scansione pagina web in corso');
+    expectUnderHeader();
   });
 
-  it('keeps an accessible fallback when WebGL is unavailable', () => {
-    mockLink({ events: [] });
-    visit(window => {
-      const original = window.HTMLCanvasElement.prototype.getContext;
-      cy.stub(window.HTMLCanvasElement.prototype, 'getContext').callsFake(function(this: HTMLCanvasElement, type: string, ...args: unknown[]) {
-        if (type === 'webgl2' || type === 'webgl' || type === 'experimental-webgl') return null;
-        return original.apply(this, [type, ...args] as Parameters<typeof original>);
-      });
-    });
+  it('updates the explanatory copy and scene details while a scan is still waiting', () => {
+    mockLink({ events: [] }, 200, 12000);
+    visit();
+    cy.clock();
     submitLink();
-    cy.get(scene).should('have.attr', 'data-scene-state', 'fallback');
-    cy.get(`${scene} [role="status"]`).should('be.visible').and('contain', 'Scansione pagina web in corso');
-    expectUnderHeader();
+    cy.get(`${scene} [role="status"]`).should('contain', 'Scansione pagina web in corso');
+    cy.tick(3000);
+    cy.get(`${scene} [role="status"]`).should('contain', 'Sto leggendo la pagina per individuare gli eventi');
+    cy.get(`${scene} [data-event-animation="2d"]`).should('have.attr', 'data-scene-beat', '1');
+    cy.get(`${scene} [role="status"]`).should('not.contain', '%').and('not.contain', 'completato');
     cy.wait('@scanLink');
     cy.get(scene).should('not.exist');
+  });
+
+  it('uses the same 2D scene when manually publishing one draft from a batch', () => {
+    mockLink({ events: [draft, { ...draft, title: 'Second event' }] }, 200, 100);
+    cy.intercept('POST', '/api/events', {
+      statusCode: 201,
+      delay: 5000,
+      body: { id: 4243, title: draft.title },
+    }).as('manualPublish');
+    visit();
+    submitLink();
+    cy.wait('@scanLink');
+    cy.get('[data-testid="event-draft-card"]').should('have.length', 2);
+    cy.contains('button', 'Pubblica evento').first().click();
+    cy.get(`${scene} [data-event-animation="2d"]`)
+      .should('be.visible')
+      .and('have.attr', 'data-rocket-stage', 'ignite');
+    cy.get(`${scene} [role="status"]`).should('contain', 'Sto pubblicando l’evento');
+    cy.get(`${scene} canvas`).should('not.exist');
+    cy.wait('@manualPublish');
   });
 
   it('responds to live reduced-motion changes without remounting the overlay', () => {
@@ -417,19 +433,23 @@ describeByTitle('Fullscreen 3D scanning', () => {
       };
       cy.stub(window, 'matchMedia').callsFake((query: string) => query === '(prefers-reduced-motion: reduce)' ? motion : original(query));
     });
+    cy.clock();
     submitLink();
-    cy.get(scene).should('have.attr', 'data-scene-state', 'ready').and('have.attr', 'data-reduced-motion', 'true');
+    cy.get(`${scene} [data-event-animation="2d"]`).should('have.attr', 'data-reduced-motion', 'true');
     cy.then(() => updateMotion(false));
-    cy.get(scene).should('have.attr', 'data-reduced-motion', 'false');
+    cy.get(`${scene} [data-event-animation="2d"]`).should('have.attr', 'data-reduced-motion', 'false');
     cy.then(() => updateMotion(true));
-    cy.get(scene).should('have.attr', 'data-reduced-motion', 'true');
+    cy.get(`${scene} [data-event-animation="2d"]`).should('have.attr', 'data-reduced-motion', 'true');
+    cy.tick(3000);
+    cy.get(`${scene} [data-event-animation="2d"]`).should('have.attr', 'data-scene-beat', '0');
+    cy.get(`${scene} [role="status"]`).should('contain', 'Sto leggendo la pagina per individuare gli eventi');
     cy.get(`${scene} [role="status"]`).should('be.visible');
   });
 
   for (const source of ['image', 'pdf', 'shared']) {
     it(`uses the same overlay for ${source} scanning with the real phase message`, () => {
       cy.intercept('POST', source === 'pdf' ? '/api/process-pdf' : '/api/process-image', {
-        statusCode: 503, delay: 3000, body: { code: 'VISION_SERVICE_UNAVAILABLE', error: 'Scansione mock terminata' },
+        statusCode: 503, delay: source === 'pdf' ? 6000 : 3000, body: { code: 'VISION_SERVICE_UNAVAILABLE', error: 'Scansione mock terminata' },
       }).as('scanFile');
       if (source === 'shared') {
         cy.intercept('GET', '/api/share-target?shareId=scan-3d', {
@@ -442,8 +462,12 @@ describeByTitle('Fullscreen 3D scanning', () => {
           ? { contents: Cypress.Buffer.from('%PDF-1.4\n%%EOF'), fileName: 'programma.pdf', mimeType: 'application/pdf' }
           : 'cypress/fixtures/event-poster.png', { force: true });
       }
-      cy.get(scene).should('be.visible').and('have.attr', 'data-loading-phase', source === 'shared' ? 'shared-image' : 'scan-image');
+      cy.get(scene).should('be.visible').and('have.attr', 'data-loading-phase', source === 'pdf' ? 'scan-pdf' : source === 'shared' ? 'shared-image' : 'scan-image');
       cy.get(`${scene} [role="status"]`).should('contain', source === 'pdf' ? 'Scansione PDF in corso' : source === 'shared' ? 'Scansione immagine condivisa in corso' : 'Scansione immagine in corso');
+      if (source === 'pdf') {
+        cy.wait(3000);
+        cy.get(`${scene} [role="status"]`).should('contain', 'Sto leggendo il testo del PDF');
+      }
       cy.wait('@scanFile');
       cy.get(scene).should('not.exist');
       cy.get('body > main').should('not.have.attr', 'inert');

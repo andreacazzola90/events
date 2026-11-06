@@ -523,11 +523,17 @@ describe('Parallel event cover', () => {
       }));
       cy.get('input[type="url"]').type('https://events.example/mock');
       cy.contains('button', 'Estrai evento').click();
-      cy.get('[data-scan-scene]').should('be.visible').and('contain', 'Scansione pagina web in corso').and('not.contain', 'Step:');
-      cy.get('[data-scan-scene]').should('have.attr', 'data-scene-state', 'ready').and('have.attr', 'data-reduced-motion', String(reduced));
-      cy.get('[data-scan-scene] canvas').should('be.visible');
+      cy.get('[data-loading-scene]').should('be.visible').and('contain', 'Scansione pagina web in corso');
+      cy.get('[data-loading-scene] [data-event-animation="2d"]').should('have.attr', 'data-rocket-stage', 'build')
+        .and('have.attr', 'data-reduced-motion', String(reduced));
+      cy.get('[data-loading-scene] svg.rocket-scene-art').should('be.visible');
+      cy.get('[data-loading-scene] canvas').should('not.exist');
+      cy.get('[data-loading-scene] [data-event-animation="2d"]').then(scene => {
+        const backgroundAnimation = getComputedStyle(scene[0], '::before').animationName;
+        expect(backgroundAnimation).to.eq(reduced ? 'none' : 'rocket-sky-drift');
+      });
       cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(width));
-      cy.get('[data-scan-scene]').then(status => {
+      cy.get('[data-loading-scene]').then(status => {
         const bounds = status[0].getBoundingClientRect();
         expect(bounds.top).to.be.at.least(64);
         expect(bounds.bottom).to.be.at.most(900);
@@ -535,7 +541,7 @@ describe('Parallel event cover', () => {
       cy.screenshot(`responsive-link-${width}-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
       cy.then(() => finish());
       cy.contains('Link mock pronto').should('be.visible');
-      cy.get('[data-scan-scene]').should('not.exist');
+      cy.get('[data-loading-scene]').should('not.exist');
       cy.then(() => Cypress.automation('remote:debugger:protocol', { command: 'Emulation.setEmulatedMedia', params: { features: [] } }));
     });
   }
@@ -763,10 +769,13 @@ describe('Event creation autopilot', () => {
       scanPoster();
       cy.get('[data-testid="autopublish-toggle"]').should('be.checked');
       cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-      cy.get('[data-scan-scene]').should('be.visible');
+      cy.get('[data-loading-scene]').should('be.visible');
       cy.wait(['@autopilotScan', '@autopilotDuplicates']);
-      cy.get('[data-testid="autopilot-panel"] [data-rocket-stage="position"]').should('be.visible').and('contain', 'Razzo in posizione');
+      cy.get('[data-testid="autopilot-panel"] [data-event-animation="2d"]').should('be.visible')
+        .and('have.attr', 'data-rocket-stage', 'position')
+        .and('contain', 'copertina sia pronta');
       cy.get('[data-optimistic-status="ready"]').should('contain', event.title).find('img').should('exist');
+      cy.get('[data-optimistic-status="ready"] .animate-spin').should('not.exist');
       cy.get('[data-testid="publish-all-events-top"]').should('not.exist');
       cy.get('.rocket').then(rocket => {
         const style = rocket[0].ownerDocument.defaultView!.getComputedStyle(rocket[0]);
@@ -776,8 +785,9 @@ describe('Event creation autopilot', () => {
       cy.screenshot(`autopilot-position-390-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
       cy.then(() => { expect(saves).to.eq(0); finishCrop(); });
       cy.wait('@autopilotCrop');
-      cy.get('[data-rocket-stage="ignite"]').should('be.visible').and('contain', 'Accensione');
+      cy.get('[data-rocket-stage="ignite"]').should('be.visible').and('contain', 'Sto pubblicando l’evento');
       cy.get('[data-optimistic-status="pending"]').should('contain', event.title);
+      cy.get('[data-optimistic-status="pending"] .animate-spin').should('not.exist');
       cy.screenshot(`autopilot-ignite-390-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
       cy.wrap(null).should(() => expect(saves).to.eq(1));
       cy.then(() => finishSave());
@@ -928,21 +938,31 @@ describe('Event creation autopilot', () => {
   });
 
   it('should save event with image to database', () => {
-    // Mock OCR response
-    cy.intercept('POST', '/api/process-image', {
+    cy.intercept('POST', '/api/crop-image', {
       statusCode: 200,
-      body: {
-        title: 'Saveable Image Event',
-        description: 'Event from image',
-        date: '2025-08-10',
-        time: '19:00',
-        location: 'Test Venue',
-        organizer: 'Test',
-        category: 'Music',
-        price: '€20',
-        rawText: 'Test raw text from OCR'
-      }
-    }).as('processImage');
+      fixture: 'event-poster.jpg,null',
+      headers: { 'Content-Type': 'image/jpeg' },
+    }).as('saveImageCrop');
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } }).as('saveDuplicates');
+
+    // Mock OCR response
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      cy.intercept('POST', '/api/process-image', {
+        statusCode: 200,
+        body: {
+          title: 'Saveable Image Event',
+          description: 'Event from image',
+          date: '2025-08-10',
+          time: '19:00',
+          location: 'Test Venue',
+          organizer: 'Test',
+          category: 'Music',
+          price: '€20',
+          rawText: 'Test raw text from OCR',
+          previewImageDataUrl: `data:image/png;base64,${image}`,
+        }
+      }).as('processImage');
+    });
     
     // Mock database save
     cy.intercept('POST', '/api/events', {
@@ -956,14 +976,12 @@ describe('Event creation autopilot', () => {
     // Upload image
     cy.get('input[type="file"]', { timeout: 10000 })
       .first()
-      .selectFile({
-        contents: 'cypress/fixtures/event-poster.png',
-        fileName: 'event-poster.png',
-        mimeType: 'image/png'
-      }, { force: true });
+      .selectFile('cypress/fixtures/event-poster.png', { force: true });
     
     // Wait for processing
     cy.wait('@processImage', { timeout: 50000 });
+    cy.wait('@saveImageCrop', { timeout: 30000 });
+    cy.wait('@saveDuplicates', { timeout: 30000 });
     
     // Wait for event display
     cy.get('.event-display-container', { timeout: 10000 }).should('be.visible');
@@ -973,7 +991,7 @@ describe('Event creation autopilot', () => {
     cy.log('✅ Image preview displayed');
     
     // Click save button
-    cy.contains('button', /Aggiungi evento/i, { timeout: 10000 })
+    cy.contains('button', 'Pubblica', { timeout: 10000 })
       .should('be.visible')
       .click();
     

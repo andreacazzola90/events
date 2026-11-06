@@ -17,6 +17,7 @@ interface ImageUploaderProps {
 export default function ImageUploader({ onProcessed, onError, onStart }: ImageUploaderProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingMessage, setProcessingMessage] = useState('Scansione immagine in corso');
+    const [processingPhase, setProcessingPhase] = useState<'scan-image' | 'scan-pdf'>('scan-image');
     const [showSourcePicker, setShowSourcePicker] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -45,6 +46,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
         const isCurrent = () => !cancelled && (!scan || scan.isCurrent());
 
         setProcessingMessage(isPdf ? 'Scansione PDF in corso' : 'Scansione immagine in corso');
+        setProcessingPhase(isPdf ? 'scan-pdf' : 'scan-image');
         setIsProcessing(true);
 
         try {
@@ -271,7 +273,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
 
                 <div className="space-y-4">
                     {isProcessing ? (
-                        <LoadingAnimation message={processingMessage} phase="scan-image" />
+                        <LoadingAnimation message={processingMessage} phase={processingPhase} />
                     ) : (
                         <>
                             <div className="image-upload-symbol" aria-hidden="true">＋</div>

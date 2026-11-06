@@ -109,6 +109,32 @@ export default function CreaEvento() {
     const [coverMissing, setCoverMissing] = useState(false);
     const [needsReview, setNeedsReview] = useState(false);
     const autopilotActive = !!autopilot && autopilot.stage !== 'stopped';
+    const autopilotMessages = autopilot?.stage === 'position'
+        ? imageCropStatus === 'processing'
+            ? [
+                'Sto aspettando che la copertina sia pronta; poi completerò i controlli prima del salvataggio.',
+                'La preparazione della copertina è ancora in corso; l’evento non verrà salvato finché non termina.',
+            ]
+            : posterSectionsPending
+                ? [
+                    'Sto completando le sezioni della locandina; poi riprenderò i controlli per la pubblicazione.',
+                    'Le sezioni della locandina sono ancora in elaborazione; il salvataggio aspetta il completamento.',
+                ]
+                : !duplicatesChecked
+                    ? [
+                        'Sto verificando se l’evento è già presente; poi controllerò gli altri requisiti di pubblicazione.',
+                        'Il controllo dei duplicati è ancora in corso; il salvataggio aspetta il suo esito.',
+                    ]
+                    : [
+                        'Sto aspettando che i controlli di copertina e duplicati siano pronti; poi deciderò se pubblicare.',
+                        'La pubblicazione resta in attesa finché i controlli richiesti non hanno un esito.',
+                    ]
+        : autopilot?.stage === 'ignite'
+            ? [
+                'Sto pubblicando l’evento; il decollo partirà dopo la conferma.',
+                'Attendo la conferma del salvataggio: solo allora inizierà la navigazione.',
+            ]
+            : undefined;
 
     const mounted = useRef(true);
 
@@ -901,7 +927,7 @@ export default function CreaEvento() {
 
                         {autopilot && autopilotActive && (
                             <section className="surface-panel create-autopilot-panel p-6 md:p-8 animate-fadeInUp" data-testid="autopilot-panel" aria-label="Pubblicazione automatica">
-                                <RocketLaunchAnimation stage={autopilot.stage} onLaunchEnd={() => launchDone.current?.()} />
+                                <RocketLaunchAnimation stage={autopilot.stage} messageSequence={autopilotMessages} onLaunchEnd={() => launchDone.current?.()} />
                                 {autopilot.stage === 'position' && (
                                     <div className="mt-4 flex justify-center">
                                         <button
@@ -940,6 +966,8 @@ export default function CreaEvento() {
                                                 ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                                                 : status === 'duplicate' || status === 'failed'
                                                     ? <CircleAlert className="h-4 w-4" aria-hidden="true" />
+                                                    : autopilotActive
+                                                        ? <Clock3 className="h-4 w-4" aria-hidden="true" />
                                                         : <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
                                                     <span>{OPTIMISTIC_STATUS_LABELS[status]}</span>
                                         </div>

@@ -379,7 +379,7 @@ model Favorite {
 model CronJobRun {
   id            Int       @id @default(autoincrement())
   jobKey        String    @unique // e.g. "visitpedemontana", "instagram-story"
-  status        String    @default("running") // "running" | "completed" | "failed"
+  status        String    @default("running") // "running" | "completed" | "failed" | "skipped" | "stopped"
   startedAt     DateTime  @default(now())
   finishedAt    DateTime?
   resultJson    String?   // JSON-serialized result/summary

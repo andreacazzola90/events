@@ -208,6 +208,8 @@ The event media feature adds `20261012160000_add_event_media`; apply it before d
 
 The orchestrated PDF scan and optional crop-sample retention require `20261105103000_private_poster_crop_learning`; apply it before deploying the schema-dependent code, then regenerate Prisma. This is additive; do not use `db push` as a substitute. Keep the Supabase `crop-learning` bucket private. The app creates or repairs its privacy setting only when a user explicitly consents and a sample is saved; verify the bucket remains private after setup.
 
+The Cron Admin per-site scan status and logs require `20261106100000_add_cron_job_runs`. Apply this additive migration with the production migration workflow and regenerate Prisma before deploying the cron observability changes; without the table, cron execution may continue while run status and logs cannot be persisted.
+
 ## 5.3 Vercel deploy
 
 - Push to main for production deployment.

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TelegramAdmin from "./TelegramAdmin";
 import InstagramScanAdmin from "./InstagramScanAdmin";
 import PageHeading from "../components/PageHeading";
 import CronJobLauncher from "./CronJobLauncher";
+import CronSourceRunStatus, { type CronJobRun } from "./CronSourceRunStatus";
 
 type CronSource = {
   id: number;
@@ -120,12 +121,7 @@ type LiveState = {
   errors: { url: string; error: string }[];
 };
 
-type DispatcherRun = {
-  status: string;
-  startedAt: string;
-  finishedAt: string | null;
-  resultJson: string | null;
-};
+type DispatcherRun = CronJobRun;
 
 const initialForm: FormState = {
   name: "",
@@ -488,13 +484,19 @@ export default function CronAdminClient() {
   const [runningSourceId, setRunningSourceId] = useState<number | null>(null);
   const [sourceResults, setSourceResults] = useState<Record<number, CronRunResult>>({});
   const [sourceLive, setSourceLive] = useState<Record<number, LiveState>>({});
+  const [sourceRuns, setSourceRuns] = useState<CronJobRun[]>([]);
+  const [scraperRun, setScraperRun] = useState<CronJobRun | null>(null);
   const [dispatcherRun, setDispatcherRun] = useState<DispatcherRun | null>(null);
   const [dispatcherLoading, setDispatcherLoading] = useState(true);
   const [dispatcherError, setDispatcherError] = useState<string | null>(null);
 
   const isEditing = useMemo(() => typeof form.id === "number", [form.id]);
+  const sourceRunsByKey = useMemo(
+    () => new Map(sourceRuns.map((run) => [run.jobKey, run])),
+    [sourceRuns],
+  );
 
-  const loadSources = async () => {
+  const loadSources = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -510,27 +512,38 @@ export default function CronAdminClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadDispatcherRun = async () => {
-    setDispatcherLoading(true);
+  const loadDispatcherRun = useCallback(async (silent = false) => {
+    if (!silent) setDispatcherLoading(true);
     setDispatcherError(null);
     try {
-      const response = await fetch("/api/admin/cron-status?limit=100", { cache: "no-store" });
-      if (!response.ok) throw new Error("Impossibile leggere lo stato del cron giornaliero");
+      const response = await fetch("/api/admin/cron-status?includeSourceRuns=1", { cache: "no-store" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || `Impossibile leggere lo stato dei cron (HTTP ${response.status})`);
+      }
       const payload = await response.json();
-      setDispatcherRun((payload.runs as DispatcherRun[]).find((run: any) => run.jobKey === "daily-dispatch") ?? null);
+      if (!Array.isArray(payload.runs)) throw new Error("Risposta non valida durante la lettura dello stato dei cron");
+      const runs = payload.runs as CronJobRun[];
+      setDispatcherRun(runs.find((run) => run.jobKey === "daily-dispatch") ?? null);
+      setScraperRun(runs.find((run) => run.jobKey === "visitpedemontana") ?? null);
+      setSourceRuns(runs.filter((run) => run.jobKey.startsWith("scrape-source:")));
     } catch (loadError) {
       setDispatcherError(loadError instanceof Error ? loadError.message : "Stato non disponibile");
     } finally {
-      setDispatcherLoading(false);
+      if (!silent) setDispatcherLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadSources();
+    void loadSources();
     void loadDispatcherRun();
-  }, []);
+    const refreshInterval = window.setInterval(() => {
+      void loadDispatcherRun(true);
+    }, 15_000);
+    return () => window.clearInterval(refreshInterval);
+  }, [loadDispatcherRun, loadSources]);
 
   const handleChange = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -854,15 +867,57 @@ export default function CronAdminClient() {
               {dispatcherError && <p className="mt-1 text-xs text-red-300">{dispatcherError}</p>}
               {dispatcherRun?.resultJson && (() => {
                 try {
-                  const failed = (JSON.parse(dispatcherRun.resultJson) as { failed?: string[] }).failed ?? [];
-                  return failed.length ? <p className="mt-1 text-xs text-red-300">Da controllare: {failed.join(", ")}</p> : null;
+                  const parsed = JSON.parse(dispatcherRun.resultJson) as { failed?: unknown; jobs?: unknown };
+                  const failedKeys = Array.isArray(parsed.failed)
+                    ? parsed.failed.filter((key): key is string => typeof key === "string")
+                    : [];
+                  const failedJobs: { key: string; httpStatus?: number; error?: string; data?: unknown }[] = [];
+                  if (Array.isArray(parsed.jobs)) {
+                    for (const entry of parsed.jobs) {
+                      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+                      const job = entry as Record<string, unknown>;
+                      if (job.ok !== false || typeof job.key !== "string") continue;
+                      failedJobs.push({
+                        key: job.key,
+                        httpStatus: typeof job.httpStatus === "number" ? job.httpStatus : undefined,
+                        error: typeof job.error === "string" ? job.error : undefined,
+                        data: job.data,
+                      });
+                    }
+                  }
+                  return (
+                    <>
+                      {failedKeys.length > 0 && (
+                        <p className="mt-1 text-xs text-red-300">Da controllare: {failedKeys.join(", ")}</p>
+                      )}
+                      {failedJobs.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-xs text-red-200">
+                          {failedJobs.map((job, index) => {
+                            const data = typeof job.data === "object" && job.data !== null && !Array.isArray(job.data)
+                              ? job.data as Record<string, unknown>
+                              : null;
+                            const reason = job.error
+                              ?? (typeof data?.error === "string" ? data.error : null)
+                              ?? (typeof data?.message === "string" ? data.message : null)
+                              ?? (typeof data?.status === "string" ? `Stato ${data.status}` : "Dettaglio non presente");
+                            return (
+                              <li key={`${job.key}-${index}`} className="break-all">
+                                {job.key}{job.httpStatus ? ` · HTTP ${job.httpStatus}` : ""}: {reason}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </>
+                  );
                 } catch {
-                  return null;
+                  return <p className="mt-1 text-xs text-red-300">Il log del dispatcher non è leggibile.</p>;
                 }
               })()}
               <button type="button" onClick={() => void loadDispatcherRun()} disabled={dispatcherLoading} className="mt-2 text-xs text-cyan-200 underline disabled:opacity-50">
-                Aggiorna stato
+                Aggiorna stati
               </button>
+              <p className="mt-1 text-[11px] text-gray-500">Aggiornamento automatico ogni 15 secondi.</p>
             </div>
           </div>
         </section>
@@ -1234,6 +1289,7 @@ export default function CronAdminClient() {
                 const isRunning = runningSourceId === item.id;
                 const result = sourceResults[item.id];
                 const live = sourceLive[item.id];
+                const sourceRun = sourceRunsByKey.get(`scrape-source:${item.id}`) ?? null;
 
                 return (
                   <div key={item.id} className="rounded-xl border border-white/15 bg-white/5 p-4 sm:p-5">
@@ -1299,6 +1355,14 @@ export default function CronAdminClient() {
                         </button>
                       </div>
                     </div>
+
+                    <CronSourceRunStatus
+                      source={item}
+                      run={sourceRun}
+                      aggregateRun={scraperRun}
+                      loading={dispatcherLoading}
+                      error={dispatcherError}
+                    />
 
                     {/* Live progress panel (while running or just finished) */}
                     {live && live.phase !== "done" && (

@@ -947,7 +947,35 @@ export async function GET(request: NextRequest) {
     const availableTime = webDeadline - Date.now();
     if (availableTime < MIN_SOURCE_BUDGET_MS) {
       console.warn(`[VisitPedemontana] Time budget exceeded, skipping remaining source: ${source.name}`);
-      results.push({ sourceId: source.id, sourceName: source.name, status: 'skipped', message: 'Time budget exceeded for this run' });
+      const skippedAt = new Date();
+      const skippedResult = {
+        sourceId: source.id,
+        sourceName: source.name,
+        status: 'skipped',
+        message: 'Time budget exceeded for this run',
+      };
+      results.push(skippedResult);
+      const jobKey = `scrape-source:${source.id ?? 'default'}`;
+      try {
+        await (prisma as any).cronJobRun.upsert({
+          where: { jobKey },
+          update: {
+            status: 'skipped',
+            startedAt: skippedAt,
+            finishedAt: skippedAt,
+            resultJson: JSON.stringify(skippedResult),
+          },
+          create: {
+            jobKey,
+            status: 'skipped',
+            startedAt: skippedAt,
+            finishedAt: skippedAt,
+            resultJson: JSON.stringify(skippedResult),
+          },
+        });
+      } catch (error) {
+        console.error(`[VisitPedemontana] Failed recording skipped source "${source.name}":`, error);
+      }
       continue;
     }
 
@@ -961,11 +989,11 @@ export async function GET(request: NextRequest) {
     try {
       await (prisma as any).cronJobRun.upsert({
         where: { jobKey },
-        update: { status: 'running', startedAt: sourceStartedAt, finishedAt: null },
+        update: { status: 'running', startedAt: sourceStartedAt, finishedAt: null, resultJson: null },
         create: { jobKey, status: 'running', startedAt: sourceStartedAt },
       });
-    } catch {
-      // Observability only — never block the actual scrape on this.
+    } catch (error) {
+      console.error(`[VisitPedemontana] Failed recording start for source "${source.name}":`, error);
     }
 
     try {
@@ -981,8 +1009,8 @@ export async function GET(request: NextRequest) {
             resultJson: JSON.stringify(result),
           },
         });
-      } catch {
-        // ignore
+      } catch (error) {
+        console.error(`[VisitPedemontana] Failed recording result for source "${source.name}":`, error);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -993,8 +1021,8 @@ export async function GET(request: NextRequest) {
           where: { jobKey, startedAt: sourceStartedAt },
           data: { status: 'failed', finishedAt: new Date(), resultJson: JSON.stringify({ error: message }) },
         });
-      } catch {
-        // ignore
+      } catch (recordError) {
+        console.error(`[VisitPedemontana] Failed recording error for source "${source.name}":`, recordError);
       }
     }
   }

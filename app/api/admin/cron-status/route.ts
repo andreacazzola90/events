@@ -4,15 +4,25 @@ import { withAdminAuth } from "@/lib/auth-helpers";
 
 /**
  * GET /api/admin/cron-status?limit=50
- * Restituisce tutti i job in stato "running" o l'ultimo completato per ciascun jobKey.
+ * Restituisce gli ultimi run; includeSourceRuns=1 carica tutti i run delle sorgenti e gli aggregati cron.
  */
 export async function GET(request: NextRequest) {
   return withAdminAuth(async () => {
     const limit = Math.min(200, Math.max(1, parseInt(request.nextUrl.searchParams.get("limit") ?? "50", 10)));
+    const includeSourceRuns = request.nextUrl.searchParams.get("includeSourceRuns") === "1";
     try {
       const runs = await (prisma as any).cronJobRun.findMany({
+        ...(includeSourceRuns ? {
+          where: {
+            OR: [
+              { jobKey: { startsWith: "scrape-source:" } },
+              { jobKey: "visitpedemontana" },
+              { jobKey: "daily-dispatch" },
+            ],
+          },
+        } : {}),
         orderBy: { startedAt: "desc" },
-        take: limit,
+        ...(!includeSourceRuns ? { take: limit } : {}),
       });
       return NextResponse.json({ runs });
     } catch (error) {

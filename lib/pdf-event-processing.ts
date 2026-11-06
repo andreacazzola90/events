@@ -5,6 +5,7 @@ import { extractTextFromImage } from '../app/lib/ocr';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
 import { scanPdfEventPages } from './event-scan-pipeline';
 import { MAX_EVENT_PDF_BYTES } from './pdf-download';
+import { withGroqRateLimit } from './groq-rate-limit';
 
 export { MAX_EVENT_PDF_BYTES } from './pdf-download';
 const MAX_PDF_PAGES = 50;
@@ -91,14 +92,14 @@ export async function processPdfEventDocument(
 
   const groq = new Groq({ apiKey: process.env.GROQ_API_SECRET_KEY });
   const scan = await scanPdfEventPages(pageTexts, async (messages, signal) => {
-    const completion = await groq.chat.completions.create({
+    const completion = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       messages,
       response_format: { type: 'json_object' },
       temperature: 0,
       max_tokens: 4000,
       reasoning_effort: 'low',
-    }, { signal, timeout: 12_000, maxRetries: 0 });
+    }, requestOptions), { signal, budgetMs: 12_000 });
     if (completion.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete PDF detail response');
     return completion.choices[0]?.message?.content || '';
   }, { budgetMs: 30_000 });

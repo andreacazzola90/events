@@ -9,6 +9,11 @@ type InstagramScanStatus = {
   lastRun: { visited: number; published: number; duplicates: number; discarded: number; failed: number } | null;
   sources: { id: string; username: string; isActive: boolean; consentedAt: string | null; lastError: string | null; lastScannedAt: string | null }[];
 };
+type InstagramScanReport = {
+  status: string; storiesFetched: number; storiesInWindow: number; storiesScanned: number; storiesSkipped: number;
+  storiesDeferred: number; storiesFailed: number; storyFetchErrors: number; eventsExtracted: number; storyEventsExtracted: number;
+  storyEventsWouldPublish: number;
+};
 
 const messages: Record<string, string> = {
   instagram_not_configured: 'App Meta non configurata sul server (META_APP_ID, META_APP_SECRET_KEY).',
@@ -41,6 +46,14 @@ const oauthMessages: Record<string, string> = {
 const errorMessage = (code: unknown) => typeof code === 'string' && messages[code] ? messages[code] : 'Operazione non riuscita. Verifica configurazione e disponibilita del servizio.';
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
+function isInstagramScanReport(value: unknown): value is InstagramScanReport {
+  if (!value || typeof value !== 'object') return false;
+  const report = value as Record<string, unknown>;
+  return typeof report.status === 'string' &&
+    ['storiesFetched', 'storiesInWindow', 'storiesScanned', 'storiesSkipped', 'storiesDeferred', 'storiesFailed',
+      'storyFetchErrors', 'eventsExtracted', 'storyEventsExtracted', 'storyEventsWouldPublish'].every(key => typeof report[key] === 'number');
+}
+
 async function instagramRequest(body?: Record<string, unknown>, signal?: AbortSignal): Promise<InstagramScanStatus> {
   const response = await fetch('/api/admin/instagram-scan', {
     ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
@@ -59,6 +72,7 @@ export default function InstagramScanAdmin() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [scanReport, setScanReport] = useState<InstagramScanReport | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -84,6 +98,22 @@ export default function InstagramScanAdmin() {
       setStatus(body ? await instagramRequest() : reply);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Operazione non riuscita.');
+    } finally { setBusy(false); }
+  }
+
+  async function previewScan() {
+    setBusy(true); setError(''); setNotice(''); setScanReport(null);
+    try {
+      const response = await fetch('/api/admin/instagram-scan/run', { method: 'POST', cache: 'no-store' });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const code = data && typeof data === 'object' && 'error' in data ? data.error : null;
+        throw new Error(errorMessage(code));
+      }
+      if (!isInstagramScanReport(data)) throw new Error('Resoconto scansione non valido.');
+      setScanReport(data);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Scansione non riuscita.');
     } finally { setBusy(false); }
   }
 
@@ -130,6 +160,23 @@ export default function InstagramScanAdmin() {
             </div>
           )}
           {expiresSoon && <p className="text-amber-200 text-sm mt-2">L&apos;accesso scade a breve: ricollega l&apos;account per non interrompere la scansione.</p>}
+          <div className="mt-5">
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void previewScan()}>
+              <RefreshCw size={18} />Prova scansione (dry-run)
+            </button>
+            <p className="text-xs text-gray-400 mt-2">Legge le stories recenti senza salvare o pubblicare eventi.</p>
+          </div>
+          {scanReport && (
+            <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-4 text-sm text-gray-200" role="status" aria-live="polite">
+              <p className="font-semibold text-white">Resoconto scansione di prova</p>
+              <p className="mt-2">Stories restituite da Instagram: {scanReport.storiesFetched} · nelle ultime 24 ore: {scanReport.storiesInWindow} · analizzate: {scanReport.storiesScanned}</p>
+              <p>Già elaborate: {scanReport.storiesSkipped} · rinviate: {scanReport.storiesDeferred} · analisi fallite: {scanReport.storiesFailed} · errori di lettura: {scanReport.storyFetchErrors}</p>
+              <p className="mt-2">Eventi estratti dalle stories: {scanReport.storyEventsExtracted} · candidati alla pubblicazione: {scanReport.storyEventsWouldPublish}</p>
+              <p>Eventi estratti in totale (stories e post): {scanReport.eventsExtracted}</p>
+              {scanReport.storiesFetched === 0 && scanReport.storyFetchErrors === 0 && <p className="mt-2 text-amber-200">Instagram non ha restituito stories in questa richiesta.</p>}
+              {scanReport.storyFetchErrors > 0 && <p className="mt-2 text-amber-200">Lettura stories non riuscita: controlla permessi Meta e stato della connessione.</p>}
+            </div>
+          )}
           <ul className="mt-5 divide-y divide-white/10">
             {status.sources.map(source => (
               <li key={source.id} className="py-3 flex flex-wrap items-center justify-between gap-3">

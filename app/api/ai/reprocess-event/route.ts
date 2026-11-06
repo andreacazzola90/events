@@ -2,6 +2,7 @@ import Groq from 'groq-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import type { EventData } from '../../../types/event';
 import { formatAiInstructions, normalizeAiInstructions } from '../../../../lib/ai-instructions';
+import { withGroqRateLimit } from '../../../../lib/groq-rate-limit';
 
 const editableFields = [
   'title', 'description', 'date', 'time', 'location', 'organizer', 'category', 'price',
@@ -94,7 +95,7 @@ ${eventData.rawText || 'Testo originale non disponibile; basati esclusivamente s
 Rispondi SOLO con JSON valido, senza markdown o testo aggiuntivo.`;
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       messages: [
         {
@@ -107,7 +108,7 @@ Rispondi SOLO con JSON valido, senza markdown o testo aggiuntivo.`;
       temperature: 0.1,
       max_tokens: 3000,
       reasoning_effort: 'low',
-    });
+    }, requestOptions), { signal: request.signal });
 
     const content = completion.choices[0]?.message?.content || '';
     const first = content.indexOf('{');

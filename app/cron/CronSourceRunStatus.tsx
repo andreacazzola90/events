@@ -28,7 +28,7 @@ function readCount(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function formatDate(value: string): string {
+function formatDate(value: string | number): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Data non valida" : date.toLocaleString("it-IT");
 }
@@ -80,6 +80,7 @@ export default function CronSourceRunStatus({
   const links = Array.isArray(result?.links) ? result.links : [];
   const summaryErrors = readCount(result?.errorsCount) ?? resultErrors.length;
   const message = readString(result?.error) ?? readString(result?.message);
+  const rateLimitRetryAt = readCount(result?.rateLimitRetryAt);
   const isFailed =
     currentRun?.status === "failed" ||
     ["error", "partial-error"].includes(readString(result?.status) ?? "");
@@ -138,12 +139,18 @@ export default function CronSourceRunStatus({
               ["Trovati", readCount(result.found)],
               ["Nuovi", readCount(result.new)],
               ["Elaborati", readCount(result.processed)],
+              ["Rinviati", readCount(result.deferred)],
               ["Errori", summaryErrors],
             ].filter((entry): entry is [string, number] => entry[1] !== null)
               .map(([label, count]) => (
                 <span key={label} className="rounded bg-white/5 px-2 py-1">{label}: {count}</span>
               ))}
           </div>
+          {rateLimitRetryAt !== null && (
+            <p className="mt-2 text-xs text-amber-200">
+              Quota AI occupata. Ripresa non prima del {formatDate(rateLimitRetryAt)}.
+            </p>
+          )}
         </>
       )}
       {currentRun?.status === "running" && !currentRun.resultJson && (

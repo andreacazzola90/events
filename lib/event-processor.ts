@@ -12,6 +12,7 @@ import type { EventImageCandidate } from './event-image';
 import { completeMissingEventFields, verifyScannedEvents, SCAN_AGENT_VERSION } from './event-scan-agents';
 import type { ScanAgentCompletion, ScanAgentReport } from './event-scan-agents';
 import { validatePublicScanUrl } from './pdf-url';
+import { withGroqRateLimit } from './groq-rate-limit';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -697,7 +698,7 @@ ${combinedText}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
-    const completion = await groq.chat.completions.create({
+    const completion = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
         messages: [
             {
                 role: 'system',
@@ -717,7 +718,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         // emitting any JSON (json_validate_failed with empty failed_generation).
         max_tokens: 4000,
         reasoning_effort: 'low',
-    }, { timeout: Math.max(8_000, Math.min(25_000, remainingMs() - 4_000)), maxRetries: 1 });
+    }, requestOptions), { budgetMs: Math.max(1, Math.min(25_000, remainingMs() - 4_000)) });
 
     const responseText = completion.choices[0]?.message?.content || '';
     let first = responseText.indexOf('{');
@@ -748,14 +749,14 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
     events = splitEventsByTime(events);
 
     const completeScanAgent: ScanAgentCompletion = async (messages, signal) => {
-        const result = await groq.chat.completions.create({
+        const result = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
             messages,
             model: 'openai/gpt-oss-20b',
             response_format: { type: 'json_object' },
             temperature: 0.1,
             max_tokens: 2000,
             reasoning_effort: 'low',
-        }, { signal, timeout: 10_000, maxRetries: 0 });
+        }, requestOptions), { signal, budgetMs: Math.max(1, Math.min(10_000, remainingMs())) });
         if (result.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete scan agent response');
         return result.choices[0]?.message?.content || '';
     };

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractTextFromImageSimple } from '../../lib/ocr-simple';
 import { extractTextFromImage } from '../../lib/ocr';
 import Groq from 'groq-sdk';
+import { withGroqRateLimit } from '../../../lib/groq-rate-limit';
 import sharp from 'sharp';
 import { normalizeEventTitle } from '../../../lib/event-title';
 import { createEventImageAnalyzer, VisionServiceUnavailableError } from '../../../lib/vision-ai';
@@ -378,7 +379,7 @@ IMPORTANTE:
     console.log('Calling Groq API with model: openai/gpt-oss-20b');
     const groqStartTime = Date.now();
 
-    const completion = await groq.chat.completions.create({
+    const completion = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
       messages: [
         {
           role: 'system',
@@ -418,7 +419,7 @@ REGOLE:
       // overhead small so more of the budget goes to the actual answer.
       max_tokens: 4000,
       reasoning_effort: 'low',
-    });
+    }, requestOptions), { signal: request.signal });
 
     const groqDuration = Date.now() - groqStartTime;
     console.log(`Groq API responded in ${groqDuration}ms`);
@@ -499,14 +500,14 @@ REGOLE:
         const verificationResults = await verifyScannedEvents(candidates, {
           search: (query, signal) => webSearch(query, { signal }),
           complete: async (messages, signal) => {
-            const result = await groq.chat.completions.create({
+            const result = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
               messages,
               model: 'openai/gpt-oss-20b',
               response_format: { type: 'json_object' },
               temperature: 0.1,
               max_tokens: 2000,
               reasoning_effort: 'low',
-            }, { signal, timeout: 10_000, maxRetries: 0 });
+            }, requestOptions), { signal, budgetMs: 10_000 });
             if (result.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete scan agent response');
             return result.choices[0]?.message?.content || '';
           },

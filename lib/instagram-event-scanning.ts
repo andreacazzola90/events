@@ -21,6 +21,8 @@ const invalidExtraction: SocialFailure = () => new InstagramScanError('instagram
 export type InstagramScanResult = {
   status: string; dryRun: boolean; reason?: string; connections: number; visited: number; published: number; duplicates: number;
   discarded: number; failed: number; wouldPublish: number; skipped: number; deferred: number; sourceErrors: number; expired: number; imageOmitted: number;
+  storiesFetched: number; storiesInWindow: number; storiesScanned: number; storiesSkipped: number; storiesDeferred: number; storiesFailed: number;
+  storyFetchErrors: number; eventsExtracted: number; storyEventsExtracted: number; storyEventsWouldPublish: number;
 };
 
 export type InstagramScanDeps = {
@@ -71,6 +73,8 @@ export async function scanInstagram(options: { dryRun: boolean; deadline: number
   const result: InstagramScanResult = {
     status: 'success', dryRun, connections: 0, visited: 0, published: 0, duplicates: 0, discarded: 0, failed: 0,
     wouldPublish: 0, skipped: 0, deferred: 0, sourceErrors: 0, expired: 0, imageOmitted: 0,
+    storiesFetched: 0, storiesInWindow: 0, storiesScanned: 0, storiesSkipped: 0, storiesDeferred: 0, storiesFailed: 0,
+    storyFetchErrors: 0, eventsExtracted: 0, storyEventsExtracted: 0, storyEventsWouldPublish: 0,
   };
   const connections = await prisma.instagramScanConnection.findMany({
     where: { status: 'active', encryptedToken: { not: null } }, orderBy: [{ lastRunAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }], take: 5,
@@ -87,11 +91,20 @@ export async function scanInstagram(options: { dryRun: boolean; deadline: number
       const seen = await prisma.instagramScanItem.findUnique({ where: { connectionId_mediaId: { connectionId: connection.id, mediaId: media.id } } });
       const retryable = Boolean(seen && seen.attempts < INSTAGRAM_MAX_ATTEMPTS &&
         (seen.status === 'retry' || (seen.status === 'processing' && now.getTime() - seen.updatedAt.getTime() > STALE_PROCESSING_MS)));
-      if (seen && !retryable) { result.skipped++; return; }
-      if (result.visited >= INSTAGRAM_MAX_MEDIA_PER_RUN || Date.now() + admissionReserveMs >= deadline) { result.deferred++; return; }
+      if (seen && !retryable) {
+        result.skipped++;
+        if (media.kind === 'story') result.storiesSkipped++;
+        return;
+      }
+      if (result.visited >= INSTAGRAM_MAX_MEDIA_PER_RUN || Date.now() + admissionReserveMs >= deadline) {
+        result.deferred++;
+        if (media.kind === 'story') result.storiesDeferred++;
+        return;
+      }
       const base = { connectionId: connection.id, mediaId: media.id, kind: media.kind, sourceUsername: source?.username || null };
       if (!media.imageUrl && !media.caption.trim()) {
         result.visited++; counts.visited++; result.discarded++; counts.discarded++;
+        if (media.kind === 'story') result.storiesScanned++;
         if (!dryRun) {
           try { await prisma.instagramScanItem.create({ data: { ...base, status: 'discarded', discardedCount: 1, lastError: 'instagram_media_unsupported' } }); }
           catch (error) { if (!isUniqueViolation(error)) throw error; }
@@ -126,11 +139,17 @@ export async function scanInstagram(options: { dryRun: boolean; deadline: number
         }
         const extraction = await deps.extract({ text: media.caption, image, signal, fail: invalidExtraction });
         signal.throwIfAborted();
+        result.eventsExtracted += extraction.events.length;
+        if (media.kind === 'story') {
+          result.storiesScanned++;
+          result.storyEventsExtracted += extraction.events.length;
+        }
         if (media.imageUrl && extraction.events.length && !extraction.imageUrl) result.imageOmitted++;
         result.discarded += extraction.discarded; counts.discarded += extraction.discarded;
         if (dryRun) {
           const preview = await previewSocialEvents(extraction.events, async fingerprint => Boolean(await prisma.instagramPublication.findUnique({ where: { fingerprint } })));
           result.wouldPublish += preview.wouldPublish;
+          if (media.kind === 'story') result.storyEventsWouldPublish += preview.wouldPublish;
           result.duplicates += preview.duplicates; counts.duplicates += preview.duplicates;
         } else {
           const saved = await publishInstagramItem(connection, source, media, itemId, extraction, deadline);
@@ -140,6 +159,7 @@ export async function scanInstagram(options: { dryRun: boolean; deadline: number
       } catch (error) {
         const code = errorCode(error);
         result.failed++; counts.failed++;
+        if (media.kind === 'story') result.storiesFailed++;
         const status = terminalCodes.has(code) || attempts >= INSTAGRAM_MAX_ATTEMPTS ? 'failed' : 'retry';
         if (!dryRun) await prisma.instagramScanItem.updateMany({ where: { id: itemId, status: 'processing' }, data: { status, lastError: code } });
         if (code === 'instagram_token_expired') throw error;
@@ -152,13 +172,16 @@ export async function scanInstagram(options: { dryRun: boolean; deadline: number
       const budgetSignal = () => AbortSignal.timeout(Math.max(1, Math.min(15_000, deadline - Date.now() - commitBudgetMs)));
       try {
         const stories = await deps.fetchStories(token, connection.igUserId, budgetSignal());
+        result.storiesFetched += stories.length;
         for (const story of stories) {
           if (story.timestamp && now.getTime() - story.timestamp.getTime() > STORY_WINDOW_MS) continue;
+          result.storiesInWindow++;
           await handle(story, null);
         }
       } catch (error) {
         if (errorCode(error) === 'instagram_token_expired') throw error;
         result.sourceErrors++;
+        result.storyFetchErrors++;
         lastError = errorCode(error);
       }
       const sources = await prisma.instagramScanSource.findMany({

@@ -20,6 +20,14 @@ Un `429 rate_limit_exceeded` puo dipendere dai token al minuto anche con poche i
 
 ## Configurazione Server
 
+### Limiti Groq per estrazione testuale e cron
+
+Le chiamate testuali condividono la gestione dei `429`: rispettano `Retry-After` (secondi o data HTTP), `retry-after-ms` e l'attesa nel messaggio Groq, scegliendo l'indicazione piu prudente. Senza indicazioni usano backoff esponenziale. Sono consentiti al massimo quattro retry, sempre entro il budget complessivo della chiamata e con annullamento delle attese; i retry automatici SDK sono disabilitati per evitare tentativi moltiplicati. Modello, budget di token in output e formato JSON restano invariati.
+
+Il cooldown per modello e condiviso nel processo, non tra istanze serverless. Anche fra istanze distinte un rifiuto resta gestito tramite retry o rinvio: non vengono aggirati i limiti dell'organizzazione. Il cron web interrompe il ciclo quando la quota non si libera, conserva il link corrente e quelli rimanenti in `pendingEventLinks` e persiste `rateLimitRetryAt` nel checkpoint esistente. Una nuova esecuzione attende il primo cron utile successivo a quell'istante; non e pianificato un timer persistente autonomo. La pagina cron mostra link rinviati, motivo e tempo minimo di ripresa. Lo stato resta parziale, non un successo completo. Il dry-run non sostituisce il checkpoint reale.
+
+Non serve cambiare piano, chiave o schema database. Occorre un nuovo deployment per attivare il codice. Questo rende recuperabili i limiti temporanei, ma non aumenta TPM o quote giornaliere: con carico superiore alla quota la coda richiedera piu esecuzioni. Una seconda chiave nella stessa organizzazione non aumenta la capacita.
+
 Esempio di configurazione senza segreti reali:
 
 ```dotenv

@@ -7,6 +7,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { geocodeLocation } from '@/lib/geocoding';
 import { scanTelegramQueue } from '../../../../lib/telegram-event-scanning';
 import { findDuplicateEvent, lockEventDates } from '../../../../lib/event-duplicates';
+import { getGroqRetryAt, GroqRateLimitError } from '../../../../lib/groq-rate-limit';
 
 export const maxDuration = 300; // 5 minuti per il cron job
 
@@ -122,6 +123,7 @@ type CronSourceConfig = {
   maxLinksPerRun: number;
   nextApiPage: number;
   pendingEventLinks: string[];
+  rateLimitRetryAt: number | null;
 };
 
 const DEFAULT_SOURCE_CONFIG: CronSourceConfig = {
@@ -140,6 +142,7 @@ const DEFAULT_SOURCE_CONFIG: CronSourceConfig = {
   maxLinksPerRun: 600,
   nextApiPage: 0,
   pendingEventLinks: [],
+  rateLimitRetryAt: null,
 };
 
 function toSourceConfig(row: any): CronSourceConfig {
@@ -164,6 +167,8 @@ function toSourceConfig(row: any): CronSourceConfig {
     nextApiPage: Number.isInteger(row?.nextApiPage) && row.nextApiPage >= 0 ? row.nextApiPage : 0,
     pendingEventLinks: Array.isArray(row?.pendingEventLinks)
       ? row.pendingEventLinks.filter((url: unknown) => typeof url === 'string') : [],
+    rateLimitRetryAt: typeof row?.rateLimitRetryAt === 'number' && Number.isFinite(row.rateLimitRetryAt) && row.rateLimitRetryAt > 0
+      ? row.rateLimitRetryAt : null,
   };
 }
 
@@ -210,6 +215,7 @@ async function resolveActiveSources(): Promise<CronSourceConfig[]> {
     ...source,
     nextApiPage: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.nextApiPage,
     pendingEventLinks: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.pendingEventLinks,
+    rateLimitRetryAt: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.rateLimitRetryAt,
   })).sort((first, second) =>
     (lastStarted.get(`scrape-source:${first.id ?? 'default'}`) ?? 0) -
     (lastStarted.get(`scrape-source:${second.id ?? 'default'}`) ?? 0),
@@ -232,6 +238,17 @@ async function scrapeOneSource(
   dryRun: boolean,
   deadline: number,
 ): Promise<Record<string, any>> {
+  if (sourceConfig.rateLimitRetryAt && sourceConfig.rateLimitRetryAt > Date.now()) {
+    return {
+      status: 'partial',
+      dryRun,
+      message: 'Quota Groq temporaneamente esaurita: sorgente rinviata al prossimo cron utile.',
+      nextApiPage: sourceConfig.nextApiPage,
+      pendingEventLinks: sourceConfig.pendingEventLinks,
+      rateLimitRetryAt: sourceConfig.rateLimitRetryAt,
+      deferred: sourceConfig.pendingEventLinks.length,
+    };
+  }
   let browser: any = null;
   let eventLinks: string[] = [];
   let collectionIncomplete = false;
@@ -240,6 +257,7 @@ async function scrapeOneSource(
   const collectionDeadline = deadline - 90_000;
   const remainingCollectionTime = () => Math.max(1, collectionDeadline - Date.now());
   const originTag = slugifyOrigin(sourceConfig.name);
+  let rateLimitRetryAt: number | null = null;
 
   try {
     const listUrl = sourceConfig.listUrl;
@@ -734,7 +752,7 @@ async function scrapeOneSource(
       skippedDuplicateByFields: 0,
     };
     const errors: { url: string; error: string }[] = [...collectionErrors];
-    const linkSummary: { url: string; visited: boolean; status: 'pending' | 'saved' | 'no-new-events' | 'error' }[] =
+    const linkSummary: { url: string; visited: boolean; status: 'pending' | 'saved' | 'no-new-events' | 'error' | 'deferred' }[] =
       newEventLinks.map(url => ({ url, visited: false, status: 'pending' }));
 
     for (const url of newEventLinks) {
@@ -849,6 +867,14 @@ async function scrapeOneSource(
         summaryEntry.visited = true;
         summaryEntry.status = savedForThisUrl ? 'saved' : 'no-new-events';
       } catch (error) {
+        const retryAt = error instanceof GroqRateLimitError ? error.retryAt : getGroqRetryAt(error, Date.now());
+        if (retryAt !== null) {
+          rateLimitRetryAt = retryAt;
+          summaryEntry.visited = true;
+          summaryEntry.status = 'deferred';
+          console.warn('[VisitPedemontana] Groq quota busy; preserving remaining links', { retryAt });
+          break;
+        }
         console.error(`[VisitPedemontana] Error processing ${url}:`, error);
         errors.push({ url, error: error instanceof Error ? error.message : 'Unknown error' });
         summaryEntry.visited = true;
@@ -872,7 +898,7 @@ async function scrapeOneSource(
     }
 
     const pendingEventLinks = [
-      ...linkSummary.filter(entry => !entry.visited).map(entry => entry.url),
+      ...linkSummary.filter(entry => !entry.visited || entry.status === 'deferred').map(entry => entry.url),
       ...pendingLinks.slice(sourceConfig.maxLinksPerRun),
     ];
     const deferred = pendingEventLinks.length;
@@ -884,6 +910,8 @@ async function scrapeOneSource(
       collectionIncomplete,
       nextApiPage: dryRun ? sourceConfig.nextApiPage : nextApiPage,
       pendingEventLinks: dryRun ? sourceConfig.pendingEventLinks : pendingEventLinks,
+      rateLimitRetryAt: dryRun ? sourceConfig.rateLimitRetryAt : rateLimitRetryAt,
+      ...(rateLimitRetryAt ? { message: 'Quota Groq temporaneamente esaurita: link conservati per il prossimo cron utile.' } : {}),
       found: eventLinks.length,
       new: newEventLinks.length,
       processed: dryRun ? dryRunStats.wouldSave : processedEvents.length,
@@ -901,6 +929,7 @@ async function scrapeOneSource(
       message: error instanceof Error ? error.message : 'Unknown error',
       nextApiPage: sourceConfig.nextApiPage,
       pendingEventLinks: sourceConfig.pendingEventLinks,
+      rateLimitRetryAt: sourceConfig.rateLimitRetryAt,
     };
   }
 }
@@ -944,6 +973,11 @@ export async function GET(request: NextRequest) {
   let sourcesProcessed = 0;
 
   for (const [sourceIndex, source] of sources.entries()) {
+    const checkpoint = {
+      nextApiPage: source.nextApiPage,
+      pendingEventLinks: source.pendingEventLinks,
+      rateLimitRetryAt: source.rateLimitRetryAt,
+    };
     const availableTime = webDeadline - Date.now();
     if (availableTime < MIN_SOURCE_BUDGET_MS) {
       console.warn(`[VisitPedemontana] Time budget exceeded, skipping remaining source: ${source.name}`);
@@ -953,6 +987,7 @@ export async function GET(request: NextRequest) {
         sourceName: source.name,
         status: 'skipped',
         message: 'Time budget exceeded for this run',
+        ...checkpoint,
       };
       results.push(skippedResult);
       const jobKey = `scrape-source:${source.id ?? 'default'}`;
@@ -986,11 +1021,13 @@ export async function GET(request: NextRequest) {
     const sourceDeadline = Date.now() + Math.floor(availableTime / sourcesWithinBudget);
     const jobKey = `scrape-source:${source.id ?? 'default'}`;
     const sourceStartedAt = new Date();
+    const checkpointJson = source.pendingEventLinks.length > 0 || source.nextApiPage > 0 || source.rateLimitRetryAt
+      ? JSON.stringify({ status: 'running', ...checkpoint }) : null;
     try {
       await (prisma as any).cronJobRun.upsert({
         where: { jobKey },
-        update: { status: 'running', startedAt: sourceStartedAt, finishedAt: null, resultJson: null },
-        create: { jobKey, status: 'running', startedAt: sourceStartedAt },
+        update: { status: 'running', startedAt: sourceStartedAt, finishedAt: null, resultJson: checkpointJson },
+        create: { jobKey, status: 'running', startedAt: sourceStartedAt, resultJson: checkpointJson },
       });
     } catch (error) {
       console.error(`[VisitPedemontana] Failed recording start for source "${source.name}":`, error);
@@ -1019,7 +1056,7 @@ export async function GET(request: NextRequest) {
       try {
         await prisma.cronJobRun.updateMany({
           where: { jobKey, startedAt: sourceStartedAt },
-          data: { status: 'failed', finishedAt: new Date(), resultJson: JSON.stringify({ error: message }) },
+          data: { status: 'failed', finishedAt: new Date(), resultJson: JSON.stringify({ error: message, ...checkpoint }) },
         });
       } catch (recordError) {
         console.error(`[VisitPedemontana] Failed recording error for source "${source.name}":`, recordError);

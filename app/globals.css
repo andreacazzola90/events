@@ -2230,7 +2230,7 @@ body:has(.rocket-scene-overlay) {
 
 .rocket-ground,
 .rocket-pad path,
-.rocket-kid-legs,
+.rocket-kid-leg,
 .rocket-kid-arm line,
 .rocket-kid-wrench,
 .rocket-fuse {
@@ -2250,8 +2250,13 @@ body:has(.rocket-scene-overlay) {
 .rocket { transform-origin: 180px 140px; }
 .rocket-kid-skin { fill: #e9b48f; }
 .rocket-kid-hair { fill: #6b3b22; }
+.rocket-kid-head { transform-origin: 82px 108px; }
+.rocket-kid-eye { fill: #6b3b22; }
+.rocket-kid-smile { fill: none; stroke: #6b3b22; stroke-width: 1.2; stroke-linecap: round; }
 .rocket-kid-shirt { fill: var(--accent); }
-.rocket-kid-legs { stroke: var(--foreground-muted); }
+.rocket-kid-leg { stroke: var(--foreground-muted); }
+.rocket-kid-leg-back { transform-origin: 76px 132px; }
+.rocket-kid-leg-front { transform-origin: 88px 132px; }
 .rocket-kid-arm line { stroke: #e9b48f; }
 .rocket-kid-arm-front { transform-origin: 90px 112px; }
 .rocket-kid-arm-back { transform-origin: 74px 112px; }
@@ -2296,18 +2301,26 @@ body:has(.rocket-scene-overlay) {
   [data-rocket-stage="build"] .rocket-part-body { animation-delay: 0.3s; }
   [data-rocket-stage="build"] .rocket-part-window { animation-delay: 0.6s; }
   [data-rocket-stage="build"] .rocket-kid-arm-front { animation: rocket-hammer 0.6s ease-in-out infinite alternate; }
+  [data-rocket-stage="build"] .rocket-kid-head { animation: rocket-kid-nod 1.2s ease-in-out infinite; }
+  [data-rocket-stage="build"] .rocket-kid-arm-back { animation: rocket-kid-balance 1.2s ease-in-out infinite; }
 
   [data-rocket-stage="position"] .rocket { animation: rocket-raise 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
   [data-rocket-stage="position"] .rocket-kid { animation: rocket-kid-push 2.2s ease-in-out infinite; }
+  [data-rocket-stage="position"] .rocket-kid-leg-front { animation: rocket-kid-step 0.55s ease-in-out infinite alternate; }
+  [data-rocket-stage="position"] .rocket-kid-leg-back { animation: rocket-kid-step 0.55s ease-in-out infinite alternate-reverse; }
+  [data-rocket-stage="position"] .rocket-kid-head { animation: rocket-kid-nod 1.1s ease-in-out infinite; }
 
   [data-rocket-stage="ignite"] .rocket { animation: rocket-rumble 0.12s linear infinite alternate; }
   [data-rocket-stage="ignite"] .rocket-flame { animation: rocket-flicker 0.2s ease-in-out infinite alternate; }
   [data-rocket-stage="ignite"] .rocket-fuse { animation: rocket-fuse-burn 0.8s linear infinite; }
   [data-rocket-stage="ignite"] .rocket-kid-spark { animation: rocket-flicker 0.15s ease-in-out infinite alternate; }
+  [data-rocket-stage="ignite"] .rocket-kid { animation: rocket-kid-excited 0.8s ease-in-out infinite; }
+  [data-rocket-stage="ignite"] .rocket-kid-head { animation: rocket-kid-nod 0.8s ease-in-out infinite; }
 
   [data-rocket-stage="launch"] .rocket { animation: rocket-liftoff 0.9s cubic-bezier(0.55, 0, 0.75, 0.2) forwards; }
   [data-rocket-stage="launch"] .rocket-smoke circle { animation: rocket-smoke 0.9s ease-out forwards; }
   [data-rocket-stage="launch"] .rocket-kid { animation: rocket-kid-jump 0.45s ease-out 2 alternate; }
+  [data-rocket-stage="launch"] .rocket-kid-head { animation: rocket-kid-cheer 0.3s ease-in-out 3 alternate; }
 }
 
 @keyframes rocket-sky-drift {
@@ -2329,6 +2342,31 @@ body:has(.rocket-scene-overlay) {
 @keyframes rocket-hammer {
   from { transform: rotate(10deg); }
   to { transform: rotate(-40deg); }
+}
+
+@keyframes rocket-kid-nod {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(9deg); }
+}
+
+@keyframes rocket-kid-balance {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(16deg); }
+}
+
+@keyframes rocket-kid-step {
+  from { transform: rotate(-16deg); }
+  to { transform: rotate(16deg); }
+}
+
+@keyframes rocket-kid-excited {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-4px) rotate(3deg); }
+}
+
+@keyframes rocket-kid-cheer {
+  from { transform: rotate(-12deg); }
+  to { transform: rotate(12deg); }
 }
 
 @keyframes rocket-raise {

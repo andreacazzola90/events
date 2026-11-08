@@ -570,7 +570,7 @@ export default function CreaEvento() {
             resetEvents();
             // Redirect to event detail when exactly one event was created
             if (successfulSaves === 1 && firstSavedSlug) {
-                router.push(`/events/${firstSavedSlug}?nuovo=1`);
+                router.push(`/events/${firstSavedSlug}`);
             } else {
                 router.push('/');
             }

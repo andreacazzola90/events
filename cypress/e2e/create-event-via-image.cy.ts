@@ -532,6 +532,12 @@ describe('Parallel event cover', () => {
         const backgroundAnimation = getComputedStyle(scene[0], '::before').animationName;
         expect(backgroundAnimation).to.eq(reduced ? 'none' : 'rocket-sky-drift');
       });
+      cy.get('[data-loading-scene] .rocket-kid-head').then(head => {
+        expect(getComputedStyle(head[0]).animationName).to.eq(reduced ? 'none' : 'rocket-kid-nod');
+      });
+      cy.get('[data-loading-scene] .rocket-kid-arm-back').then(arm => {
+        expect(getComputedStyle(arm[0]).animationName).to.eq(reduced ? 'none' : 'rocket-kid-balance');
+      });
       cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(width));
       cy.get('[data-loading-scene]').then(status => {
         const bounds = status[0].getBoundingClientRect();
@@ -795,7 +801,7 @@ describe('Event creation autopilot', () => {
       if (!reduced) cy.get('[data-rocket-stage="launch"]').should('contain', 'Decollo');
       cy.contains('Evento creato').should('be.visible');
       cy.location('pathname', { timeout: 15000 }).should('eq', '/events/autopilot-concerto-4242');
-      cy.location('search').should('eq', '?nuovo=1');
+      cy.location('search').should('eq', '');
       cy.then(() => expect(saves).to.eq(1));
     });
   }

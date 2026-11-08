@@ -157,10 +157,15 @@ export default function RocketLaunchAnimation({
                     <circle className="rocket-part rocket-part-window" cx="180" cy="92" r="8" />
                 </g>
                 <g className="rocket-kid">
-                    <circle className="rocket-kid-skin" cx="82" cy="96" r="12" />
-                    <path className="rocket-kid-hair" d="M70 94 Q72 80 84 82 Q94 82 94 92 Q86 86 78 90 Z" />
+                    <g className="rocket-kid-head">
+                        <circle className="rocket-kid-skin" cx="82" cy="96" r="12" />
+                        <path className="rocket-kid-hair" d="M70 94 Q72 80 84 82 Q94 82 94 92 Q86 86 78 90 Z" />
+                        <circle className="rocket-kid-eye" cx="86" cy="96" r="1.2" />
+                        <path className="rocket-kid-smile" d="M85 101 Q88 103 91 100" />
+                    </g>
                     <path className="rocket-kid-shirt" d="M72 108 H92 L94 132 H70 Z" />
-                    <path className="rocket-kid-legs" d="M76 132 L74 150 M88 132 L90 150" />
+                    <path className="rocket-kid-leg rocket-kid-leg-back" d="M76 132 L74 150" />
+                    <path className="rocket-kid-leg rocket-kid-leg-front" d="M88 132 L90 150" />
                     <g className="rocket-kid-arm rocket-kid-arm-back">
                         <line x1="74" y1="112" x2="64" y2="126" />
                     </g>

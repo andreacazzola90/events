@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import type { Metadata } from 'next';
-import { cache, Suspense } from 'react';
+import { cache } from 'react';
 import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons';
 import { generateUniqueSlug, getPrimaryLocationToken } from '../../../lib/slug-utils';
 import { getEventBreadcrumbJsonLd, getEventIdFromSlug, getEventJsonLd, getEventMetadata, getEventPath, getEventStartDate } from '../../../lib/event-seo';
@@ -15,7 +15,6 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 import { calendarToday } from '../../../lib/calendar-view';
-import NewEventBanner from './NewEventBanner';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
@@ -218,11 +217,6 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         <div className="event-detail-content">
                             <div className="surface-panel p-5 md:p-8">
                                 <div className="space-y-8">
-                                    {canEdit && (
-                                        <Suspense fallback={null}>
-                                            <NewEventBanner editHref={`/events/${slug}/edit`} />
-                                        </Suspense>
-                                    )}
                                     <PageHeading
                                         className="page-heading-compact"
                                         kicker="Evento"

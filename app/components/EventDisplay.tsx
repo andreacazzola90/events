@@ -10,7 +10,6 @@ import { STANDARD_CATEGORIES } from '../../lib/constants';
 import EventCategoryBadge from './EventCategoryBadge';
 import { normalizeCategory, normalizePrice } from '../../lib/event-utils';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { useSession } from 'next-auth/react';
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from '../../lib/event-media';
 import { MAX_AI_INSTRUCTIONS_LENGTH } from '../../lib/ai-instructions';
 import SaveAnimation from './SaveAnimation';
@@ -65,13 +64,10 @@ function formatDateLong(raw?: string): string {
 const inputClass = 'w-full bg-white border border-black/20 px-3 py-2 text-[#1d1d1b] focus:outline-none focus:border-[#d65a38] transition-colors';
 
 export default function EventDisplay({ eventData, onSave, onPublish, duplicate, showPublishButton = true, imageProcessing = false, imageCropStatus = imageProcessing ? 'processing' : 'idle', imageCropFailure, onImageChange }: EventDisplayProps) {
-    const { data: session } = useSession();
     const [isEditing, setIsEditing] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(eventData.imageUrl);
     const [cropSource, setCropSource] = useState<string | null>(null);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
-    const [cropSelection, setCropSelection] = useState<{ area: Area; natural: { width: number; height: number } } | null>(null);
-    const [consentCropLearning, setConsentCropLearning] = useState(false);
     const [initialCrop, setInitialCrop] = useState<EventData['originalImageCrop']>();
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
@@ -146,38 +142,12 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
         setInitialCrop(autoCrop);
         setCropSource(autoCrop ? eventData.originalImageUrl! : source);
         setCroppedAreaPixels(null);
-        setCropSelection(null);
-        setConsentCropLearning(false);
     };
 
     const handleApplyCrop = async () => {
         if (!cropSource || !croppedAreaPixels) return;
         try {
             const croppedFile = await cropCoverToFile(cropSource, croppedAreaPixels);
-            if (consentCropLearning && cropSource === eventData.originalImageUrl && cropSelection) {
-                const saveCropExample = async () => {
-                    const sourceBlob = await (await fetch(cropSource)).blob();
-                    const originalFile = new File([sourceBlob], `original.${sourceBlob.type.split('/')[1] || 'jpg'}`, { type: sourceBlob.type });
-                    const formData = new FormData();
-                    formData.append('consent', 'true');
-                    formData.append('sample', JSON.stringify({
-                        width: cropSelection.natural.width,
-                        height: cropSelection.natural.height,
-                        x: cropSelection.area.x / 100,
-                        y: cropSelection.area.y / 100,
-                        w: cropSelection.area.width / 100,
-                        h: cropSelection.area.height / 100,
-                    }));
-                    formData.append('original', originalFile);
-                    formData.append('corrected', croppedFile);
-                    return fetch('/api/scan-learning/crop-sample', { method: 'POST', body: formData });
-                };
-                void saveCropExample()
-                    .then(response => {
-                        if (!response.ok) toast.info('Il ritaglio è stato applicato, ma l’esempio non è stato conservato.');
-                    })
-                    .catch(() => toast.info('Il ritaglio è stato applicato, ma l’esempio non è stato conservato.'));
-            }
             const previewUrl = URL.createObjectURL(croppedFile);
             cropPreviewUrls.current.push(previewUrl);
             setManualImageOverride(true);
@@ -764,24 +734,10 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                         <EventImageCropper
                             image={cropSource}
                             initialCrop={initialCrop}
-                            onCropComplete={(area, areaPixels, natural) => {
+                            onCropComplete={(_, areaPixels) => {
                                 setCroppedAreaPixels(areaPixels);
-                                setCropSelection({ area, natural });
                             }}
                         />
-                        {session?.user && cropSource === eventData.originalImageUrl && (
-                            <label className="flex items-start gap-3 text-sm leading-relaxed text-gray-700">
-                                <input
-                                    type="checkbox"
-                                    checked={consentCropLearning}
-                                    onChange={event => setConsentCropLearning(event.target.checked)}
-                                    className="mt-1"
-                                />
-                                <span>
-                                    Acconsento a conservare privatamente, per 180 giorni, l’originale e il ritaglio corretto per aiutare il ritaglio automatico del mio account. Facoltativo: senza consenso il ritaglio funziona come sempre.
-                                </span>
-                            </label>
-                        )}
                         <div className="flex justify-end gap-3">
                             <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>
                             <button type="button" onClick={handleApplyCrop} disabled={!croppedAreaPixels} className="px-4 py-2 bg-red-700 text-sm font-semibold text-white disabled:opacity-50">Applica ritaglio</button>

@@ -164,7 +164,7 @@ describe('Orchestrated draft rescanning', () => {
   });
 });
 
-describe('Consented private crop learning', () => {
+describe('Manual crop privacy', () => {
   const openDraftCropper = () => {
     cy.intercept('GET', '/api/auth/session', {
       statusCode: 200,
@@ -199,17 +199,9 @@ describe('Consented private crop learning', () => {
     cy.get('[role="dialog"]').should('be.visible');
   };
 
-  it('stores the source and corrected crop only after the signed-in user checks consent', () => {
+  it('applies a manual crop without asking for consent or submitting a sample', () => {
     openDraftCropper();
-    cy.contains('label', 'Acconsento a conservare privatamente').find('input[type="checkbox"]').check();
-    cy.contains('button', 'Applica ritaglio').click();
-    cy.wait('@cropLearning');
-    cy.get('[data-image-crop-status="manual"]').should('be.visible');
-  });
-
-  it('keeps the existing manual crop flow without sending samples when consent is declined', () => {
-    openDraftCropper();
-    cy.contains('label', 'Acconsento a conservare privatamente').find('input[type="checkbox"]').should('not.be.checked');
+    cy.contains('label', 'Acconsento a conservare privatamente').should('not.exist');
     cy.contains('button', 'Applica ritaglio').click();
     cy.get('[data-image-crop-status="manual"]').should('be.visible');
     cy.get('@cropLearning.all').should('have.length', 0);

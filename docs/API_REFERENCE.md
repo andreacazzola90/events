@@ -420,7 +420,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 
 ### POST /api/scan-learning/crop-sample
 - File: [app/api/scan-learning/crop-sample/route.ts](../app/api/scan-learning/crop-sample/route.ts)
-- Purpose: optionally saves an explicitly consented manual crop as a private original/corrected pair for the signed-in account.
+- Purpose: accepts explicitly consented manual crops as private original/corrected pairs for the signed-in account; the event editor no longer offers crop-learning consent or submits samples.
 - Input: same-origin multipart `original`, `corrected`, `sample` (JSON `{ width, height, x, y, w, h }`, dimensions in oriented natural pixels, box normalized 0..1), and `consent=true`. Requires authentication; rate-limited to 20 requests/hour per account/IP. `204` on success or absent consent, `401` without a session, `400` for invalid images/boxes and `503` if private storage fails.
 - Pairs are kept in the private Supabase `crop-learning` bucket, scoped to the account, and removed after 180 days. Only the three most recent pairs for the same account and source dimensions can be reused. No consent means no image samples are uploaded.
 
@@ -428,7 +428,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - `POST /api/process-image` adds `scanFeedbackToken` (HMAC-signed AI output, 7-day TTL, key `SCAN_LEARNING_SECRET_KEY` or `NEXTAUTH_SECRET_KEY`) to each draft and includes up to 8 relevant past corrections in the extraction prompt.
 - `POST /api/events` compares the token with the published fields after the response; title, location and organizer corrections are stored only when grounded in the scanned text, and date/time only when well-formed (`ScanCorrection` table).
 - `PUT /api/events/[id]` learns only with a valid `scanFeedbackToken` whose signed title, date, time, location, organizer, category and price match the actual stored pre-edit fields. Lesson context comes exclusively from the verified token, never from request or stored `rawText`. Missing, forged, expired or mismatched tokens skip learning without rejecting the edit; learning failures do not fail a committed edit. Arbitrary saved edits without signed scan evidence do not learn automatically. General extraction guidance and separately authorized maintenance lessons are independent of this path.
-- Crop-image examples are separate from text corrections: only a signed-in user who explicitly opts in can store manual original/corrected crop pairs. They are private, account-isolated, dimension-matched, limited to three recent examples in the existing vision request, and deleted after 180 days.
+- Crop-image examples are separate from text corrections: the endpoint accepts pairs only with explicit consent. The event editor no longer offers this opt-in or submits crop samples. Any accepted pairs are private, account-isolated, dimension-matched, limited to three recent examples in the existing vision request, and deleted after 180 days.
 
 ### POST /api/event-cover-search
 - File: [app/api/event-cover-search/route.ts](../app/api/event-cover-search/route.ts)

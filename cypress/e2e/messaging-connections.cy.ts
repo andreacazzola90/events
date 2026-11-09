@@ -20,20 +20,20 @@ describe('Personal messaging accounts: isolated fake provider flows', () => {
   it('status slower than the polling interval still publishes its confirmed result', () => {
     renderAccounts(connected, 200, 4200);
     cy.contains('[role="status"]', 'Collegato', { timeout: 6500 }).should('be.visible');
-    cy.get('input[aria-label="Canale da autorizzare"]').should('be.visible');
+    cy.get('input[aria-label="Fonte da autorizzare"]').should('be.visible');
   });
   it('a hanging status clears old connected state and sensitive source fields at timeout', () => {
     renderAccounts(connected);
-    cy.get('input[aria-label="Canale da autorizzare"]').type('@sensitive'); cy.get('input[type="checkbox"]').check();
+    cy.get('input[aria-label="Fonte da autorizzare"]').type('@sensitive'); cy.get('input[type="checkbox"]').check();
     cy.then(() => {
       cy.stub(AbortSignal, 'timeout').callsFake(() => { const controller = new AbortController(); setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), 80); return controller.signal; });
     });
     cy.intercept('GET', '/api/admin/messaging*', { body: connected, delay: 20000 });
     cy.contains('[role="status"]', 'Servizio non disponibile', { timeout: 6000 }).should('be.visible');
-    cy.get('input[aria-label="Canale da autorizzare"]').should('not.exist');
+    cy.get('input[aria-label="Fonte da autorizzare"]').should('not.exist');
     cy.intercept('POST', '/api/admin/messaging', { body: connected });
     cy.get('button[aria-label="Aggiorna stato"]').click();
-    cy.get('input[aria-label="Canale da autorizzare"]').should('have.value', ''); cy.get('input[type="checkbox"]').should('not.be.checked');
+    cy.get('input[aria-label="Fonte da autorizzare"]').should('have.value', ''); cy.get('input[type="checkbox"]').should('not.be.checked');
   });
   it('poll transition from code to password clears the previous credential', () => {
     renderAccounts({ ...disconnected, status: 'code' });
@@ -52,7 +52,7 @@ describe('Personal messaging accounts: isolated fake provider flows', () => {
     cy.get('button[aria-label="Aggiorna stato"]').click(); cy.wait('@offline');
     cy.get('[role="alert"]').should('contain.text', 'Servizio non disponibile');
     cy.contains('[role="status"]', 'Collegato').should('not.exist');
-    cy.get('input[aria-label="Canale da autorizzare"]').should('not.exist');
+    cy.get('input[aria-label="Fonte da autorizzare"]').should('not.exist');
   });
   it('platform tabs support keyboard navigation and clear the previous form', () => {
     renderAccounts();
@@ -84,9 +84,9 @@ describe('Personal messaging accounts: isolated fake provider flows', () => {
   it('requires per-source consent, can pause and shows unconfirmed remote logout', () => {
     renderAccounts(connected);
     cy.intercept('POST', '/api/admin/messaging', { body: { ...connected, availableSources: [{ id: '987654321', reference: '@other', title: 'Altro canale', kind: 'broadcast' }] } }).as('list');
-    cy.contains('button', 'Aggiorna canali').click(); cy.wait('@list');
+    cy.contains('button', 'Aggiorna gruppi e canali').click(); cy.wait('@list');
     cy.contains('button', 'Seleziona').click();
-    cy.get('input[aria-label="Canale da autorizzare"]').should('have.value', '@other'); cy.contains('button', 'Verifica e autorizza fonte').should('be.disabled');
+    cy.get('input[aria-label="Fonte da autorizzare"]').should('have.value', '@other'); cy.contains('button', 'Verifica e autorizza fonte').should('be.disabled');
     cy.get('input[type="checkbox"]').check();
     cy.intercept('POST', '/api/admin/messaging', { body: connected }).as('authorize');
     cy.contains('button', 'Verifica e autorizza fonte').click(); cy.wait('@authorize').its('request.body').should('include', { action: 'authorize', consent: true, source: '@other', platform: 'telegram' });
@@ -95,6 +95,36 @@ describe('Personal messaging accounts: isolated fake provider flows', () => {
     cy.get('button[aria-label="Metti in pausa Canale verificato"]').click(); cy.wait('@pause').its('request.body.action').should('equal', 'pause'); cy.contains('In pausa').should('be.visible');
     cy.intercept('POST', '/api/admin/messaging', { body: { ...disconnected, remoteRemoved: false } }).as('logout'); cy.intercept('GET', '/api/admin/messaging*', { body: { ...disconnected, remoteRemoved: false } });
     cy.contains('button', 'Disconnetti').click(); cy.wait('@logout'); cy.contains('Logout remoto non confermato').should('be.visible');
+  });
+  it('selects a joined supergroup and requires explicit automatic-publication consent', () => {
+    renderAccounts(connected);
+    cy.intercept('POST', '/api/admin/messaging', {
+      body: { ...connected, availableSources: [{ id: 'group:supergroup:12345', title: 'Gruppo eventi', kind: 'group', groupType: 'supergroup' }] },
+    }).as('groups');
+    cy.contains('button', 'Aggiorna gruppi e canali').click(); cy.wait('@groups');
+    cy.contains('button', 'Seleziona').click();
+    cy.get('input[aria-label="Fonte da autorizzare"]').should('have.value', 'group:supergroup:12345');
+    cy.contains('Acconsento alla lettura dei soli nuovi annunci pubblici di eventi').should('be.visible');
+    cy.contains('button', 'Verifica e autorizza fonte').should('be.disabled');
+    cy.get('input[type="checkbox"]').check();
+    const granted = {
+      ...connected,
+      sources: [{ id: 'group:supergroup:12345', title: 'Gruppo eventi', kind: 'group', groupType: 'supergroup', active: true }],
+      scanning: [{ sourceId: 'group:supergroup:12345', active: true, backlog: 2, messagesSeen: 4, messagesDiscarded: 1 }],
+    };
+    cy.intercept('POST', '/api/admin/messaging', { body: granted }).as('grant');
+    cy.contains('button', 'Verifica e autorizza fonte').click();
+    cy.wait('@grant').its('request.body').should('include', { action: 'authorize', consent: true, source: 'group:supergroup:12345', platform: 'telegram' });
+    cy.contains('Scansione e pubblicazione autorizzate').should('be.visible');
+    cy.contains('Coda: 2 · esaminati: 4 · scartati: 1').should('be.visible');
+  });
+  it('makes bounded group-list truncation visible to admins', () => {
+    renderAccounts(connected);
+    cy.intercept('POST', '/api/admin/messaging', {
+      body: { ...connected, availableSourcesTruncated: true, availableSources: [] },
+    }).as('groups');
+    cy.contains('button', 'Aggiorna gruppi e canali').click(); cy.wait('@groups');
+    cy.contains('Elenco limitato ai primi 500 dialoghi').should('be.visible');
   });
   it('WhatsApp QR expires and newsletter listing is honestly unsupported', () => {
     renderAccounts();

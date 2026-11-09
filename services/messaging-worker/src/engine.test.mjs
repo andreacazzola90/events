@@ -17,7 +17,11 @@ function fixture() {
     const adapter = { start: async () => emit({ status: 'code' }), submit: async (kind, value) => {
       if (value === 'bad') throw new MessagingError(kind === 'code' ? 'code_invalid' : 'password_invalid');
       if (kind === 'code') await emit({ status: 'password' }); else await emit({ status: 'connected', session: 'fixture-private-session' });
-    }, restore: async session => emit({ status: 'connected', session }), list: async () => [{ id: '@news', title: 'News', kind: 'broadcast' }], verify: async id => ({ id, title: 'News', kind: id === 'personal' ? 'private' : 'broadcast' }), close: async () => true };
+    }, restore: async session => emit({ status: 'connected', session }), list: async () => [{ id: '@news', title: 'News', kind: 'broadcast' }], verify: async id => id.startsWith('group:')
+      ? { id, title: 'Group', kind: 'group', groupType: 'supergroup', accessHash: 'private-hash', baselineMessageId: 10 }
+      : ({ id, title: 'News', kind: id === 'personal' ? 'private' : 'broadcast' }),
+    poll: async (_source, after) => ({ cursor: after + 1, messages: [{ id: after + 1, text: 'Concerto 12 giugno 2027 presso Teatro Comunale' }], discarded: 0, readCount: 1 }),
+    close: async () => true };
     adapters.push(adapter); return adapter;
   };
   let now = 1000000;
@@ -68,12 +72,66 @@ test('source verification rejects personal chats and enforces 50 sources', async
   await flow.run('pause', { source: '@news0' });
   assert.equal((await flow.run('status')).sources[0].active, false);
 });
+test('source listing preserves an explicit bounded-enumeration truncation indicator', async () => {
+  const flow = fixture(); await flow.connect();
+  flow.adapters[0].list = async () => Object.assign(
+    Array.from({ length: 600 }, (_, index) => ({ id: `group:basic:${index + 1}`, title: `Group ${index + 1}`, kind: 'group' })),
+    { truncated: true },
+  );
+  const result = await flow.run('sources');
+  assert.equal(result.availableSources.length, 600);
+  assert.equal(result.availableSourcesTruncated, true);
+});
 test('Telegram grants use stable provider IDs, not recyclable usernames', async () => {
   const flow = fixture(); await flow.connect();
   flow.adapters[0].verify = async reference => ({ id: '123456789', reference, title: 'Same channel', kind: 'broadcast' });
   await flow.run('authorize', { source: '@original', consent: true });
   await flow.run('authorize', { source: '@renamed', consent: true });
   const result = await flow.run('status'); assert.equal(result.sources.length, 1); assert.equal(result.sources[0].id, '123456789'); assert.equal(result.sources[0].reference, '@renamed');
+});
+test('group grants establish a fresh encrypted baseline and public status omits handles and cursors', async () => {
+  const flow = fixture(); await flow.connect();
+  await flow.run('authorize', { source: 'group:supergroup:12345', consent: true });
+  const saved = flow.saved.get('1:telegram');
+  const grant = saved.sources[0];
+  assert.equal(grant.baselineMessageId, 10); assert.equal(grant.cursorMessageId, 10);
+  assert.equal(grant.accessHash, 'private-hash');
+  const status = await flow.run('status');
+  assert.equal(status.sources[0].kind, 'group');
+  assert.ok(!JSON.stringify(status).includes('private-hash'));
+  assert.ok(!JSON.stringify(status).includes('baselineMessageId'));
+  assert.ok(!JSON.stringify(status).includes('cursorMessageId'));
+  assert.ok(!JSON.stringify(status).includes('pendingCursorMessageId'));
+});
+test('group scan cursor is acknowledged only after app commit and acknowledgements are idempotent', async () => {
+  const flow = fixture(); await flow.connect();
+  await flow.run('authorize', { source: 'group:supergroup:12345', consent: true });
+  const source = flow.saved.get('1:telegram').sources[0];
+  const page = await flow.engine.scan(1, source.id, source.revision, { limit: 10 });
+  assert.equal(page.cursor, 11);
+  assert.equal(flow.saved.get('1:telegram').sources[0].cursorMessageId, 10);
+  assert.equal(flow.saved.get('1:telegram').sources[0].pendingCursorMessageId, 11);
+  await flow.engine.acknowledge(1, source.id, source.revision, page.cursor);
+  await flow.engine.acknowledge(1, source.id, source.revision, page.cursor);
+  assert.equal(flow.saved.get('1:telegram').sources[0].cursorMessageId, 11);
+  assert.equal(flow.saved.get('1:telegram').sources[0].pendingCursorMessageId, undefined);
+});
+test('revoking a source fences an unacknowledged scan page', async () => {
+  const flow = fixture(); await flow.connect();
+  await flow.run('authorize', { source: 'group:supergroup:12345', consent: true });
+  const source = flow.saved.get('1:telegram').sources[0];
+  const page = await flow.engine.scan(1, source.id, source.revision);
+  await flow.run('pause', { source: source.id });
+  await assert.rejects(flow.engine.acknowledge(1, source.id, source.revision, page.cursor), /source_unavailable/);
+});
+test('dry-run restores and reads without writing account, grant or cursor state', async () => {
+  const flow = fixture(); await flow.connect();
+  await flow.run('authorize', { source: 'group:supergroup:12345', consent: true });
+  const before = structuredClone(flow.saved.get('1:telegram'));
+  const dryRun = new MessagingEngine(flow.store, flow.engine.factory);
+  const page = await dryRun.scan(1, 'group:supergroup:12345', before.sources[0].revision, { dryRun: true });
+  assert.equal(page.dryRun, true); assert.equal(page.cursor, 11);
+  assert.deepEqual(flow.saved.get('1:telegram'), before);
 });
 test('pause during verification prevents a late source grant', async () => {
   const flow = fixture(); await flow.connect(); await flow.run('authorize', { source: '@news', consent: true });
@@ -128,7 +186,7 @@ test('provider error codes are distinguished without constructing live adapters'
   const { providerError, assertProviderConfiguration } = await import('./adapters.ts');
   assert.throws(() => assertProviderConfiguration('telegram', {}), /telegram_configuration_missing/);
   assert.doesNotThrow(() => assertProviderConfiguration('whatsapp', {}));
-  for (const [errorMessage, code] of [['PHONE_CODE_INVALID', 'code_invalid'], ['PHONE_CODE_EXPIRED', 'code_expired'], ['PASSWORD_HASH_INVALID', 'password_invalid'], ['FLOOD_WAIT_60', 'rate_limited'], ['private-sdk-details', 'provider_unavailable']]) assert.equal(providerError({ errorMessage }).code, code);
+  for (const [errorMessage, code] of [['PHONE_CODE_INVALID', 'code_invalid'], ['PHONE_CODE_EXPIRED', 'code_expired'], ['PASSWORD_HASH_INVALID', 'password_invalid'], ['FLOOD_WAIT_60', 'telegram_flood_wait'], ['private-sdk-details', 'provider_unavailable']]) assert.equal(providerError({ errorMessage }).code, code);
 });
 test('real local HTTP transport authenticates before providers and bounds owner-scoped commands', async () => {
   const flow = fixture(); let configurations = 0;
@@ -288,4 +346,41 @@ test('revocation closes detached transport even while its durable write is block
   flow.store.write = async account => { if (first) { first = false; await new Promise(resolve => { release = resolve; }); } await write(account); };
   const pending = flow.run('start', { phone: '+391234567890' }); await turn();
   const closedBeforeWrite = closes; release(); await pending; assert.equal(closedBeforeWrite, 1);
+});
+
+test('failed cursor acknowledgement remains retryable and cannot skip a batch in memory', async () => {
+  const flow = fixture(); await flow.connect();
+  await flow.run('authorize', { source: 'group:supergroup:1', consent: true });
+  await flow.engine.scan(1, 'group:supergroup:1', 1);
+  const write = flow.store.write;
+  flow.store.write = async () => { throw new Error('disk full'); };
+  await assert.rejects(flow.engine.acknowledge(1, 'group:supergroup:1', 1, 11), /disk full/);
+  assert.equal(flow.engine.entries.get('1:telegram').account.sources[0].cursorMessageId, 10);
+  flow.store.write = write;
+  await flow.engine.acknowledge(1, 'group:supergroup:1', 1, 11);
+  assert.equal(flow.saved.get('1:telegram').sources[0].cursorMessageId, 11);
+});
+
+test('pause during polling fences the page and does not publish its pending cursor', async () => {
+  const flow = fixture(); await flow.connect();
+  await flow.run('authorize', { source: 'group:supergroup:1', consent: true });
+  let release;
+  flow.adapters[0].poll = () => new Promise(resolve => { release = resolve; });
+  const pending = flow.engine.scan(1, 'group:supergroup:1', 1);
+  const rejected = assert.rejects(pending, /operation_cancelled/);
+  await turn();
+  await flow.run('pause', { source: 'group:supergroup:1' });
+  release({ cursor: 11, messages: [], discarded: 1, readCount: 1 });
+  await rejected;
+  const source = flow.saved.get('1:telegram').sources[0];
+  assert.equal(source.active, false);
+  assert.equal(source.cursorMessageId, 10);
+  assert.equal(source.pendingCursorMessageId, undefined);
+});
+
+test('authorization cannot silently use zero when a group baseline was not verified', async () => {
+  const flow = fixture(); await flow.connect();
+  flow.adapters[0].verify = async id => ({ id, kind: 'group', title: 'Group', groupType: 'basic' });
+  await assert.rejects(flow.run('authorize', { source: 'group:basic:1', consent: true }), /source_unavailable/);
+  assert.equal(flow.saved.get('1:telegram').sources.length, 0);
 });

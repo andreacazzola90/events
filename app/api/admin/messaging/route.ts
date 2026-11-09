@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { withAuth } from '../../../lib/auth-helpers';
 import { prisma } from '../../../lib/prisma';
 import { boundedJson, callMessagingWorker, MessagingError, parseMessagingCommand, requireMessagingOrigin, safeMessagingError } from '../../../../lib/personal-messaging';
+import { personalMessagingSyncRevision, personalTelegramAdminScanStatus, revokePersonalTelegramGrant, syncPersonalMessagingStatus } from '../../../../lib/personal-telegram-scanning';
 
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store, private', 'Vary': 'Cookie', 'X-Content-Type-Options': 'nosniff' };
@@ -20,7 +21,22 @@ async function handle(request: Request, mutate: boolean) {
       const url = new URL(request.url);
       if (!mutate && ([...url.searchParams.keys()].some(key => key !== 'platform') || url.searchParams.getAll('platform').length !== 1)) throw new MessagingError('invalid_payload');
       const command = parseMessagingCommand(mutate ? await boundedJson(request) : { action: 'status', platform: url.searchParams.get('platform') });
-      return NextResponse.json(await callMessagingWorker(owner, command), { headers });
+      if (mutate && command.platform === 'telegram' && ['start', 'disconnect'].includes(command.action)) {
+        await revokePersonalTelegramGrant(owner);
+      }
+      if (mutate && command.platform === 'telegram' && command.action === 'pause') {
+        await revokePersonalTelegramGrant(owner, command.source);
+      }
+      const sync = command.platform === 'telegram' && ['status', 'authorize', 'pause', 'disconnect', 'start'].includes(command.action);
+      const expectedRevision = sync ? await personalMessagingSyncRevision(owner) : undefined;
+      const result = await callMessagingWorker(owner, command);
+      if (sync) {
+        await syncPersonalMessagingStatus(owner, result, { authorized: command.action === 'authorize', expectedRevision });
+      }
+      if (command.platform === 'telegram') {
+        return NextResponse.json({ ...result, scanning: await personalTelegramAdminScanStatus(owner) }, { headers });
+      }
+      return NextResponse.json(result, { headers });
     } catch (error) {
       return NextResponse.json({ error: safeMessagingError(error instanceof MessagingError ? error.code : undefined) }, { status: error instanceof MessagingError ? error.status : 503, headers });
     }

@@ -6,6 +6,7 @@ import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { geocodeLocation } from '@/lib/geocoding';
 import { scanTelegramQueue } from '../../../../lib/telegram-event-scanning';
+import { scanPersonalTelegramSources } from '../../../../lib/personal-telegram-scanning';
 import { findDuplicateEvent, lockEventDates } from '../../../../lib/event-duplicates';
 import { getGroqRetryAt, GroqRateLimitError } from '../../../../lib/groq-rate-limit';
 
@@ -952,6 +953,13 @@ export async function GET(request: NextRequest) {
   const webDeadline = runDeadline - 15_000;
   const telegramWork = scanTelegramQueue({ dryRun, deadline: Math.min(runStartedAt + 90_000, runDeadline - 5_000) })
     .catch(() => ({ status: 'partial-error', dryRun, error: 'telegram_processing_unavailable', published: 0 }));
+  const personalTelegramWork = scanPersonalTelegramSources({
+    dryRun, deadline: Math.min(runStartedAt + 60_000, runDeadline - 10_000),
+  }).catch(() => ({
+    status: 'partial-error', dryRun, error: 'personal_telegram_processing_unavailable',
+    sources: 0, visited: 0, queued: 0, published: 0, duplicates: 0, discarded: 0,
+    retried: 0, failed: 0, wouldPublish: 0, deferred: 0, imageOmitted: 0, ocrErrors: 0,
+  }));
   try {
     await prisma.cronJobRun.upsert({
       where: { jobKey: 'visitpedemontana' },
@@ -1065,13 +1073,14 @@ export async function GET(request: NextRequest) {
   }
 
   const telegram = await telegramWork;
-  if (!dryRun && telegram.published > 0) {
+  const personalTelegram = await personalTelegramWork;
+  if (!dryRun && (telegram.published > 0 || personalTelegram.published > 0)) {
     scheduleCalendarDeliveries();
     revalidatePath('/', 'layout');
     revalidatePath('/api/events', 'page');
     revalidateTag('events-list', { expire: 0 });
   }
-  const allResults = [...results, telegram];
+  const allResults = [...results, telegram, personalTelegram];
   const overallStatus = allResults.some(r => ['error', 'partial-error'].includes(r.status))
     ? 'partial-error'
     : allResults.some(r => ['partial', 'skipped'].includes(r.status)) ? 'partial' : 'success';
@@ -1082,6 +1091,7 @@ export async function GET(request: NextRequest) {
     sourcesProcessed,
     sources: results,
     telegram,
+    personalTelegram,
   };
   try {
     await prisma.cronJobRun.updateMany({

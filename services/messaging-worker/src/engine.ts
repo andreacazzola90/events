@@ -1,15 +1,22 @@
 import { MessagingError } from '../../../lib/personal-messaging.ts';
 import type { MessagingCommand, Platform } from '../../../lib/personal-messaging.ts';
 
-export type Source = { id: string; title: string; kind: 'broadcast' | 'newsletter'; reference?: string; active?: boolean; consentedAt?: string; verifiedAt?: string; revision?: number };
+export type Source = {
+  id: string; title: string; kind: 'broadcast' | 'newsletter' | 'group'; reference?: string;
+  active?: boolean; consentedAt?: string; verifiedAt?: string; revision?: number;
+  groupType?: 'basic' | 'supergroup'; accessHash?: string; baselineMessageId?: number; cursorMessageId?: number; pendingCursorMessageId?: number;
+};
+export type SourceList = Source[] & { truncated?: boolean };
 export type Update = { status?: 'code' | 'password' | 'qr' | 'connected' | 'disconnected' | 'restoring'; session?: string; qr?: string };
+export type PersonalMessage = { id: number; text: string; photo?: string };
 export interface Adapter {
   start(phone?: string): Promise<void>;
   submit(kind: 'code' | 'password', value: string): Promise<void>;
   restore(session: string): Promise<void>;
   status?(): Promise<void>;
-  list(): Promise<Source[]>;
+  list(): Promise<SourceList>;
   verify(source: string): Promise<Source>;
+  poll?(source: Source, after: number, limit: number): Promise<{ cursor: number; messages: PersonalMessage[]; discarded: number; readCount: number }>;
   close(remote: boolean): Promise<boolean>;
 }
 export type Account = { owner: number; platform: Platform; revision: number; status: string; session?: string; sources: Source[]; expiresAt?: number; attempts: number; error?: string; remoteRemoved?: boolean };
@@ -55,7 +62,15 @@ export class MessagingEngine {
     const account = entry.account;
     return { platform: account.platform, status: account.status, error: account.error, revision: account.revision, expiresAt: account.expiresAt, remoteRemoved: account.remoteRemoved,
       qr: entry.qrExpiresAt && entry.qrExpiresAt > this.now() ? entry.qr : undefined, qrExpiresAt: entry.qrExpiresAt,
-      listing: account.platform === 'whatsapp' ? 'unsupported' : 'administered-public-only', sources: account.sources.map(source => ({ ...source })) };
+      listing: account.platform === 'whatsapp' ? 'unsupported' : 'joined-groups-and-administered-public',
+      sources: account.sources.map(source => this.publicSource(source)) };
+  }
+  publicSource(source: Source) {
+    const {
+      accessHash: _accessHash, baselineMessageId: _baselineMessageId,
+      cursorMessageId: _cursorMessageId, pendingCursorMessageId: _pendingCursorMessageId, ...visible
+    } = source;
+    return visible;
   }
   write(entry: Entry, account: Account, admit = () => {}) {
     const snapshot = structuredClone(account);
@@ -232,15 +247,37 @@ export class MessagingEngine {
           if (entry.account.status !== 'connected' || !entry.adapter) throw new MessagingError('not_connected');
           if (command.action === 'sources') {
             const listed = await wait(entry.adapter.list());
-            const sources = listed.filter(source => source.kind === (command.platform === 'telegram' ? 'broadcast' : 'newsletter')).slice(0, 100);
-            return { ...this.snapshot(entry), availableSources: sources };
+            const availableSources = listed.filter(source => command.platform === 'telegram'
+              ? ['broadcast', 'group'].includes(source.kind)
+              : source.kind === 'newsletter').slice(0, 600);
+            return {
+              ...this.snapshot(entry), availableSources: availableSources.map(source => this.publicSource(source)),
+              availableSourcesTruncated: Boolean(listed.truncated) || listed.length > 600,
+            };
           }
           const verified = await wait(entry.adapter.verify(command.source!));
-          if (verified.kind !== (command.platform === 'telegram' ? 'broadcast' : 'newsletter')) throw new MessagingError('source_unavailable');
+          if (!(command.platform === 'telegram'
+            ? ['broadcast', 'group'].includes(verified.kind)
+            : verified.kind === 'newsletter')) throw new MessagingError('source_unavailable');
           const candidate = this.candidate(entry);
           const existing = candidate.sources.find(source => source.id === verified.id);
           if (!existing && candidate.sources.length >= 50) throw new MessagingError('source_limit');
-          const source = { id: verified.id.slice(0, 200), title: verified.title.slice(0, 200), kind: verified.kind, reference: verified.reference?.slice(0, 200), active: true, consentedAt: new Date(this.now()).toISOString(), verifiedAt: new Date(this.now()).toISOString(), revision: (existing?.revision || 0) + 1 };
+          const consentedAt = new Date(this.now()).toISOString();
+          const source: Source = {
+            id: verified.id.slice(0, 200), title: verified.title.slice(0, 200), kind: verified.kind,
+            reference: verified.reference?.slice(0, 200), active: true, consentedAt, verifiedAt: consentedAt,
+            revision: (existing?.revision || 0) + 1,
+          };
+          if (verified.kind === 'group') {
+            if (!['basic', 'supergroup'].includes(verified.groupType || '') ||
+              !Number.isSafeInteger(verified.baselineMessageId) || verified.baselineMessageId! < 0) {
+              throw new MessagingError('source_unavailable');
+            }
+            source.groupType = verified.groupType;
+            source.accessHash = verified.accessHash;
+            source.baselineMessageId = verified.baselineMessageId || 0;
+            source.cursorMessageId = source.baselineMessageId;
+          }
           if (existing) Object.assign(existing, source); else candidate.sources.push(source);
           await this.publish(entry, candidate, ensureCurrent);
         }
@@ -263,5 +300,78 @@ export class MessagingEngine {
     for (const entry of this.entries.values()) if (entry.account.expiresAt && entry.account.expiresAt <= this.now()) {
       await this.invalidate(entry, 'expired');
     }
+  }
+  async scan(owner: number, sourceId: string, sourceRevision: number, options: { dryRun?: boolean; limit?: number } = {}) {
+    if (!Number.isSafeInteger(owner) || owner < 1 || typeof sourceId !== 'string' || sourceId.length > 200 ||
+      !Number.isSafeInteger(sourceRevision) || sourceRevision < 1) throw new MessagingError('invalid_payload');
+    const limit = Math.max(1, Math.min(30, Math.floor(options.limit || 20)));
+    if (options.dryRun) {
+      const saved = await this.store.read(owner, 'telegram');
+      if (!saved || saved.owner !== owner || saved.platform !== 'telegram' || !saved.session || !['connected', 'restoring'].includes(saved.status)) {
+        return { sourceId, sourceRevision, cursor: 0, messages: [], dryRun: true, status: 'not_connected' };
+      }
+      const source = saved.sources.find(item => item.id === sourceId && item.kind === 'group' && item.active && item.revision === sourceRevision);
+      if (!source) return { sourceId, sourceRevision, cursor: 0, messages: [], dryRun: true, status: 'source_unavailable' };
+      const adapter = this.factory('telegram', async () => {});
+      try {
+        await bounded(adapter.restore(saved.session), 10000);
+        const page = await bounded(adapter.poll!(source, source.cursorMessageId || 0, limit), 30000);
+        return { sourceId, sourceRevision, ...page, dryRun: true, status: 'success' };
+      } finally { await adapter.close(false).catch(() => {}); }
+    }
+    const entry = await this.entry(owner, 'telegram');
+    if (entry.account.status !== 'connected' || !entry.adapter) {
+      await this.execute(owner, { action: 'status', platform: 'telegram' });
+    }
+    const currentEntry = this.entries.get(`${owner}:telegram`);
+    if (!currentEntry || currentEntry.account.status !== 'connected' || !currentEntry.adapter?.poll) {
+      return { sourceId, sourceRevision, cursor: 0, messages: [], dryRun: false, status: 'not_connected' };
+    }
+    if (currentEntry.busy) throw new MessagingError('rate_limited', 429);
+    currentEntry.busy = true;
+    try {
+      const revision = currentEntry.account.revision;
+      const source = currentEntry.account.sources.find(item =>
+        item.id === sourceId && item.kind === 'group' && item.active && item.revision === sourceRevision);
+      if (!source) return { sourceId, sourceRevision, cursor: 0, messages: [], dryRun: false, status: 'source_unavailable' };
+      const page = await bounded(currentEntry.adapter.poll(source, source.cursorMessageId || 0, limit), 30000);
+      const ensureCurrent = () => {
+        if (currentEntry.account.revision !== revision || !currentEntry.account.sources.some(item =>
+          item.id === sourceId && item.active && item.revision === sourceRevision)) {
+          throw new MessagingError('operation_cancelled', 409);
+        }
+      };
+      ensureCurrent();
+      if (page.cursor > (source.cursorMessageId || 0)) {
+        const candidate = this.candidate(currentEntry);
+        const candidateSource = candidate.sources.find(item => item.id === sourceId)!;
+        candidateSource.pendingCursorMessageId = Math.max(candidateSource.pendingCursorMessageId || 0, page.cursor);
+        await this.publish(currentEntry, candidate, ensureCurrent);
+      }
+      return { sourceId, sourceRevision, ...page, dryRun: false, status: 'success' };
+    } finally { currentEntry.busy = false; }
+  }
+  async acknowledge(owner: number, sourceId: string, sourceRevision: number, cursor: number) {
+    if (!Number.isSafeInteger(owner) || owner < 1 || typeof sourceId !== 'string' || sourceId.length > 200 ||
+      !Number.isSafeInteger(sourceRevision) || sourceRevision < 1 ||
+      !Number.isSafeInteger(cursor) || cursor < 0) throw new MessagingError('invalid_payload');
+    const entry = await this.entry(owner, 'telegram');
+    if (entry.busy || entry.disconnecting) throw new MessagingError('rate_limited', 429);
+    entry.busy = true;
+    try {
+      const candidate = structuredClone(entry.account);
+      const revision = entry.account.revision;
+      const source = candidate.sources.find(item =>
+        item.id === sourceId && item.kind === 'group' && item.active && item.revision === sourceRevision);
+      if (!source) throw new MessagingError('source_unavailable');
+      if (cursor <= (source.cursorMessageId || 0)) return { status: 'acknowledged' };
+      if (cursor !== (source.pendingCursorMessageId || 0)) throw new MessagingError('source_unavailable');
+      source.cursorMessageId = cursor;
+      delete source.pendingCursorMessageId;
+      await this.publish(entry, candidate, () => {
+        if (entry.account.revision !== revision) throw new MessagingError('operation_cancelled', 409);
+      });
+      return { status: 'acknowledged' };
+    } finally { entry.busy = false; }
   }
 }

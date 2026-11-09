@@ -35,6 +35,7 @@ model Event {
   media       EventMedia[]
   telegramPublications TelegramPublication[]
   instagramPublications InstagramPublication[]
+  personalTelegramPublications PersonalTelegramScanPublication[]
 
   @@index([eventSeriesId, date, time])
 }
@@ -139,11 +140,54 @@ model PersonalMessagingSource {
   consentedAt DateTime?
   verifiedAt  DateTime?
   revision    Int      @default(1)
+  workerRevision Int   @default(1)
+  baselineAt DateTime?
+  lastScannedAt DateTime?
+  lastError String?
+  messagesSeen Int @default(0)
+  messagesDiscarded Int @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   account     PersonalMessagingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  telegramMessages PersonalTelegramScanMessage[]
 
   @@unique([accountId, providerId])
+  @@index([active, lastScannedAt])
+}
+
+model PersonalTelegramScanMessage {
+  id                 String   @id @default(cuid())
+  sourceId           String
+  providerMessageId  Int
+  sourceRevision     Int
+  rawText            String
+  photoBytes         Bytes?
+  status             String   @default("pending")
+  attempts            Int      @default(0)
+  nextAttemptAt       DateTime @default(now())
+  leaseId             String?
+  leasedUntil         DateTime?
+  expiresAt            DateTime
+  lastError            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  source               PersonalMessagingSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  publications         PersonalTelegramScanPublication[]
+
+  @@unique([sourceId, providerMessageId])
+  @@index([status, nextAttemptAt])
+  @@index([expiresAt])
+}
+
+model PersonalTelegramScanPublication {
+  fingerprint String   @id
+  messageId   String?
+  eventId     Int?
+  createdAt   DateTime @default(now())
+  message     PersonalTelegramScanMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  event       Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
 }
 
 model TelegramConnection {

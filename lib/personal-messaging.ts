@@ -77,7 +77,7 @@ export async function callMessagingWorker(owner: number, command: MessagingComma
   const { url, secret } = workerConfiguration();
   try {
     const response = await fetch(new URL('/command', url), { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12000), headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' }, body: JSON.stringify({ owner, command }), cache: 'no-store' });
-    const result = await boundedJson(response, 131072) as Record<string, unknown>;
+    const result = await boundedJson(response, 1048576) as Record<string, unknown>;
     if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('invalid');
     if (!response.ok) throw new MessagingError(safeMessagingError(result.error), response.status >= 400 && response.status <= 599 ? response.status : 503);
     return publicMessagingStatus(result, command.platform);
@@ -88,19 +88,30 @@ export function publicMessagingStatus(result: Record<string, unknown>, platform:
   const sources = (value: unknown, maximum: number) => {
     if (!Array.isArray(value) || value.length > maximum) throw new MessagingError('worker_unavailable', 503);
     return value.map(item => {
-      if (!item || typeof item !== 'object' || typeof item.id !== 'string' || typeof item.title !== 'string' || item.id.length > 200 || item.title.length > 200 || item.kind !== (platform === 'telegram' ? 'broadcast' : 'newsletter')) throw new MessagingError('worker_unavailable', 503);
-      return { id: item.id, title: item.title, kind: item.kind, reference: typeof item.reference === 'string' && /^@[a-zA-Z][a-zA-Z0-9_]{3,31}$/.test(item.reference) ? item.reference : undefined, active: item.active === true, consentedAt: typeof item.consentedAt === 'string' ? item.consentedAt.slice(0, 40) : undefined };
+      const allowedKind = platform === 'telegram' ? ['broadcast', 'group'].includes(item?.kind) : item?.kind === 'newsletter';
+      if (!item || typeof item !== 'object' || typeof item.id !== 'string' || typeof item.title !== 'string' ||
+        item.id.length > 200 || item.title.length > 200 || !allowedKind) throw new MessagingError('worker_unavailable', 503);
+      return {
+        id: item.id, title: item.title, kind: item.kind,
+        groupType: item.kind === 'group' && ['basic', 'supergroup'].includes(item.groupType) ? item.groupType : undefined,
+        revision: Number.isSafeInteger(item.revision) ? item.revision : undefined,
+        reference: typeof item.reference === 'string' && /^@[a-zA-Z][a-zA-Z0-9_]{3,31}$/.test(item.reference) ? item.reference : undefined,
+        active: item.active === true,
+        consentedAt: typeof item.consentedAt === 'string' ? item.consentedAt.slice(0, 40) : undefined,
+        verifiedAt: typeof item.verifiedAt === 'string' ? item.verifiedAt.slice(0, 40) : undefined,
+      };
     });
   };
   const qr = typeof result.qr === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.qr) && result.qr.length < 65536 && typeof result.qrExpiresAt === 'number' && result.qrExpiresAt > Date.now() && result.qrExpiresAt <= Date.now() + 60000 ? result.qr : undefined;
   return { platform, status: String(result.status), sources: sources(result.sources, 50),
-    listing: platform === 'whatsapp' ? 'unsupported' : 'administered-public-only',
-    availableSources: result.availableSources === undefined ? undefined : sources(result.availableSources, 100),
+    listing: platform === 'whatsapp' ? 'unsupported' : 'joined-groups-and-administered-public',
+    availableSources: result.availableSources === undefined ? undefined : sources(result.availableSources, 600),
+    availableSourcesTruncated: result.availableSourcesTruncated === true,
     qr, qrExpiresAt: qr ? result.qrExpiresAt : undefined,
     expiresAt: typeof result.expiresAt === 'number' ? result.expiresAt : undefined,
     remoteRemoved: typeof result.remoteRemoved === 'boolean' ? result.remoteRemoved : undefined,
     error: result.error ? safeMessagingError(result.error) : undefined,
   };
 }
-const safeErrors = new Set(['invalid_payload', 'invalid_phone', 'consent_required', 'encryption_unavailable', 'worker_unavailable', 'provider_unavailable', 'telegram_configuration_missing', 'code_invalid', 'code_expired', 'password_invalid', 'rate_limited', 'login_expired', 'not_connected', 'source_unavailable', 'source_limit', 'operation_cancelled', 'session_corrupt', 'invalid_origin', 'payload_too_large']);
+const safeErrors = new Set(['invalid_payload', 'invalid_phone', 'consent_required', 'encryption_unavailable', 'worker_unavailable', 'provider_unavailable', 'telegram_configuration_missing', 'telegram_flood_wait', 'code_invalid', 'code_expired', 'password_invalid', 'rate_limited', 'login_expired', 'not_connected', 'source_unavailable', 'source_limit', 'operation_cancelled', 'session_corrupt', 'invalid_origin', 'payload_too_large']);
 export function safeMessagingError(value: unknown): string { return typeof value === 'string' && safeErrors.has(value) ? value : 'worker_unavailable'; }

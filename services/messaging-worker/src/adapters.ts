@@ -5,8 +5,9 @@ import type { AuthenticationCreds, SignalDataSet, SignalDataTypeMap, WASocket } 
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { MessagingError } from '../../../lib/personal-messaging.ts';
-import type { Adapter, Factory, Source, Update } from './engine.ts';
+import type { Adapter, Factory, Source, SourceList, Update } from './engine.ts';
 import { bounded } from './engine.ts';
+import { announcementCandidateExcerpt, isPrivateAnnouncement } from '../../../lib/personal-telegram-policy.ts';
 
 export function assertProviderConfiguration(platform: 'telegram' | 'whatsapp', env = process.env) {
   if (platform === 'telegram' && (!Number.isSafeInteger(Number(env.PERSONAL_TELEGRAM_API_ID)) || Number(env.PERSONAL_TELEGRAM_API_ID) <= 0 || !/^[a-f0-9]{32}$/i.test(env.PERSONAL_TELEGRAM_API_HASH || ''))) throw new MessagingError('telegram_configuration_missing', 503);
@@ -16,6 +17,7 @@ export function providerError(error: unknown): MessagingError {
   if (message.includes('PHONE_CODE_EXPIRED')) return new MessagingError('code_expired');
   if (message.includes('PHONE_CODE_INVALID') || message.includes('PHONE_CODE_EMPTY')) return new MessagingError('code_invalid');
   if (message.includes('PASSWORD_HASH_INVALID')) return new MessagingError('password_invalid');
+  if (/FLOOD_WAIT_\d+|FLOOD_PREMIUM_WAIT_\d+/i.test(message)) return new MessagingError('telegram_flood_wait', 429);
   if (message.includes('FLOOD') || message.includes('PHONE_NUMBER_FLOOD')) return new MessagingError('rate_limited', 429);
   return error instanceof MessagingError ? error : new MessagingError('provider_unavailable', 503);
 }
@@ -32,7 +34,7 @@ export function metadataOnlyTelegram(client: TelegramClient) {
   client.updateManager.requestDifference = () => {};
   client.updateManager.watchChannel = async () => {};
   const invoke = client.invoke.bind(client);
-  const allowed = new Set(['auth.SendCode', 'auth.ResendCode', 'auth.SignIn', 'account.GetPassword', 'auth.CheckPassword', 'auth.LogOut', 'users.GetUsers', 'contacts.ResolveUsername', 'channels.GetChannels', 'channels.GetParticipant', 'channels.GetAdminedPublicChannels', 'help.GetConfig']);
+  const allowed = new Set(['auth.SendCode', 'auth.ResendCode', 'auth.SignIn', 'account.GetPassword', 'auth.CheckPassword', 'auth.LogOut', 'users.GetUsers', 'contacts.ResolveUsername', 'channels.GetChannels', 'channels.GetParticipant', 'channels.GetAdminedPublicChannels', 'messages.GetDialogs', 'messages.GetHistory', 'help.GetConfig']);
   client.invoke = (async (request: Parameters<TelegramClient['invoke']>[0], dcId?: number) => {
     if (!allowed.has(request.className)) throw new MessagingError('source_unavailable');
     return invoke(new Api.InvokeWithoutUpdates({ query: request }), dcId);
@@ -108,12 +110,37 @@ export class TelegramAdapter implements Adapter {
     await this.client.connect();
     await this.connected();
   }
-  async list() {
+  async list(): Promise<SourceList> {
     const result = await this.client.invoke(new Api.channels.GetAdminedPublicChannels({}));
-    return result.chats.filter((chat): chat is Api.Channel => chat instanceof Api.Channel && Boolean(chat.broadcast) && !chat.noforwards && !chat.left).slice(0, 100)
+    const broadcasts = result.chats.filter((chat): chat is Api.Channel => chat instanceof Api.Channel && Boolean(chat.broadcast) && !chat.noforwards && !chat.left).slice(0, 100)
       .filter(chat => Boolean(chat.username)).map(chat => ({ id: chat.id.toString(), reference: `@${chat.username}`, title: chat.title.slice(0, 200), kind: 'broadcast' as const }));
+    const dialogs = [];
+    for await (const dialog of this.client.iterDialogs({ limit: 501 })) dialogs.push(dialog);
+    const truncated = dialogs.length > 500;
+    const groups: Source[] = dialogs.slice(0, 500).flatMap((dialog): Source[] => {
+      const chat = dialog.entity;
+      const topMessage = dialog.dialog instanceof Api.Dialog ? dialog.dialog.topMessage : 0;
+      if (chat instanceof Api.Chat && !chat.left && !chat.deactivated && !chat.noforwards && !chat.migratedTo) {
+        return [{ id: `group:basic:${chat.id}`, title: chat.title.slice(0, 200), kind: 'group' as const, groupType: 'basic' as const, baselineMessageId: topMessage }];
+      }
+      if (chat instanceof Api.Channel && !chat.broadcast && (chat.megagroup || chat.gigagroup) && !chat.left && !chat.noforwards && !chat.restricted && chat.accessHash) {
+        return [{
+          id: `group:supergroup:${chat.id}`, title: chat.title.slice(0, 200), kind: 'group' as const, groupType: 'supergroup' as const,
+          accessHash: chat.accessHash.toString(), baselineMessageId: topMessage,
+        }];
+      }
+      return [];
+    });
+    return Object.assign([...groups, ...broadcasts] as SourceList, { truncated });
   }
   async verify(source: string): Promise<Source> {
+    if (source.startsWith('group:')) {
+      try {
+        const group = (await this.list()).find(item => item.id === source && item.kind === 'group');
+        if (!group) throw new Error();
+        return { ...group, verifiedAt: new Date().toISOString() };
+      } catch { throw new MessagingError('source_unavailable'); }
+    }
     const match = /^(?:https:\/\/t\.me\/|@)([a-zA-Z][a-zA-Z0-9_]{3,31})$/.exec(source);
     try {
       let entity: Api.TypeChat | undefined;
@@ -142,6 +169,68 @@ export class TelegramAdapter implements Adapter {
       if (!(result.participant instanceof Api.ChannelParticipant || result.participant instanceof Api.ChannelParticipantSelf || result.participant instanceof Api.ChannelParticipantCreator || result.participant instanceof Api.ChannelParticipantAdmin)) throw new MessagingError('source_unavailable');
       return { id: entity.id.toString(), reference: entity.username ? `@${entity.username}` : undefined, title: entity.title.slice(0, 200), kind: 'broadcast' };
     } catch { throw new MessagingError('source_unavailable'); }
+  }
+  async poll(source: Source, after: number, limit: number) {
+    if (source.kind !== 'group' || !source.active || source.groupType === undefined || !Number.isSafeInteger(after) || after < 0) throw new MessagingError('source_unavailable');
+    const verified = await this.verify(source.id);
+    if (verified.kind !== 'group' || verified.groupType !== source.groupType || verified.id !== source.id) throw new MessagingError('source_unavailable');
+    let peer: Api.TypeEntityLike;
+    if (source.groupType === 'basic') {
+      const id = /^group:basic:([1-9]\d{0,18})$/.exec(source.id)?.[1];
+      if (!id) throw new MessagingError('source_unavailable');
+      peer = new Api.InputPeerChat({ chatId: helpers.returnBigInt(id) });
+    } else {
+      const match = /^group:supergroup:([1-9]\d{0,18})$/.exec(source.id);
+      if (!match || !source.accessHash) throw new MessagingError('source_unavailable');
+      peer = new Api.InputPeerChannel({ channelId: helpers.returnBigInt(match[1]), accessHash: helpers.returnBigInt(source.accessHash) });
+    }
+    try {
+      const messages: Array<{ id: number; value: unknown }> = [];
+      for await (const value of this.client.iterMessages(peer, { minId: after, reverse: true, limit: Math.max(1, Math.min(30, limit)) })) {
+        const id = value && typeof value === 'object' && 'id' in value ? Number(value.id) : NaN;
+        if (Number.isSafeInteger(id) && id > after) messages.push({ id, value });
+      }
+      let cursor = after;
+      let discarded = 0;
+      let photoBytes = 0;
+      const accepted = [];
+      for (const item of messages) {
+        cursor = Math.max(cursor, item.id);
+        const message = item.value;
+        if (!(message instanceof Api.Message)) { discarded++; continue; }
+        if (message.noforwards || isPrivateAnnouncement(message.message || '')) { discarded++; continue; }
+        const text = announcementCandidateExcerpt(message.message || '');
+        const photo = message.media instanceof Api.MessageMediaPhoto && !message.media.ttlSeconds && !message.noforwards;
+        if (!text && !photo) { discarded++; continue; }
+        let image: Buffer | undefined;
+        if (photo) {
+          try {
+            const remaining = 4 * 1024 * 1024 - photoBytes;
+            if (remaining <= 0) {
+              if (!text) { discarded++; continue; }
+              accepted.push({ id: item.id, text }); continue;
+            }
+            const chunks: Buffer[] = []; let size = 0;
+            for await (const chunk of this.client.iterDownload(message, { limit: remaining + 1, requestSize: 64 * 1024 })) {
+              size += chunk.length;
+              if (size > remaining) break;
+              chunks.push(chunk);
+            }
+            if (size > 0 && size <= remaining) { image = Buffer.concat(chunks, size); photoBytes += size; }
+            else if (!text) { discarded++; continue; }
+          } catch (error) {
+            const mapped = providerError(error);
+            if (mapped.code === 'telegram_flood_wait' || authorizationRevoked(error)) throw mapped;
+            if (!text) { discarded++; continue; }
+          }
+        }
+        accepted.push({ id: item.id, text, photo: image?.toString('base64') });
+      }
+      return { cursor, messages: accepted, discarded, readCount: messages.length };
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorMessage' in error && /CHAT_FORBIDDEN|CHANNEL_PRIVATE|CHAT_ADMIN_REQUIRED|CHAT_WRITE_FORBIDDEN|MEDIA_PREVIEWS_DISABLED/i.test(String(error.errorMessage))) throw new MessagingError('source_unavailable');
+      throw providerError(error);
+    }
   }
   async close(remote: boolean) {
     this.stopped = true; this.phone = ''; this.hash = '';
@@ -231,7 +320,7 @@ export class WhatsAppAdapter implements Adapter {
     while (!this.connected && !this.stopped && Date.now() - started < 9000) await new Promise(resolve => setTimeout(resolve, 50));
     if (!this.connected) throw new MessagingError('not_connected');
   }
-  async list(): Promise<Source[]> { return []; }
+  async list(): Promise<SourceList> { return []; }
   async status() {
     if (!this.connected || !this.socket) { await this.emit({ status: 'restoring' }); throw new MessagingError('not_connected'); }
   }

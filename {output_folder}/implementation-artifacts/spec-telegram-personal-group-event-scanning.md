@@ -2,7 +2,8 @@
 title: 'Eventi automatici dai nuovi messaggi dei gruppi Telegram autorizzati'
 type: 'feature'
 created: '2026-11-08'
-status: 'draft'
+status: 'done'
+baseline_commit: '265d0d8c78c171ba071767bf29ab05a34440e156'
 context: []
 ---
 
@@ -10,17 +11,17 @@ context: []
 
 ## Intent
 
-**Problem:** Il collegamento personale Telegram esistente verifica soltanto canali broadcast e conserva metadati. Non permette di selezionare gruppi e non importa messaggi o locandine.
+**Problem:** Il collegamento Telegram personale esistente gestisce soltanto metadati di canali, non messaggi dei gruppi.
 
-**Approach:** Estendere il worker MTProto e la gestione admin per selezionare gruppi gia frequentati, autorizzarli singolarmente e acquisire soltanto messaggi successivi all'attivazione. La pipeline eventi esistente estrae annunci di eventi pubblici da testo e immagini, valida le evidenze e pubblica automaticamente, con deduplicazione e risultati visibili.
+**Approach:** Selezionare gruppi gia frequentati, autorizzarli singolarmente e acquisire solo nuovi messaggi. Riutilizzare la pipeline eventi per estrarre testo/locandine e pubblicare automaticamente eventi pubblici comprovati.
 
 ## Boundaries & Constraints
 
-**Always:** Account e fonti isolati per proprietario admin; consenso esplicito per fonte; sessioni cifrate soltanto nel worker; identita immutabili distinte per gruppi base e supergruppi; verifica dell'appartenenza e delle restrizioni prima della lettura. Conservare cursori durevoli e avanzare solo dopo acquisizione persistita. Nessuna lettura anteriore all'attivazione o alla riattivazione. Riutilizzare estrazione, deduplicazione, copertine e creazione eventi esistenti. Scartare conversazioni personali e informazioni identificative non necessarie; non pubblicare nomi degli interlocutori, ID dei gruppi privati o link d'invito. Esporre errori sanitizzati, backlog e conteggi senza contenuti delle conversazioni.
+**Always:** Isolamento per admin, consenso per fonte, sessioni cifrate nel worker, identita immutabili, verifica appartenenza/restrizioni. Cursori durevoli avanzati solo dopo persistenza. Baseline nuova anche alla riattivazione. Scartare conversazioni personali; niente interlocutori, ID privati o inviti nelle pubblicazioni. Errori sanitizzati, backlog e conteggi visibili.
 
-**Ask First:** Applicare migrazioni a database condivisi, acquistare hosting, effettuare deploy, collegare account reali o attivare acquisizioni reali. L'utente inserisce telefono, codice e 2FA soltanto nell'interfaccia protetta. Non chiedere segreti in chat. Verificare separatamente la configurazione dei provider AI e l'autorizzazione a trattare annunci e locandine.
+**Ask First:** Migrazioni condivise, hosting, deploy e connessioni/acquisizioni reali. Credenziali solo nella UI protetta, mai in chat. Confermare configurazione e autorizzazione al trattamento AI degli annunci.
 
-**Never:** WhatsApp in questa fase; messaggi diretti, chat segrete, gruppi non selezionati, adesioni automatiche, aggiramento di contenuti protetti, importazione dello storico precedente al consenso, invio di messaggi, conservazione di archivi completi. Nessuna modifica alle tre modifiche locali preesistenti. Non dichiarare pronta un'integrazione reale verificata soltanto con provider simulati.
+**Never:** WhatsApp, chat dirette/segrete, fonti non selezionate, adesioni/invii automatici, contenuti protetti, storico precedente al consenso, archivi completi. Preservare modifiche locali. Distinguere test simulati da verifica reale.
 
 ## I/O & Edge-Case Matrix
 
@@ -40,27 +41,24 @@ context: []
 
 ## Code Map
 
-- `services/messaging-worker/src/adapters.ts` -- MTProto oggi bloccato in modalita metadata-only; WhatsApp resta invariato.
-- `services/messaging-worker/src/engine.ts`, `store.ts`, `http.ts` -- revisioni, sessioni cifrate, comandi autenticati e limiti.
-- `lib/personal-messaging.ts`, `app/api/admin/messaging/route.ts` -- contratto e proxy admin con controllo ruolo e origine.
-- `app/admin/MessagingAccountsTab.tsx` -- login protetto, elenco, autorizzazione e pausa.
-- `lib/social-event-extraction.ts`, `lib/event-duplicates.ts` -- estrazione verificata e pubblicazione condivise.
-- `lib/telegram-event-scanning.ts` -- pipeline bot da preservare, non adatta direttamente alle sessioni MTProto.
-- `prisma/schema.prisma` -- modelli personali preparati ma non usati come archivio sessioni.
-- `app/api/cron/scrape-visitpedemontana/route.ts` -- cron aggregato con budget, dry run e pipeline bot esistenti.
+- `services/messaging-worker/src/` -- adattatori, sessioni cifrate, revisioni e HTTP autenticato.
+- `lib/personal-messaging.ts`, `app/api/admin/messaging/route.ts` -- contratto e proxy admin.
+- `lib/social-event-extraction.ts`, `lib/event-duplicates.ts` -- helper da riutilizzare.
+- `lib/telegram-event-scanning.ts` -- pipeline bot da preservare.
+- `prisma/schema.prisma` -- modelli personali preparati; sessioni autorevoli nel worker.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `services/messaging-worker/src/adapters.ts` -- consentire elenco/verifica di gruppi base e supergruppi, baseline e letture circoscritte alle fonti autorizzate; scaricare esclusivamente foto supportate con limiti. Mantenere canali esistenti e separazione WhatsApp.
-- [ ] `services/messaging-worker/src/engine.ts`, `store.ts`, `http.ts` -- conservare identita tecniche e cursori nella cifratura; aggiungere acquisizione e conferma interne autenticate, con fencing delle revisioni, batch limitati e ripristino senza browser aperto.
-- [ ] `lib/personal-messaging.ts`, `app/api/admin/messaging/route.ts` -- estendere tipi, validazione e stato pubblico; sincronizzare grant applicativi senza esportare sessioni/access hash; invalidare grant prima delle revoche remote.
-- [ ] `prisma/schema.prisma`, `prisma/migrations/20261108000000_personal_telegram_group_scanning/migration.sql` -- preparare modelli additivi per job e ricevute personali, revisioni e retention; nessuna sessione MTProto nel database.
-- [ ] `lib/personal-telegram-scanning.ts` -- acquisire batch dal worker solo per admin autorizzati, persistere idempotentemente prima di confermare cursori; estrarre e pubblicare tramite helper condivisi, ricontrollando grant e lease nella transazione.
-- [ ] `app/api/cron/scrape-visitpedemontana/route.ts` -- integrare scansione personale con budget esplicito e risultati separati; preservare cron web e bot anche in caso di errore personale.
-- [ ] `app/admin/MessagingAccountsTab.tsx` -- selezione gruppi, consenso alla pubblicazione automatica, stato di scansione, errori e pausa; chiarire frequenza legata al cron, non promettere tempo reale.
-- [ ] `services/messaging-worker/src/adapters.test.mjs`, `engine.test.mjs`, `lib/personal-messaging.test.mjs`, `lib/personal-telegram-scanning.test.mjs`, `cypress/e2e/personal-messaging.cy.ts` -- coprire matrice, isolamento, baseline, backlog, errori persistenti e revoche concorrenti.
-- [ ] `docs/DEPLOY_RUNBOOK.md`, `docs/API_REFERENCE.md` -- documentare migrazioni, configurazione, privacy, retention e verifica reale separata.
+- [x] `services/messaging-worker/src/adapters.ts` -- elenco/verifica gruppi base e supergruppi, baseline, letture autorizzate e foto limitate; preservare canali/WhatsApp.
+- [x] `services/messaging-worker/src/engine.ts`, `store.ts`, `http.ts` -- cursori cifrati, acquisizione/conferma interne, revisioni, batch e ripristino senza browser.
+- [x] `lib/personal-messaging.ts`, `app/api/admin/messaging/route.ts` -- tipi/validazione, grant applicativi; revoca locale prima di quella remota; nessun access hash pubblico.
+- [x] `prisma/schema.prisma`, `prisma/migrations/20261108000000_personal_telegram_group_scanning/migration.sql` -- modelli additivi per job/ricevute, revisioni e retention, senza sessioni.
+- [x] `lib/personal-telegram-scanning.ts` -- persistenza idempotente prima della conferma cursori; pubblicazione condivisa con grant/lease ricontrollati nella transazione.
+- [x] `app/api/cron/scrape-visitpedemontana/route.ts` -- scansione personale con budget/report separati; errori non bloccano web/bot.
+- [x] `app/admin/MessagingAccountsTab.tsx` -- gruppi, consenso alla pubblicazione, stato/errori/pausa; frequenza del cron, non tempo reale.
+- [x] `services/messaging-worker/src/adapters.test.mjs`, `engine.test.mjs`, `lib/personal-messaging.test.mjs`, `lib/personal-telegram-scanning.test.mjs`, `cypress/e2e/messaging-connections.cy.ts` -- matrice, isolamento e revoche concorrenti.
+- [x] `docs/DEPLOY_RUNBOOK.md`, `docs/API_REFERENCE.md` -- configurazione, migrazioni, privacy e verifica reale separata.
 
 **Acceptance Criteria:**
 - Given un admin collegato, when autorizza un gruppo, then vede la fonte attiva per pubblicazione automatica senza pubblicazioni retroattive.
@@ -70,9 +68,12 @@ context: []
 
 ## Spec Change Log
 
+- 2026-11-08 corrective pass: use bounded ascending history pages and account for every returned message ID (including service messages); add independently callable retention cleanup and clarify deletion latency; preserve scan errors across status polling; include personal scan outcomes in aggregate cron status; paginate bounded dialog enumeration while retaining administered broadcasts. Poster OCR remains local-only, combines filtered caption and OCR excerpts, and sends text only to providers; no unverified crop or raw photo is published.
+- 2026-11-08 ripresa: generazione applicativa contro risposte tardive dopo revoca, ruolo admin ricontrollato nel commit, ACK adottato solo dopo scrittura durevole e polling invalidato dalla pausa. Trasporti temporaneamente offline conservano consenso e sono ripristinabili dal cron; annunci privati/protetti esclusi prima di foto/OCR e date numeriche preservate nella redazione.
+
 ## Design Notes
 
-L'acquisizione e' guidata dal cron applicativo esistente: non richiede una scheda admin aperta. Il worker resta su host persistente separato da Vercel. Il database applicativo conserva autorizzazioni e job per rendere atomico il controllo delle revoche con la pubblicazione; il volume cifrato conserva sessioni e cursori. Retention massima dei contenuti pendenti: 24 ore; cancellazione dopo esito definitivo. Batch, retry e budget espliciti evitano perdite silenziose e promesse di quota illimitata.
+Cron esistente, worker persistente separato da Vercel. Grant/job nel database rendono atomica la revoca con la pubblicazione; sessioni/cursori nel volume cifrato. Contenuti pendenti: massimo 24 ore, cancellati dopo esito definitivo. Limiti espliciti, niente quote illimitate.
 
 ## Verification
 
@@ -83,3 +84,32 @@ L'acquisizione e' guidata dal cron applicativo esistente: non richiede una sched
 - `npx prisma validate` -- schema valido, senza applicare migrazioni.
 - `npx tsc --noEmit` e ESLint sui file modificati -- nessuna nuova regressione.
 - Cypress mirato con API simulate -- login, selezione gruppi, consenso, stato e revoca.
+
+**Esito verificato (2026-11-08):** 50 test worker, 97 test pipeline/contratti/cron/bot e 13 test Cypress superati. TypeScript app/worker, Prisma validate, ESLint mirato e diff-check superati. Nessun login reale, deploy o migrazione condivisa eseguiti; nessun commit/push. Verifica reale e scheduler di pulizia frequente restano attivita operative autorizzate separatamente.
+
+## Suggested Review Order
+
+**Acquisizione e consenso**
+
+- Entrata cron, queue durevole e pubblicazione condivisa.
+  [`personal-telegram-scanning.ts:346`](../../lib/personal-telegram-scanning.ts#L346)
+- Grant applicativi: solo autorizzazioni esplicite, risposte tardive invalidate.
+  [`personal-telegram-scanning.ts:104`](../../lib/personal-telegram-scanning.ts#L104)
+- Ruolo admin e revisioni ricontrollati nella transazione di pubblicazione.
+  [`personal-telegram-scanning.ts:26`](../../lib/personal-telegram-scanning.ts#L26)
+
+**Messaggi e cursori**
+
+- Pagine cronologiche, messaggi privati/protetti scartati prima delle foto.
+  [`adapters.ts:173`](../../services/messaging-worker/src/adapters.ts#L173)
+- Conferma del cursore adottata solo dopo scrittura riuscita.
+  [`engine.ts:354`](../../services/messaging-worker/src/engine.ts#L354)
+
+**Supporto e verifiche**
+
+- Selezione fonti e consenso nella UI esistente.
+  [`MessagingAccountsTab.tsx:124`](../../app/admin/MessagingAccountsTab.tsx#L124)
+- Privacy, deployment separato e limiti reali di retention.
+  [`DEPLOY_RUNBOOK.md:9`](../../docs/DEPLOY_RUNBOOK.md#L9)
+- Regressioni grant, OCR locale e persistenza prima dell'ACK.
+  [`personal-telegram-scanning.test.mjs:1`](../../lib/personal-telegram-scanning.test.mjs#L1)

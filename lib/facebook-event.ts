@@ -1,7 +1,7 @@
 export const FACEBOOK_EVENT_UNAVAILABLE = 'Facebook non rende disponibili i dettagli di questo evento senza accesso. Verifica che sia pubblico oppure carica uno screenshot.';
 
 export function isFacebookEventSource(value: string): boolean {
-  const { hostname } = new URL(value);
+  const hostname = new URL(value).hostname.replace(/\.$/, '');
   return /(^|\.)facebook\.com$/i.test(hostname) || /^(www\.)?(fb\.com|fb\.me)$/i.test(hostname);
 }
 

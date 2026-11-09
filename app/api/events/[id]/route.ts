@@ -91,9 +91,6 @@ export async function PUT(
                 if (!validation.ok || validation.kind !== 'image') {
                     return NextResponse.json({ error: validation.ok ? 'La copertina deve essere un’immagine' : validation.error }, { status: 400 });
                 }
-                const uploaded = await uploadEventMediaToSupabase(imageFile, eventId);
-                uploadedCoverPath = uploaded.storagePath;
-                imageUrl = uploaded.url;
             }
             if (originalImageFile) {
                 const bytes = new Uint8Array(await originalImageFile.arrayBuffer());
@@ -107,6 +104,13 @@ export async function PUT(
                 if (!validation.ok || validation.kind !== 'image') {
                     return NextResponse.json({ error: validation.ok ? 'La sorgente deve essere un’immagine' : validation.error }, { status: 400 });
                 }
+            }
+            if (imageFile instanceof File && imageFile.size > 0) {
+                const uploaded = await uploadEventMediaToSupabase(imageFile, eventId);
+                uploadedCoverPath = uploaded.storagePath;
+                imageUrl = uploaded.url;
+            }
+            if (originalImageFile) {
                 const uploaded = await uploadOriginalEventImageToSupabase(originalImageFile);
                 uploadedOriginalPath = uploaded.storagePath;
                 data.originalImageUrl = uploaded.url;

@@ -78,6 +78,8 @@ export default function EditEventPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [moderationBusy, setModerationBusy] = useState(false);
+  const [moderationMessage, setModerationMessage] = useState<string | null>(null);
   const [newImage, setNewImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [originalImagePreview, setOriginalImagePreview] = useState<string | null>(null);
@@ -91,6 +93,12 @@ export default function EditEventPage() {
   const [pendingMediaPreviews, setPendingMediaPreviews] = useState<(string | null)[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  const clearServiceWorkerCache = () => {
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_CACHE" });
+    }
+  };
 
   useEffect(() => {
     const previews = pendingMedia.map(file => file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
@@ -315,6 +323,54 @@ export default function EditEventPage() {
     }
   };
 
+  const handleTogglePublication = async () => {
+    if (!event) return;
+    setModerationBusy(true);
+    setModerationMessage(null);
+    try {
+      const response = await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublished: !event.isPublished }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Impossibile aggiornare la pubblicazione");
+      clearServiceWorkerCache();
+      setEvent(current => current ? { ...current, isPublished: payload.isPublished } : current);
+      setModerationMessage(payload.isPublished ? "Evento ripubblicato." : "Evento spostato in bozza.");
+    } catch (error) {
+      setModerationMessage(error instanceof Error ? error.message : "Impossibile aggiornare la pubblicazione");
+    } finally {
+      setModerationBusy(false);
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!event || !window.confirm(`Eliminare definitivamente "${event.title}"? L’operazione non può essere annullata.`)) return;
+    setModerationBusy(true);
+    setModerationMessage(null);
+    try {
+      const response = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => ({}));
+      if (payload.deleted) {
+        clearServiceWorkerCache();
+        if (!response.ok) {
+          const failures = Array.isArray(payload.cleanupFailures) ? ` File non rimossi: ${payload.cleanupFailures.join(", ")}` : "";
+          window.alert(`${payload.error || "Evento eliminato, ma pulizia incompleta."}${failures}`);
+        } else {
+          window.alert("Evento eliminato.");
+        }
+        router.push("/account");
+        return;
+      }
+      if (!response.ok) throw new Error(payload.error || "Impossibile eliminare l’evento");
+      router.push("/account");
+    } catch (error) {
+      setModerationMessage(error instanceof Error ? error.message : "Impossibile eliminare l’evento");
+      setModerationBusy(false);
+    }
+  };
+
   if (status === "loading" || loading) {
     return <LoadingAnimation message="Caricamento evento..." className="min-h-screen" />;
   }
@@ -362,6 +418,32 @@ export default function EditEventPage() {
     <div className="min-h-screen py-8 px-2 bg-light w-full flex flex-col items-center">
       <div className="w-full max-w-2xl bg-white rounded-xl shadow-md p-8 border border-gray-200">
         <PageHeading className="page-heading-compact" title="Modifica Evento" />
+        {isAdmin && (
+          <section className="mb-6 space-y-3 border-b border-black/10 pb-5" aria-label="Moderazione evento">
+            <p className="mb-0 text-sm font-semibold text-gray-700">
+              Stato: {event.isPublished ? "Pubblicato" : "Bozza"}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleTogglePublication}
+                disabled={moderationBusy || saving}
+                className="rounded-full border border-gray-300 px-4 py-2 text-sm font-bold text-gray-800 disabled:opacity-50"
+              >
+                {moderationBusy ? "Attendi..." : event.isPublished ? "Metti in bozza" : "Ripubblica"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteEvent}
+                disabled={moderationBusy || saving}
+                className="rounded-full border border-red-300 px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"
+              >
+                Elimina
+              </button>
+            </div>
+            {moderationMessage && <p className="mb-0 text-sm font-medium text-red-700" role="status">{moderationMessage}</p>}
+          </section>
+        )}
         <form onSubmit={handleSave} className="space-y-6">
           <div>
             <label className="block font-semibold mb-1">Titolo</label>
@@ -568,7 +650,7 @@ export default function EditEventPage() {
           <div className="flex gap-4 mt-6">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || moderationBusy}
               className="px-6 py-2 rounded-full font-bold shadow-button bg-linear-to-r from-primary via-accent to-secondary text-white transition-all disabled:opacity-60"
             >
               {saving ? "Salvataggio..." : "Salva"}

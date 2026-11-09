@@ -8,11 +8,25 @@ This document is generated from current route handlers under [app/api](../app/ap
 
 Implementation: [admin API](../app/api/admin/messaging/route.ts), [public contract and encryption](../lib/personal-messaging.ts), [admin component](../app/admin/MessagingAccountsTab.tsx), [persistent worker](../services/messaging-worker/src/server.ts), [real adapters](../services/messaging-worker/src/adapters.ts).
 
-Personal-account scanning is isolated from the Telegram bot pipeline. It can read only newly arrived messages from explicitly selected, currently joined Telegram groups/supergroups. WhatsApp behavior remains metadata-only. No account is connected and no scan starts merely because code is deployed.
+Personal-account scanning is isolated from the Telegram bot pipeline. It reads only new messages from explicitly selected, currently joined Telegram groups/supergroups or authorized WhatsApp newsletters. No account is connected and no scan starts merely because code is deployed.
+
+### Dedicated service pages and manual scans (2026-11-09)
+
+`/admin/servizi/telegram`, `/admin/servizi/whatsapp` and `/admin/servizi/instagram` require a session ID and current database admin role/type, not the legacy email allowlist. Existing `/admin` and `/cron` panels remain available. Each page contains its provider access flow, explicit real connection verification, sources and separate preview/publication commands.
+
+- `POST /api/admin/messaging/run`: JSON `{ platform: "telegram"|"whatsapp", dryRun: boolean }`.
+- `POST /api/admin/telegram/run`: JSON `{ dryRun: boolean }`; processes the bot's webhook queue, not personal-account messages or historical channel content.
+- `POST /api/admin/instagram-scan/run`: JSON `{ dryRun: boolean }`; reads only the current admin's Instagram connection.
+
+All three require database admin, exact configured Origin, non-cross-site fetch and JSON content type. Unknown fields, injected owner IDs, missing/nonboolean `dryRun`, and unsupported platforms are refused. Browser runs never invoke the aggregate web/Telegram cron. Responses are private/no-store; per-instance simultaneous runs for the same owner/service are refused with 429. Budget: 260 seconds (`maxDuration=300`); partial/error/deferred counters must be checked before retrying. Dry-run performs no application queue writes, receipts, publication, calendar updates or cursor acknowledgements. Actual runs retain consent/revision publication fences and event deduplication.
+
+Connection verification is provider-backed: personal Telegram `users.GetUsers`, WhatsApp socket `w:p` ping, Telegram bot `POST /api/admin/telegram {action:"verify"}` (`getMe`), Instagram `POST /api/admin/instagram-scan {action:"verify"}` (Graph account identity). Ordinary bot/Instagram status GETs remain local snapshots and do not claim a fresh provider check.
+Personal status returns `connectionVerified:true` only after a completed provider probe in that request; a busy worker's local snapshot never claims verification. Older workers that omit the optional flag cannot produce a positive verification notice.
+Successful authorization returns the optional stable `authorizedSourceId`; application synchronization activates only that newly consented source, never other paused sources present in the worker snapshot. Older-worker fallback is limited to an exact selected ID/reference match.
 
 ### GET /api/admin/messaging?platform=telegram|whatsapp
 
-NextAuth session plus database-backed `User.role=admin` or `User.type=admin`; anonymous/nonadmin requests stop with 401/403 before worker access. The trusted owner is taken exclusively from the session. Exactly one `platform` query parameter is accepted. Returns an allowlisted snapshot with source metadata and, for Telegram, scanning status, sanitized errors and queue counters. No session, ciphertext, phone, login code, password, access hash, baseline/cursor or worker credential is returned. All responses are private/no-store. Missing/offline worker or missing Telegram API credentials return sanitized 503, not a local success.
+NextAuth session plus database-backed `User.role=admin` or `User.type=admin`; anonymous/nonadmin requests stop with 401/403 before worker access. The trusted owner is taken exclusively from the session. Exactly one `platform` query parameter is accepted. Returns an allowlisted snapshot with source metadata, scanning status, sanitized errors and queue counters for the selected platform. No session, ciphertext, phone, login code, password, access hash, baseline/cursor or worker credential is returned. All responses are private/no-store. Missing/offline worker or missing Telegram API credentials return sanitized 503, not a local success.
 
 ### POST /api/admin/messaging
 
@@ -33,9 +47,13 @@ Telegram groups are selected from joined dialog metadata. The worker discards di
 
 Telegram's pinned update-loop, receiver, dispatcher, gap-recovery and catch-up remain disabled. Only bounded `GetDialogs` metadata, selected-source `GetHistory`, login and membership RPCs are allowlisted and wrapped in `Api.InvokeWithoutUpdates`; global difference/history queries remain rejected. The transport may still decode protocol frames before discarding unsolicited updates. The worker never exposes sender fields. It filters candidate text before app transfer; local OCR screens poster-only messages and the image is not sent to AI. Configured social-event extraction providers receive only an announcement excerpt after deterministic event/date/venue checks and explicit publication consent. No generic conversation text, sender metadata, group identity or invite URL is sent to those providers. Review provider processing terms before activating this flow.
 
-WhatsApp verification accepts `https://whatsapp.com/channel/<invite>` or `<numeric-id>@newsletter`, using the pinned Baileys `newsletterMetadata('invite'|'jid', value)` API. Metadata visibility does not prove a subscription, permission to read protected content or republication rights. The SDK has no supported followed-newsletter listing here: `listing=unsupported` is always explicit. No follow, join, subscription-to-updates or message-fetch calls are made. Baileys is unofficial and may cause account restrictions; protocol-level sync cannot be eliminated entirely, but no chat-content handlers or storage are installed. Full history sync, history acceptance, initial sync queries and online presence are disabled.
+WhatsApp verification accepts `https://whatsapp.com/channel/<invite>` or `<numeric-id>@newsletter`, using pinned Baileys `newsletterMetadata('invite'|'jid', value)`, then `newsletterFetchMessages(jid,1,0,0)` to establish the latest server-message baseline. Failure to validate the response prevents activation. Metadata visibility does not prove a subscription, permission to read protected content or republication rights. The SDK has no supported followed-newsletter listing here: `listing=unsupported` is explicit. No follow, join or subscription-to-updates calls are made. Subsequent bounded `newsletterFetchMessages(jid,count,0,after)` reads only that authorized newsletter after its acknowledged baseline. Unknown binary-node payloads are validated, identity must match, timestamps must be valid, and numeric `server_id` must fit positive Prisma Int (max 2147483647); incompatible IDs fail closed, never truncate/coerce. Rows are ordered/deduplicated before cursor acknowledgement. Only filtered event text/captions are forwarded; image bytes, private chats, senders and media URLs are not downloaded or forwarded. Image-only announcements are unsupported. The shared existing queue/receipt names remain unchanged; WhatsApp events use `origin=personal-whatsapp`. No automatic WhatsApp scheduling is added.
+
+Baileys is unofficial and may cause account restrictions; protocol-level sync cannot be eliminated entirely, but no chat-content handlers or storage are installed. Full history sync, history acceptance, initial sync queries and online presence are disabled.
 
 ### Private Worker Protocol
+
+`POST /scan` accepts `{owner, platform?, source, sourceRevision, limit?, dryRun?}`; `POST /ack` accepts `{owner, platform?, source, sourceRevision, cursor}`. `platform` defaults to `telegram` for compatibility and otherwise must be `telegram` or `whatsapp`. Both operations use platform-specific account state, source kinds, consent/revision checks, exclusion and encrypted cursors. Limit: 1–30 (default 20). Ack follows an idempotent application queue commit; it accepts only the pending high-water cursor or an already acknowledged value. Dry-run never advances either cursor.
 
 The app alone calls `POST /command` at the trusted worker origin, with a server-only Bearer secret of at least 32 random bytes (hex) and `{ owner, command }`. HTTPS is required except loopback HTTP. Userinfo, path prefixes, query, fragments and redirects are rejected. The browser never receives the worker URL/secret or connects directly. Worker auth uses a constant-time byte comparison before body/provider work. Body/header limits are 4 KiB; request/SDK/transport deadlines are bounded. Both boundaries cap requests at 90/minute/owner; login starts at 3/10 minutes/account and code/2FA submissions at 5/challenge. Limits are per running instance, not a distributed quota.
 
@@ -115,13 +133,14 @@ Implementazione: [connessione Graph/OAuth](../lib/instagram-scan-connection.ts),
   - `save-source` `{ username, consent: true }`: username `^[A-Za-z0-9._]{1,30}$` (la `@` iniziale viene rimossa); verifica via Business Discovery prima del salvataggio; consenso obbligatorio. Max 20 fonti.
   - `pause-source` / `remove-source` `{ id }`: limitati alle fonti della connessione dell'admin. La pausa azzera il consenso.
   - `disconnect`: elimina token e fonti; elementi elaborati e ricevute restano per la deduplica.
+  - `verify`: verifica l'identita dell'account direttamente su Graph, non il solo stato locale.
 
 ### GET /api/admin/instagram-scan/oauth/start
 - Sessione admin. 503 se `META_APP_ID`/`META_APP_SECRET_KEY`/`INSTAGRAM_SCAN_ENCRYPTION_KEY` o l'origine non sono configurati. Imposta un cookie `state` httpOnly, SameSite=Lax (10 minuti) e reindirizza al dialog OAuth di Facebook Login con scope `instagram_basic,pages_show_list,pages_read_engagement,business_management`.
 
 ### GET /api/admin/instagram-scan/oauth/callback
 - Sessione admin e `state` coincidente con il cookie (stesso utente). Scambia il codice in token long-lived (~60 giorni), individua il primo account Instagram professionale collegato a una Pagina, cifra il token (AES-256-GCM) e salva la connessione.
-- Reindirizza sempre a `/cron?instagram=connected|state_invalid|denied|oauth_failed|no_business_account|not_configured`, senza segreti nell'URL.
+- Reindirizza sempre a `/admin/servizi/instagram?instagram=connected|state_invalid|denied|oauth_failed|no_business_account|not_configured`, senza segreti nell'URL.
 
 ### GET /api/cron/scan-instagram
 - Auth: `Authorization: Bearer <CRON_SECRET_KEY>`; 503 se KEY non configurato, 401 se errato. `maxDuration` 300 s, budget interno 260 s.
@@ -264,9 +283,12 @@ Example 409 response:
   - dateTo
   - limit
   - userId
+  - includeDrafts=true (admin session only; anonymous/nonadmin requests receive 401/403)
 - Behavior:
   - query cached with Next unstable_cache + tag events-list
   - public listings use short shared CDN caching; user-scoped listings are private and never shared-cacheable
+  - only published events are returned by default. Draft inclusion is an uncached, private admin-only listing.
+  - public detail, related-event, calendar, favorite and sitemap surfaces likewise exclude drafts.
   - coordinates are resolved when an event is created, not during list reads
   - global response dedupe if userId is not set
 
@@ -300,6 +322,15 @@ Example 200 response (shape):
 - Requires an authenticated event owner or admin.
 - Supports JSON updates or multipart updates with a cropped `coverImage` (JPEG/PNG/WebP, maximum 4 MiB) and optional `originalImage` source (JPEG/PNG/WebP/GIF, maximum 10 MiB). Crop coordinates are supplied in `originalImageCrop`, normalized to the source dimensions. The previous `imageUrl` remains unchanged if no new cover is uploaded.
 
+### PATCH /api/events/[id]
+- Requires an admin session. Accepts `{ "isPublished": true|false }` and returns the event ID, title and publication state.
+- Invalid IDs/body return 400, missing events 404, anonymous/nonadmin requests 401/403. Publication updates invalidate event-list, page and sitemap caches.
+
+### DELETE /api/events/[id]
+- Requires an admin session. Permanently deletes the event and its favorite rows in one database transaction. Dependent media/calendar/publication records follow their database relations.
+- After commit, removes event-owned media, cover and original-image objects from the `events` storage bucket; objects still referenced by another event are retained. A storage cleanup failure returns 500 with `deleted: true` and `cleanupFailures`; the event remains deleted and failed paths require cleanup. A database failure returns 500 without reporting success.
+- Invalid IDs return 400 and missing events return 404.
+
 ### POST /api/events/[id]/media
 - Requires an authenticated event owner or admin.
 - Multipart fields: `file` and `kind` (`image` or `pdf`). Accepts JPEG/PNG/WebP/PDF, maximum 4 MiB per file and 10 attachments per event.
@@ -330,7 +361,7 @@ curl -X PUT "http://localhost:3000/api/events/120" \
 
 ### GET /api/events/[id]
 - File: [app/api/events/[id]/route.ts](../app/api/events/[id]/route.ts)
-- Purpose: fetch event detail by numeric id, including ordered media attachments.
+- Purpose: fetch a published event by numeric id, including ordered media attachments. Drafts are returned only to an admin; other readers receive 404 even when they know the URL.
 
 Example request:
 

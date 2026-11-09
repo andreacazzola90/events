@@ -2,7 +2,7 @@
 title: 'Conservare l’immagine originale della copertina'
 type: 'feature'
 created: '2026-11-09'
-status: 'in-review'
+status: 'done'
 baseline_commit: '93cc7011b2144ed8cb5cea6cd7ce8b57c3ddeacb'
 route: 'plan-code-review'
 context: []
@@ -73,3 +73,63 @@ URL sorgente e coordinate crop sono metadati della copertina, non `EventMedia`: 
 - `npx tsc --noEmit --incremental false` -- expected: nessun errore TypeScript.
 - `npx eslint app/crea app/components/ImageUploader.tsx app/components/EventImageCropper.tsx app/events/[slug]/edit app/api/events` -- expected: nessun errore lint.
 - Test mirati per API e crop -- expected: persistenza, fallback e coordinate verificati.
+
+## Suggested Review Order
+
+**Riapertura del ritaglio**
+
+- L’editor sceglie la sorgente originale prima della copertina di fallback.
+  [`edit/page.tsx:225`](../../app/events/[slug]/edit/page.tsx#L225)
+
+- La selezione normalizzata viene ripristinata nel cropper.
+  [`edit/page.tsx:683`](../../app/events/[slug]/edit/page.tsx#L683)
+
+- La bozza separa sorgente, copertina attiva e crop applicato.
+  [`EventDisplay.tsx:145`](../../app/components/EventDisplay.tsx#L145)
+
+**Persistenza e compatibilità**
+
+- La creazione carica l’originale e salva URL e coordinate del crop.
+  [`events/route.ts:168`](../../app/api/events/route.ts#L168)
+
+- L’aggiornamento mantiene i riferimenti esistenti finché il nuovo salvataggio riesce.
+  [`events/[id]/route.ts:138`](../../app/api/events/[id]/route.ts#L138)
+
+- Il file sorgente viene caricato senza trasformazioni.
+  [`supabase.ts:149`](../../app/lib/supabase.ts#L149)
+
+- Le colonne nullable supportano gli eventi già esistenti.
+  [`schema.prisma:24`](../../prisma/schema.prisma#L24)
+
+- La migration aggiunge URL e coordinate senza rimuovere dati.
+  [`migration.sql:2`](../../prisma/migrations/20261109170000_store_original_event_cover/migration.sql#L2)
+
+**Sezioni di locandine multiple**
+
+- Il bounding box della sezione viene composto col crop automatico originale.
+  [`crea/page.tsx:367`](../../app/crea/page.tsx#L367)
+
+- L’API restituisce coordinate normalizzate della sezione rilevata.
+  [`poster-sections/route.ts:43`](../../app/api/poster-sections/route.ts#L43)
+
+- Il rettangolo OCR è normalizzato rispetto all’immagine sorgente.
+  [`poster-sections.ts:151`](../../lib/poster-sections.ts#L151)
+
+- La composizione annidata mantiene il riferimento all’originale.
+  [`draft-image-crop.ts:21`](../../lib/draft-image-crop.ts#L21)
+
+**Privacy delle risposte**
+
+- Le risposte evento non autorizzate redigono sorgente e crop.
+  [`events/[id]/route.ts:220`](../../app/api/events/[id]/route.ts#L220)
+
+- Liste pubbliche e preferiti non espongono i metadati originali.
+  [`event-media.ts:16`](../../lib/event-media.ts#L16)
+
+**Test**
+
+- I test coprono redazione e composizione delle coordinate.
+  [`event-media.test.mjs:41`](../../lib/event-media.test.mjs#L41)
+
+- Il bounding box OCR viene verificato in coordinate normalizzate.
+  [`poster-sections.test.mjs:35`](../../lib/poster-sections.test.mjs#L35)

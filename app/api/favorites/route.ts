@@ -7,7 +7,7 @@ export async function GET(_request: NextRequest) {
   return withAuth(async (userId) => {
     try {
       const favorites = await prisma.favorite.findMany({
-        where: { userId },
+        where: { userId, event: { isPublished: true } },
         include: { event: true },
         orderBy: { createdAt: "desc" },
       });
@@ -34,6 +34,14 @@ export async function POST(request: NextRequest) {
           { error: "eventId non valido" },
           { status: 400 },
         );
+      }
+
+      const event = await prisma.event.findFirst({
+        where: { id: eventId, isPublished: true },
+        select: { id: true },
+      });
+      if (!event) {
+        return NextResponse.json({ error: "Evento non trovato" }, { status: 404 });
       }
 
       // Crea il preferito se non esiste già

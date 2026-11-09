@@ -20,6 +20,12 @@ import { createEventWithSeries } from "../../../lib/event-series-create";
 import { redactOriginalEventImageMetadata, validateEventMediaFile, validateOriginalEventImageFile } from "../../../lib/event-media";
 import { isCoverImageCrop } from "../../../lib/cover-image-crop";
 
+function isAdminSession(session: any): boolean {
+  const user = session?.user as any;
+  const email = (user?.email || "").toLowerCase();
+  return user?.role === "admin" || user?.type === "admin" || email === "andreacazzola90@gmail.com";
+}
+
 /** Stores the full poster as the event's first gallery image; failures never undo the event. */
 async function attachPosterImage(eventId: number, poster: File) {
   let storagePath: string | undefined;
@@ -365,8 +371,21 @@ export async function GET(request: NextRequest) {
       ? parseInt(searchParams.get("limit")!)
       : 20;
     const userIdParam = searchParams.get("userId");
+    const includeDrafts = searchParams.get("includeDrafts") === "true";
+    let includeDraftEvents = false;
+    if (includeDrafts) {
+      const session: any = await getServerSession(authOptions as any);
+      if (!session?.user) {
+        return NextResponse.json({ error: "Non autorizzato" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
+      }
+      if (!isAdminSession(session)) {
+        return NextResponse.json({ error: "Accesso negato" }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+      }
+      includeDraftEvents = true;
+    }
 
     const where: any = {};
+    if (!includeDraftEvents) where.isPublished = true;
 
     if (search) {
       where.OR = [
@@ -423,12 +442,14 @@ export async function GET(request: NextRequest) {
     // To make it dynamic based on args, we rely on the args being part of the cache key internally.
     // But to be safe and explicit with tags, we use the tag 'events-list'.
 
-    const events = await getCachedEvents(where, limit);
+    const events = includeDraftEvents
+      ? await prisma.event.findMany({ where, orderBy: { createdAt: "desc" }, take: limit })
+      : await getCachedEvents(where, limit);
 
     // If this is a global listing (no specific userId), de-duplicate
     // events by (title, date, location), keeping only the first
     let responseEvents: DbEvent[] = events;
-    if (!userIdParam) {
+    if (!userIdParam && !includeDraftEvents) {
       const seenKeys = new Set<string>();
       responseEvents = events.filter((event: DbEvent) => {
         const key = `${(event.title || "").trim()}|||${(event.date || "").trim()}|||${(event.location || "").trim()}`;
@@ -445,7 +466,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(publicEvents, {
       headers: {
-        "Cache-Control": userIdParam
+        "Cache-Control": userIdParam || includeDraftEvents
           ? "private, no-store"
           : "public, s-maxage=60, stale-while-revalidate=300",
       },

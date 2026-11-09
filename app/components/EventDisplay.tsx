@@ -45,7 +45,7 @@ interface EventDisplayProps {
     imageProcessing?: boolean;
     imageCropStatus?: DraftImageCropStatus;
     imageCropFailure?: DraftImageCropFailure;
-    onImageChange?: (imageUrl: string, originalImageUrl?: string) => void;
+    onImageChange?: (imageUrl: string, originalImageUrl?: string, originalImageCrop?: EventData['originalImageCrop']) => void;
 }
 
 const isMissing = (value?: string) => !value || !value.trim() || /^non trovato$/i.test(value.trim());
@@ -69,6 +69,8 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
     const [cropSource, setCropSource] = useState<string | null>(null);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
     const [initialCrop, setInitialCrop] = useState<EventData['originalImageCrop']>();
+    const [cropSelection, setCropSelection] = useState<EventData['originalImageCrop']>(eventData.originalImageCrop);
+    const [cropDraftSelection, setCropDraftSelection] = useState<EventData['originalImageCrop']>();
     const [saveAnimationStatus, setSaveAnimationStatus] = useState<'saving' | 'success' | 'hidden'>('hidden');
     const [isSaving, setIsSaving] = useState(false);
     const [aiInstructions, setAiInstructions] = useState('');
@@ -92,14 +94,14 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
     useEffect(() => () => cropPreviewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
     useEffect(() => () => rescanController.current?.abort(), []);
 
-    const notifyImageChange = (selected: string, original?: string) => {
+    const notifyImageChange = (selected: string, original?: string, crop?: EventData['originalImageCrop']) => {
         cropPreviewUrls.current = cropPreviewUrls.current.filter(url => {
             if (onImageChange && url === selected) return false;
             if (url === selected || url === original) return true;
             URL.revokeObjectURL(url);
             return false;
         });
-        onImageChange?.(selected, original);
+        onImageChange?.(selected, original, crop);
     };
 
     const handleSaveApiError = (errorText: string): never => {
@@ -131,16 +133,16 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
             currentImageUrl.current = eventData.imageUrl;
             setImageUrl(eventData.imageUrl);
             originalCropSource.current = source;
+            setCropSelection(eventData.originalImageCrop);
         }
-    }, [eventData.imageUrl, eventData.originalImageUrl, manualImageOverride]);
+    }, [eventData.imageUrl, eventData.originalImageUrl, eventData.originalImageCrop, manualImageOverride]);
 
     const handleOpenCropper = (source = imageUrl) => {
         if (!source) return;
-        // Refine the automatic crop on the full original, so the manual correction can teach future crops.
-        const autoCrop = !manualImageOverride && eventData.originalImageUrl && eventData.originalImageCrop
-            && originalCropSource.current === eventData.originalImageUrl ? eventData.originalImageCrop : undefined;
-        setInitialCrop(autoCrop);
-        setCropSource(autoCrop ? eventData.originalImageUrl! : source);
+        const crop = cropSelection;
+        setInitialCrop(crop);
+        setCropDraftSelection(crop);
+        setCropSource(originalCropSource.current || source);
         setCroppedAreaPixels(null);
     };
 
@@ -150,11 +152,12 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
             const croppedFile = await cropCoverToFile(cropSource, croppedAreaPixels);
             const previewUrl = URL.createObjectURL(croppedFile);
             cropPreviewUrls.current.push(previewUrl);
+            setCropSelection(cropDraftSelection);
             setManualImageOverride(true);
             setWebImageOverride(false);
             setImageUrl(previewUrl);
             currentImageUrl.current = previewUrl;
-            notifyImageChange(previewUrl, originalCropSource.current);
+            notifyImageChange(previewUrl, originalCropSource.current, cropDraftSelection);
             setCropSource(null);
         } catch {
             toast.error('Impossibile ritagliare l’immagine o il ritaglio supera il limite di 4 MiB.');
@@ -227,6 +230,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
             description: readValue('description'),
             imageUrl: currentImageUrl.current,
             originalImageUrl: originalCropSource.current,
+            originalImageCrop: cropSelection,
             sourceUrl: readValue('sourceUrl') || eventData.sourceUrl,
             rawText: eventData.rawText,
         };
@@ -534,9 +538,12 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                     cropPreviewUrls.current.push(previewUrl);
                                     setManualImageOverride(true);
                                     setWebImageOverride(true);
+                                    originalCropSource.current = previewUrl;
                                     setImageUrl(previewUrl);
                                     currentImageUrl.current = previewUrl;
-                                    notifyImageChange(previewUrl, originalCropSource.current);
+                                    const fullImage = { x: 0, y: 0, width: 1, height: 1 };
+                                    setCropSelection(fullImage);
+                                    notifyImageChange(previewUrl, previewUrl, fullImage);
                                 }} />
                         )}
                         {isEditing && (
@@ -558,7 +565,9 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                             setWebImageOverride(false);
                                             setImageUrl(url);
                                             currentImageUrl.current = url;
-                                            notifyImageChange(url, url);
+                                            const fullImage = { x: 0, y: 0, width: 1, height: 1 };
+                                            setCropSelection(fullImage);
+                                            notifyImageChange(url, url, fullImage);
                                         }
                                     }}
                                 />
@@ -734,8 +743,14 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                         <EventImageCropper
                             image={cropSource}
                             initialCrop={initialCrop}
-                            onCropComplete={(_, areaPixels) => {
+                            onCropComplete={(_, areaPixels, natural) => {
                                 setCroppedAreaPixels(areaPixels);
+                                setCropDraftSelection({
+                                    x: areaPixels.x / natural.width,
+                                    y: areaPixels.y / natural.height,
+                                    width: areaPixels.width / natural.width,
+                                    height: areaPixels.height / natural.height,
+                                });
                             }}
                         />
                         <div className="flex justify-end gap-3">

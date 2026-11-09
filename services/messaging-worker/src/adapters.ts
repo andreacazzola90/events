@@ -5,7 +5,7 @@ import type { AuthenticationCreds, SignalDataSet, SignalDataTypeMap, WASocket } 
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { MessagingError } from '../../../lib/personal-messaging.ts';
-import type { Adapter, Factory, Source, SourceList, Update } from './engine.ts';
+import type { Adapter, Factory, PersonalMessage, Source, SourceList, Update } from './engine.ts';
 import { bounded } from './engine.ts';
 import { announcementCandidateExcerpt, isPrivateAnnouncement } from '../../../lib/personal-telegram-policy.ts';
 
@@ -323,6 +323,8 @@ export class WhatsAppAdapter implements Adapter {
   async list(): Promise<SourceList> { return []; }
   async status() {
     if (!this.connected || !this.socket) { await this.emit({ status: 'restoring' }); throw new MessagingError('not_connected'); }
+    try { await bounded(this.socket.query({ tag: 'iq', attrs: { type: 'get', xmlns: 'w:p', to: 's.whatsapp.net' }, content: [{ tag: 'ping', attrs: {} }] }), 8000); }
+    catch { throw new MessagingError('provider_unavailable', 503); }
   }
   async verify(source: string): Promise<Source> {
     const invite = /^https:\/\/whatsapp\.com\/channel\/([A-Za-z0-9]{8,100})$/.exec(source);
@@ -331,8 +333,13 @@ export class WhatsAppAdapter implements Adapter {
     try {
       const metadata = await this.socket.newsletterMetadata(invite ? 'invite' : 'jid', invite ? invite[1] : jid!);
       if (!metadata || !/^\d+@newsletter$/.test(metadata.id)) throw new Error('unavailable');
-      return { id: metadata.id, title: metadata.name.slice(0, 200), kind: 'newsletter' };
+      const page = normalizeNewsletterPage(await this.socket.newsletterFetchMessages(metadata.id, 1, 0, 0), metadata.id, 0, 1);
+      return { id: metadata.id, title: metadata.name.slice(0, 200), kind: 'newsletter', baselineMessageId: page.cursor };
     } catch { throw new MessagingError('source_unavailable'); }
+  }
+  async poll(source: Source, after: number, limit: number) {
+    if (!this.connected || !this.socket || source.kind !== 'newsletter' || !/^\d{5,40}@newsletter$/.test(source.id)) throw new MessagingError('source_unavailable');
+    return normalizeNewsletterPage(await this.socket.newsletterFetchMessages(source.id, limit, 0, after), source.id, after, limit);
   }
   async close(remote: boolean) {
     this.stopped = true; this.connected = false;
@@ -340,5 +347,46 @@ export class WhatsAppAdapter implements Adapter {
     try { if (remote && socket) await bounded(socket.logout(), 3500); return Boolean(remote && socket); }
     finally { socket?.end(undefined); this.keys = {}; this.creds = initAuthCreds(); }
   }
+}
+type NewsletterNode = { tag: string; attrs: Record<string, unknown>; content?: unknown };
+function newsletterNode(value: unknown): value is NewsletterNode {
+  return Boolean(value && typeof value === 'object' && 'tag' in value && typeof value.tag === 'string' &&
+    'attrs' in value && value.attrs && typeof value.attrs === 'object' && !Array.isArray(value.attrs));
+}
+export function normalizeNewsletterPage(payload: unknown, jid: string, after: number, limit: number) {
+  if (!newsletterNode(payload) || payload.tag !== 'iq' || payload.attrs.type !== 'result' ||
+    (payload.attrs.from !== undefined && payload.attrs.from !== jid)) throw new MessagingError('source_unavailable');
+  const updates = Array.isArray(payload.content) ? payload.content.filter(newsletterNode).find(node => node.tag === 'message_updates') : undefined;
+  if (!updates || !Array.isArray(updates.content) || updates.content.length > limit ||
+    (updates.attrs.jid !== undefined && updates.attrs.jid !== jid)) throw new MessagingError('source_unavailable');
+  const messages: PersonalMessage[] = [];
+  let cursor = after; let discarded = 0; let readCount = 0;
+  const seen = new Set<number>();
+  const rows = updates.content.map((item: unknown) => {
+    if (!newsletterNode(item) || item.tag !== 'message' ||
+      (item.attrs.from !== undefined && item.attrs.from !== jid) ||
+      typeof item.attrs.server_id !== 'string' || !/^[1-9]\d{0,9}$/.test(item.attrs.server_id)) throw new MessagingError('source_unavailable');
+    const id = Number(item.attrs.server_id);
+    const timestamp = typeof item.attrs.t === 'string' && /^\d{1,12}$/.test(item.attrs.t) ? Number(item.attrs.t) : NaN;
+    if (id > 2147483647 || !Number.isSafeInteger(timestamp) || timestamp <= 0 || timestamp > Math.floor(Date.now() / 1000) + 300) throw new MessagingError('source_unavailable');
+    return { item, id };
+  }).sort((a, b) => a.id - b.id);
+  for (const { item, id } of rows) {
+    if (id <= after || seen.has(id)) continue;
+    seen.add(id); cursor = id; readCount++;
+    const plaintext = Array.isArray(item.content) ? item.content.filter(newsletterNode).find(node => node.tag === 'plaintext') : undefined;
+    if (!plaintext || !(plaintext.content instanceof Uint8Array) || plaintext.content.byteLength > 1024 * 1024) { discarded++; continue; }
+    try {
+      const message = proto.Message.decode(plaintext.content);
+      const text = message.conversation || message.extendedTextMessage?.text || message.imageMessage?.caption || '';
+      // Newsletter media are not downloaded: only provider text/captions enter the announcement policy.
+      if (!text || text.length > 4000 || message.protocolMessage) { discarded++; continue; }
+      if (isPrivateAnnouncement(text)) { discarded++; continue; }
+      const excerpt = announcementCandidateExcerpt(text);
+      if (!excerpt) { discarded++; continue; }
+      messages.push({ id, text: excerpt });
+    } catch { discarded++; }
+  }
+  return { cursor, messages, discarded, readCount };
 }
 export const realAdapterFactory: Factory = (platform, emit) => platform === 'telegram' ? new TelegramAdapter(emit) : new WhatsAppAdapter(emit);

@@ -832,6 +832,7 @@ export default function CronAdminClient() {
 
   return (
     <main className="min-h-screen p-6 pt-24 sm:p-8 sm:pt-28 cron-page">
+      <a href="/admin/servizi/telegram" className="btn btn-outline mb-4">Servizi di scraping: Telegram, WhatsApp e Instagram</a>
       <div className="w-full space-y-6">
 
         {/* Header */}

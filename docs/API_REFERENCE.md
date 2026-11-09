@@ -207,7 +207,8 @@ Example 200 response:
   - upload/share clients run `POST /api/crop-image` alongside extraction; publishing waits for the crop result. A failed crop removes the automatic cover and opens a web-image selection, with manual cropping or publication without a cover as alternatives
   - JSON image URLs, PDF, link and manual-crop flows are unchanged. Page pre-warming runs after the response with bounded requests
   - optional multipart `posterImage` (JPEG/PNG/WebP, validated by signature): sent when the cover is only this event's section of a multi-event poster. After creation it is stored as the first `EventMedia` image named `Locandina completa`; upload failures are logged and never undo the event
-  - draft clients omit temporary `originalImageUrl` and `posterImageUrl` from publication payloads. The events route persists an explicit allowlist and never uploads that field. Originals are still sent to cloud vision for analysis; AI checks and user-confirmed images do not guarantee anonymity
+  - multipart drafts may include `originalImage` (the uploaded JPEG/PNG/WebP/GIF source, maximum 10 MiB) and `originalImageCrop` (normalized `x`, `y`, `width`, `height`) alongside `image` (the cover in use). The source is stored separately from the cover and is not added to the public event gallery; crop coordinates are persisted so the edit screen can reopen the source with the current selection. `posterImageUrl` remains draft-only
+  - event details return the saved original-image URL and crop only to the authenticated owner or an admin; other readers receive null values. Originals are still sent to cloud vision for analysis; AI checks and user-confirmed images do not guarantee anonymity
 - Responses:
   - 201: created event (+ slug)
   - 409: EVENT_DUPLICATE
@@ -297,7 +298,7 @@ Example 200 response (shape):
 - File: [app/api/events/[id]/route.ts](../app/api/events/[id]/route.ts)
 - Purpose: update event by numeric id
 - Requires an authenticated event owner or admin.
-- Supports JSON updates or multipart updates with a cropped `coverImage` (JPEG/PNG/WebP, maximum 4 MiB). The previous `imageUrl` remains unchanged if no new cover is uploaded.
+- Supports JSON updates or multipart updates with a cropped `coverImage` (JPEG/PNG/WebP, maximum 4 MiB) and optional `originalImage` source (JPEG/PNG/WebP/GIF, maximum 10 MiB). Crop coordinates are supplied in `originalImageCrop`, normalized to the source dimensions. The previous `imageUrl` remains unchanged if no new cover is uploaded.
 
 ### POST /api/events/[id]/media
 - Requires an authenticated event owner or admin.

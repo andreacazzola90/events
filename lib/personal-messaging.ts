@@ -45,6 +45,13 @@ export function requireMessagingOrigin(request: Request, expected = process.env.
   if (request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site') throw new MessagingError('invalid_origin', 403);
   if (!request.headers.get('content-type')?.startsWith('application/json')) throw new MessagingError('invalid_payload', 415);
 }
+export function parseServiceScan(input: unknown, personal = false): { dryRun: boolean; platform?: Platform } {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new MessagingError('invalid_payload');
+  const value = input as Record<string, unknown>;
+  if (Object.keys(value).some(key => !['dryRun', ...(personal ? ['platform'] : [])].includes(key)) ||
+    typeof value.dryRun !== 'boolean' || (personal && value.platform !== 'telegram' && value.platform !== 'whatsapp')) throw new MessagingError('invalid_payload');
+  return { dryRun: value.dryRun, ...(personal ? { platform: value.platform as Platform } : {}) };
+}
 export async function boundedJson(request: Request | Response, maximum = 4096): Promise<unknown> {
   const reader = request.body?.getReader();
   if (!reader) throw new MessagingError('invalid_payload');

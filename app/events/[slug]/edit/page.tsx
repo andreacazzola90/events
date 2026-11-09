@@ -168,11 +168,11 @@ export default function EditEventPage() {
     setMediaError(null);
     setCroppedAreaPixels(null);
     const source = URL.createObjectURL(file);
+    setNewImage(null);
+    setImagePreview(null);
     setOriginalImageFile(file);
     setOriginalImagePreview(source);
-    setOriginalImageCrop(null);
     setCropSelection(null);
-    setEvent(current => current ? { ...current, originalImageCrop: null } : current);
     setCropSource(source);
     e.target.value = "";
   };
@@ -219,6 +219,16 @@ export default function EditEventPage() {
     setCropSource(source);
     setCroppedAreaPixels(null);
     setCropSelection(null);
+  };
+
+  const handleCancelCrop = () => {
+    setCropSource(null);
+    setCroppedAreaPixels(null);
+    setCropSelection(null);
+    if (originalImageFile && !newImage) {
+      setOriginalImageFile(null);
+      setOriginalImagePreview(event?.originalImageUrl || null);
+    }
   };
 
   const handleRemoveMedia = async (mediaId: number) => {
@@ -270,7 +280,7 @@ export default function EditEventPage() {
         originalImageUrl: eventPayload.originalImageUrl ?? current.originalImageUrl,
         originalImageCrop: savedCrop,
       } : current);
-      setOriginalImagePreview(eventPayload.originalImageUrl ?? originalImagePreview);
+      setOriginalImagePreview(eventPayload.originalImageUrl || null);
       setOriginalImageCrop(savedCrop);
       setNewImage(null);
       setImagePreview(null);
@@ -584,11 +594,11 @@ export default function EditEventPage() {
               <div>
                 <h2 id="cover-crop-title" className="mb-1 text-xl font-bold text-black">Ritaglia copertina</h2>
               </div>
-              <button type="button" onClick={() => setCropSource(null)} className="px-3 py-2 text-sm font-semibold text-gray-700 underline">Chiudi</button>
+              <button type="button" onClick={handleCancelCrop} className="px-3 py-2 text-sm font-semibold text-gray-700 underline">Chiudi</button>
             </div>
             <EventImageCropper
               image={cropSource}
-              initialCrop={originalImageCrop ?? undefined}
+              initialCrop={originalImageFile && !newImage ? undefined : originalImageCrop ?? undefined}
               onCropComplete={(_, areaPixels, natural) => {
                 setCroppedAreaPixels(areaPixels);
                 setCropSelection({
@@ -600,7 +610,7 @@ export default function EditEventPage() {
               }}
             />
             <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>
+              <button type="button" onClick={handleCancelCrop} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>
               <button type="button" onClick={handleApplyCrop} disabled={!croppedAreaPixels} className="px-4 py-2 bg-red-700 text-sm font-semibold text-white disabled:opacity-50">Applica ritaglio</button>
             </div>
           </div>

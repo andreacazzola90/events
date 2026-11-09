@@ -40,6 +40,23 @@ export async function mutateTelegramAdmin(request: Request, userId: number) {
   try { body = JSON.parse(Buffer.from(await readTelegramBody(request, 4096)).toString('utf8')); }
   catch (error) { if (error instanceof TelegramError) throw error; throw new TelegramError('invalid_payload'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TelegramError('invalid_payload');
+  if (body.action === 'verify') {
+    if (Object.keys(body).some(key => key !== 'action')) throw new TelegramError('invalid_payload');
+    const current = await prisma.telegramConnection.findUnique({ where: { userId } });
+    if (current?.status !== 'active' || !current.encryptedToken) throw new TelegramError('telegram_not_connected', 409);
+    try {
+      const bot = await telegramApi<TelegramBot>(decryptTelegramToken(current.encryptedToken), 'getMe');
+      if (!bot.is_bot || String(bot.id) !== current.botId) throw new TelegramError('invalid_bot_token');
+      const updated = await prisma.telegramConnection.updateMany({ where: { id: current.id, encryptedToken: current.encryptedToken, status: 'active' }, data: { lastError: null } });
+      if (!updated.count) throw new TelegramError('connection_changed', 409);
+      return { verified: true };
+    } catch (error) {
+      if (error instanceof TelegramError && error.code === 'telegram_token_revoked') await prisma.telegramConnection.updateMany({
+        where: { id: current.id, encryptedToken: current.encryptedToken }, data: { status: 'failed', lastError: error.code },
+      });
+      throw error;
+    }
+  }
   if (body.action === 'connect') {
     if (typeof body.token !== 'string') throw new TelegramError('invalid_bot_token');
     const encryptedToken = encryptTelegramToken(body.token);

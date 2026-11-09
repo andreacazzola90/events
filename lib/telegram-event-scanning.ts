@@ -81,17 +81,17 @@ export async function publishTelegramJob(job: TelegramMessage, source: TelegramS
   }, { maxWait: 2_000, timeout: 15_000 });
 }
 
-export async function scanTelegramQueue(options: { dryRun: boolean; deadline: number }): Promise<TelegramScanResult> {
+export async function scanTelegramQueue(options: { dryRun: boolean; deadline: number; ownerId?: number }): Promise<TelegramScanResult> {
   const result: TelegramScanResult = { status: 'success', dryRun: options.dryRun, visited: 0, published: 0, duplicates: 0, discarded: 0, retried: 0, failed: 0, wouldPublish: 0, deferred: 0, imageOmitted: 0 };
   const now = new Date();
   if (!options.dryRun) {
     await prisma.telegramMessage.updateMany({
-      where: { status: { in: ['pending', 'processing'] }, OR: [{ expiresAt: { lte: now } }, { attempts: { gte: 3 }, leasedUntil: { lte: now } }] },
+      where: { ...(options.ownerId !== undefined ? { source: { connection: { userId: options.ownerId } } } : {}), status: { in: ['pending', 'processing'] }, OR: [{ expiresAt: { lte: now } }, { attempts: { gte: 3 }, leasedUntil: { lte: now } }] },
       data: { ...cleared, status: 'failed', lastError: 'retention_or_retry_limit' },
     });
   }
   const sources = await prisma.telegramSource.findMany({
-    where: { isActive: true, consentedAt: { not: null }, connection: { status: 'active', encryptedToken: { not: null } } },
+    where: { isActive: true, consentedAt: { not: null }, connection: { ...(options.ownerId !== undefined ? { userId: options.ownerId } : {}), status: 'active', encryptedToken: { not: null } } },
     include: { connection: true }, orderBy: [{ lastScannedAt: 'asc' }, { id: 'asc' }], take: 50,
   });
   for (const source of sources) {

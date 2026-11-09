@@ -103,6 +103,56 @@ test('group grants establish a fresh encrypted baseline and public status omits 
   assert.ok(!JSON.stringify(status).includes('cursorMessageId'));
   assert.ok(!JSON.stringify(status).includes('pendingCursorMessageId'));
 });
+async function newsletterFlow() {
+  const flow = fixture();
+  await flow.engine.execute(1, { action: 'start', platform: 'whatsapp' });
+  await flow.callbacks[0]({ status: 'connected', session: 'whatsapp-fixture-session' });
+  flow.adapters[0].verify = async id => ({ id, title: 'Newsletter', kind: 'newsletter', baselineMessageId: 10 });
+  const run = (action, extra = {}) => flow.engine.execute(1, { action, platform: 'whatsapp', ...extra });
+  await run('authorize', { source: '12345@newsletter', consent: true });
+  return { ...flow, run, source: flow.saved.get('1:whatsapp').sources[0] };
+}
+test('newsletter baseline, dry-run, replay and ack are platform isolated and never backfill', async () => {
+  const flow = await newsletterFlow();
+  const source = flow.source;
+  assert.equal(source.baselineMessageId, 10); assert.equal(source.cursorMessageId, 10);
+  const before = JSON.stringify([...flow.saved]);
+  const preview = await flow.engine.scan(1, source.id, source.revision, { platform: 'whatsapp', dryRun: true });
+  assert.equal(preview.messages[0].id, 11); assert.equal(JSON.stringify([...flow.saved]), before);
+  assert.equal((await flow.engine.scan(2, source.id, source.revision, { platform: 'whatsapp', dryRun: true })).status, 'not_connected');
+  assert.equal((await flow.engine.scan(1, source.id, source.revision, { platform: 'telegram', dryRun: true })).status, 'not_connected');
+  const first = await flow.engine.scan(1, source.id, source.revision, { platform: 'whatsapp' });
+  const replay = await flow.engine.scan(1, source.id, source.revision, { platform: 'whatsapp' });
+  assert.equal(first.messages[0].id, replay.messages[0].id);
+  await assert.rejects(flow.engine.acknowledge(1, source.id, source.revision, 99, 'whatsapp'), /source_unavailable/);
+  await flow.engine.acknowledge(1, source.id, source.revision, first.cursor, 'whatsapp');
+  await flow.engine.acknowledge(1, source.id, source.revision, first.cursor, 'whatsapp');
+  assert.equal((await flow.engine.scan(1, source.id, source.revision, { platform: 'whatsapp' })).messages[0].id, 12);
+});
+test('newsletter reauthorization replaces pending cursors and requires a fresh valid Int baseline', async () => {
+  const flow = await newsletterFlow();
+  await flow.engine.scan(1, flow.source.id, flow.source.revision, { platform: 'whatsapp' });
+  await flow.run('authorize', { source: flow.source.id, consent: true });
+  const updated = flow.saved.get('1:whatsapp').sources[0];
+  assert.equal(updated.pendingCursorMessageId, undefined);
+  assert.equal(updated.revision, flow.source.revision + 1);
+  await assert.rejects(flow.engine.acknowledge(1, flow.source.id, flow.source.revision, 11, 'whatsapp'), /source_unavailable/);
+  flow.adapters[0].verify = async id => ({ id, kind: 'newsletter', title: 'Invalid ID range', baselineMessageId: 2147483648 });
+  await assert.rejects(flow.run('authorize', { source: '98765@newsletter', consent: true }), /source_unavailable/);
+});
+test('newsletter concurrent pause cancels inflight pages and publication acknowledgements', async () => {
+  const flow = await newsletterFlow();
+  let release; let entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  flow.adapters[0].poll = async () => { entered(); return new Promise(resolve => { release = resolve; }); };
+  const pending = flow.engine.scan(1, flow.source.id, flow.source.revision, { platform: 'whatsapp' });
+  await started;
+  await assert.rejects(flow.engine.scan(1, flow.source.id, flow.source.revision, { platform: 'whatsapp', dryRun: true }), /rate_limited/);
+  await flow.run('pause', { source: flow.source.id });
+  release({ cursor: 11, messages: [{ id: 11, text: 'event' }], discarded: 0, readCount: 1 });
+  await assert.rejects(pending, /operation_cancelled/);
+  await assert.rejects(flow.engine.acknowledge(1, flow.source.id, flow.source.revision, 11, 'whatsapp'), /source_unavailable/);
+});
 test('group scan cursor is acknowledged only after app commit and acknowledgements are idempotent', async () => {
   const flow = fixture(); await flow.connect();
   await flow.run('authorize', { source: 'group:supergroup:12345', consent: true });

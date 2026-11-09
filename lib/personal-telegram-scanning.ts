@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { createWorker } from 'tesseract.js';
 import { prisma } from '../app/lib/prisma';
 import { MessagingError, workerConfiguration } from './personal-messaging';
+import type { Platform } from './personal-messaging';
 import { announcementCandidateExcerpt, isPrivateAnnouncement, isPublicEventAnnouncement, permittedAnnouncementText, sanitizePersonalTelegramText } from './personal-telegram-policy';
 import { extractSocialEvents, previewSocialEvents, publishSocialEvents, socialFingerprint } from './social-event-extraction';
 
@@ -13,7 +14,7 @@ const maximumMessagesPerRun = 20;
 const clearedContent = { rawText: '', photoBytes: null, leaseId: null, leasedUntil: null };
 type WorkerMessage = { id: number; text: string; photo?: string };
 type WorkerPage = { sourceId: string; sourceRevision: number; cursor: number; messages: WorkerMessage[]; dryRun: boolean; status: string; discarded?: number; readCount?: number };
-type ScanOptions = { dryRun: boolean; deadline: number };
+type ScanOptions = { dryRun: boolean; deadline: number; ownerId?: number; platform?: Platform };
 type GrantRow = { id: string; providerId: string; workerRevision: number; revision: number; accountId: string; active: boolean; consentedAt: Date | null; account: { ownerId: number; status: string } };
 type PublishFenceJob = { id: string; sourceId: string; sourceRevision: number; leaseId: string; source: { accountId: string; workerRevision: number } };
 
@@ -74,9 +75,9 @@ async function workerRequest<T>(path: '/scan' | '/ack', body: Record<string, unk
   }
 }
 
-export async function revokePersonalTelegramGrant(ownerId: number, providerId?: string) {
+export async function revokePersonalTelegramGrant(ownerId: number, providerId?: string, platform: Platform = 'telegram') {
   await prisma.$transaction(async tx => {
-    const account = await tx.personalMessagingAccount.findUnique({ where: { ownerId_platform: { ownerId, platform: 'telegram' } } });
+    const account = await tx.personalMessagingAccount.findUnique({ where: { ownerId_platform: { ownerId, platform } } });
     if (!account) return;
     await tx.$executeRaw`SELECT "id" FROM "PersonalMessagingAccount" WHERE "id" = ${account.id} FOR UPDATE`;
     await tx.personalMessagingAccount.update({ where: { id: account.id }, data: { revision: { increment: 1 } } });
@@ -92,23 +93,24 @@ export async function revokePersonalTelegramGrant(ownerId: number, providerId?: 
   });
 }
 
-export async function personalMessagingSyncRevision(ownerId: number) {
+export async function personalMessagingSyncRevision(ownerId: number, platform: Platform = 'telegram') {
   const account = await prisma.personalMessagingAccount.upsert({
-    where: { ownerId_platform: { ownerId, platform: 'telegram' } },
+    where: { ownerId_platform: { ownerId, platform } },
     update: {},
-    create: { ownerId, platform: 'telegram', status: 'disconnected' },
+    create: { ownerId, platform, status: 'disconnected' },
   });
   return account.revision;
 }
 
 export async function syncPersonalMessagingStatus(ownerId: number, status: {
   status: string; sources: Array<{ id: string; title: string; kind: string; active?: boolean; consentedAt?: string; verifiedAt?: string; revision?: number }>;
-}, options: { authorized?: boolean; expectedRevision?: number } = {}) {
+}, options: { authorized?: boolean; expectedRevision?: number; platform?: Platform } = {}) {
+  const platform = options.platform ?? 'telegram';
   await prisma.$transaction(async tx => {
     const account = await tx.personalMessagingAccount.upsert({
-      where: { ownerId_platform: { ownerId, platform: 'telegram' } },
+      where: { ownerId_platform: { ownerId, platform } },
       update: { status: status.status },
-      create: { ownerId, platform: 'telegram', status: status.status },
+      create: { ownerId, platform, status: status.status },
     });
     await tx.$executeRaw`SELECT "id" FROM "PersonalMessagingAccount" WHERE "id" = ${account.id} FOR UPDATE`;
     const locked = await tx.personalMessagingAccount.findUnique({ where: { id: account.id } });
@@ -118,7 +120,7 @@ export async function syncPersonalMessagingStatus(ownerId: number, status: {
     const rows = await tx.personalMessagingSource.findMany({ where: { accountId: account.id } });
     const seen = new Set<string>();
     for (const source of status.sources) {
-      if (!['group', 'broadcast'].includes(source.kind) || !source.id || source.id.length > 200) continue;
+      if (!(platform === 'telegram' ? ['group', 'broadcast'].includes(source.kind) : source.kind === 'newsletter') || !source.id || source.id.length > 200) continue;
       seen.add(source.id);
       const current = rows.find(row => row.providerId === source.id);
       const workerRevision = Math.max(1, source.revision || 1);
@@ -156,13 +158,13 @@ export async function syncPersonalMessagingStatus(ownerId: number, status: {
   });
 }
 
-export async function personalTelegramAdminScanStatus(ownerId: number) {
+export async function personalTelegramAdminScanStatus(ownerId: number, platform: Platform = 'telegram') {
   const sources = await prisma.personalMessagingSource.findMany({
-    where: { account: { ownerId, platform: 'telegram' }, kind: 'group' },
+    where: { account: { ownerId, platform }, kind: platform === 'telegram' ? 'group' : 'newsletter' },
     select: { id: true, providerId: true, active: true, lastScannedAt: true, lastError: true, messagesSeen: true, messagesDiscarded: true },
   });
   const grouped = await prisma.personalTelegramScanMessage.groupBy({
-    by: ['sourceId', 'status'], where: { source: { account: { ownerId, platform: 'telegram' } }, status: { in: ['pending', 'processing'] }, expiresAt: { gt: new Date() } },
+    by: ['sourceId', 'status'], where: { source: { account: { ownerId, platform } }, status: { in: ['pending', 'processing'] }, expiresAt: { gt: new Date() } },
     _count: { _all: true },
   });
   const backlog = new Map<string, number>();
@@ -212,10 +214,10 @@ async function announcement(message: WorkerMessage, recognize: (image: Buffer) =
 }
 
 export async function cleanupExpiredPersonalTelegramMessages(
-  database: Pick<PrismaClient, 'personalTelegramScanMessage'> = prisma, now = new Date(),
+  database: Pick<PrismaClient, 'personalTelegramScanMessage'> = prisma, now = new Date(), scope?: { ownerId?: number; platform: Platform },
 ) {
   const result = await database.personalTelegramScanMessage.updateMany({
-    where: { status: { in: ['pending', 'processing'] }, expiresAt: { lte: now } },
+    where: { ...(scope ? { source: { account: scope } } : {}), status: { in: ['pending', 'processing'] }, expiresAt: { lte: now } },
     data: { ...clearedContent, status: 'failed', lastError: 'retention_expired' },
   });
   return result.count;
@@ -227,7 +229,7 @@ async function persistPage(ownerId: number, sourceRow: GrantRow, page: WorkerPag
   const now = new Date();
   const accepted: Array<{ item: WorkerMessage; content: { text: string; image?: Buffer } }> = [];
   for (const item of page.messages) {
-    if (!Number.isSafeInteger(item.id) || item.id < 1 || typeof item.text !== 'string' || item.text.length > 4000) continue;
+    if (!Number.isSafeInteger(item.id) || item.id < 1 || item.id > 2147483647 || typeof item.text !== 'string' || item.text.length > 4000) continue;
     const content = await announcement(item);
     if (content) accepted.push({ item, content });
   }
@@ -260,7 +262,7 @@ async function persistPage(ownerId: number, sourceRow: GrantRow, page: WorkerPag
 }
 
 async function classifyDryRun(messages: WorkerMessage[], deadline: number) {
-  const results = { visited: 0, wouldPublish: 0, discarded: 0, imageOmitted: 0, ocrErrors: 0, failed: 0, deferred: 0 };
+  const results = { visited: 0, wouldPublish: 0, duplicates: 0, discarded: 0, imageOmitted: 0, ocrErrors: 0, failed: 0, deferred: 0 };
   for (const message of messages) {
     if (Date.now() > deadline) break;
     results.visited++;
@@ -271,6 +273,7 @@ async function classifyDryRun(messages: WorkerMessage[], deadline: number) {
       results.discarded += extraction.discarded;
       const preview = await previewSocialEvents(extraction.events, async () => false);
       results.wouldPublish += preview.wouldPublish;
+      results.duplicates += preview.duplicates;
       if (message.photo && !extraction.imageUrl) results.imageOmitted++;
     } catch (error) {
       if (error instanceof Error && error.message === 'personal_telegram_ocr_failed') results.ocrErrors++;
@@ -281,10 +284,10 @@ async function classifyDryRun(messages: WorkerMessage[], deadline: number) {
   return results;
 }
 
-async function claimPersonalMessage(deadline: number) {
+async function claimPersonalMessage(deadline: number, scope: { ownerId?: number; platform: Platform }) {
   const candidate = await prisma.personalTelegramScanMessage.findFirst({
     where: { expiresAt: { gt: new Date() }, attempts: { lt: 3 }, source: { active: true, account: {
-      status: 'connected', owner: { OR: [{ role: 'admin' }, { type: 'admin' }] },
+      ...scope, status: 'connected', owner: { OR: [{ role: 'admin' }, { type: 'admin' }] },
     } },
       OR: [{ status: 'pending', nextAttemptAt: { lte: new Date() } }, { status: 'processing', leasedUntil: { lte: new Date() } }] },
     include: { source: { include: { account: true } } }, orderBy: [{ nextAttemptAt: 'asc' }, { id: 'asc' }],
@@ -293,7 +296,7 @@ async function claimPersonalMessage(deadline: number) {
   const leaseId = randomUUID();
   const claimed = await prisma.personalTelegramScanMessage.updateMany({
     where: { id: candidate.id, attempts: candidate.attempts, sourceRevision: candidate.sourceRevision,
-      source: { active: true, revision: candidate.source.revision, account: { status: 'connected' } },
+      source: { active: true, revision: candidate.source.revision, account: { ...scope, status: 'connected' } },
       OR: [{ status: 'pending', nextAttemptAt: { lte: new Date() } }, { status: 'processing', leasedUntil: { lte: new Date() } }] },
     data: { status: 'processing', leaseId, leasedUntil: new Date(Date.now() + leaseMs), attempts: { increment: 1 } },
   });
@@ -319,8 +322,8 @@ async function publishPersonalMessage(job: NonNullable<Awaited<ReturnType<typeof
       findReceipt: fingerprint => tx.personalTelegramScanPublication.findUnique({ where: { fingerprint } }),
       createReceipt: (fingerprint, eventId) => tx.personalTelegramScanPublication.create({ data: { fingerprint, messageId: job.id, eventId } }),
       eventData: (_event, fingerprint) => ({
-        origin: 'personal-telegram', sourceUrl: null,
-        externalId: `personal-telegram:${job.id}:${fingerprint.slice(0, 16)}`,
+        origin: `personal-${job.source.account.platform}`, sourceUrl: null,
+        externalId: `personal-${job.source.account.platform}:${job.id}:${fingerprint.slice(0, 16)}`,
       }),
     });
     await tx.personalTelegramScanMessage.update({ where: { id: job.id }, data: {
@@ -344,10 +347,13 @@ async function finishFailure(job: NonNullable<Awaited<ReturnType<typeof claimPer
 }
 
 export async function scanPersonalTelegramSources(options: ScanOptions) {
+  const platform = options.platform ?? 'telegram';
+  if (!['telegram', 'whatsapp'].includes(platform) || (platform === 'whatsapp' && (!Number.isSafeInteger(options.ownerId) || options.ownerId! < 1))) throw new MessagingError('invalid_payload');
+  const scope = { ...(options.ownerId !== undefined ? { ownerId: options.ownerId } : {}), platform };
   const result = { status: 'success', dryRun: options.dryRun, sources: 0, visited: 0, queued: 0, published: 0, duplicates: 0, discarded: 0, retried: 0, failed: 0, wouldPublish: 0, deferred: 0, imageOmitted: 0, ocrErrors: 0 };
   const grants = await prisma.personalMessagingSource.findMany({
-    where: { kind: 'group', active: true, consentedAt: { not: null }, account: {
-      platform: 'telegram', status: { in: ['connected', 'restoring'] }, owner: { OR: [{ role: 'admin' }, { type: 'admin' }] },
+    where: { kind: platform === 'telegram' ? 'group' : 'newsletter', active: true, consentedAt: { not: null }, account: {
+      ...scope, status: { in: ['connected', 'restoring'] }, owner: { OR: [{ role: 'admin' }, { type: 'admin' }] },
     } },
     include: { account: true }, orderBy: [{ lastScannedAt: 'asc' }, { id: 'asc' }], take: 20,
   });
@@ -356,31 +362,33 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
       if (Date.now() + 20000 > options.deadline) { result.deferred++; break; }
       try {
         const page = await workerRequest<WorkerPage>('/scan', {
-          owner: grant.account.ownerId, source: grant.providerId, sourceRevision: grant.workerRevision, limit: 10, dryRun: true,
+          owner: grant.account.ownerId, platform, source: grant.providerId, sourceRevision: grant.workerRevision, limit: 10, dryRun: true,
         }, Math.min(60000, options.deadline - Date.now()));
-        if (page.status !== 'success') throw new Error('worker_unavailable');
+        if (page.status !== 'success' || page.sourceId !== grant.providerId || page.sourceRevision !== grant.workerRevision ||
+          !Array.isArray(page.messages)) throw new Error('worker_unavailable');
         result.sources++; result.visited += page.readCount || page.messages.length;
         const preview = await classifyDryRun(page.messages, options.deadline);
         result.wouldPublish += preview.wouldPublish; result.discarded += preview.discarded + (page.discarded || 0); result.imageOmitted += preview.imageOmitted;
+        result.duplicates += preview.duplicates;
         result.ocrErrors += preview.ocrErrors;
         result.failed += preview.failed; result.deferred += preview.deferred;
         if (preview.ocrErrors || preview.failed) result.status = 'partial-error';
-      } catch { result.status = 'partial-error'; }
+      } catch { result.status = 'partial-error'; result.failed++; }
     }
     return result;
   }
-  await cleanupExpiredPersonalTelegramMessages();
+  await cleanupExpiredPersonalTelegramMessages(prisma, new Date(), scope);
   for (const grant of grants) {
     if (result.sources >= 5 || Date.now() + 20000 > options.deadline) { result.deferred++; break; }
     try {
       const page = await workerRequest<WorkerPage>('/scan', {
-        owner: grant.account.ownerId, source: grant.providerId, sourceRevision: grant.workerRevision, limit: 20, dryRun: false,
+        owner: grant.account.ownerId, platform, source: grant.providerId, sourceRevision: grant.workerRevision, limit: 20, dryRun: false,
       }, Math.min(60000, options.deadline - Date.now()));
       if (page.status !== 'success' || page.sourceId !== grant.providerId || page.sourceRevision !== grant.workerRevision ||
         !Number.isSafeInteger(page.cursor) || !Array.isArray(page.messages)) throw new Error(page.status || 'worker_unavailable');
       result.sources++; result.visited += page.readCount || page.messages.length;
       const queued = await persistThenAcknowledge(page.cursor, () => persistPage(grant.account.ownerId, grant, page), cursor => workerRequest('/ack', {
-        owner: grant.account.ownerId, source: grant.providerId, sourceRevision: grant.workerRevision, cursor,
+        owner: grant.account.ownerId, platform, source: grant.providerId, sourceRevision: grant.workerRevision, cursor,
       }));
       result.queued += queued;
     } catch (error) {
@@ -388,7 +396,7 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
         ? error.message : 'worker_unavailable';
       result.status = 'partial-error';
       if (code === 'personal_telegram_ocr_failed') result.ocrErrors++;
-      if (code === 'source_unavailable') await revokePersonalTelegramGrant(grant.account.ownerId, grant.providerId);
+      if (code === 'source_unavailable') await revokePersonalTelegramGrant(grant.account.ownerId, grant.providerId, platform);
       if (code === 'not_connected') await prisma.personalMessagingAccount.updateMany({
         where: { id: grant.accountId, status: 'connected' }, data: { status: 'restoring' },
       });
@@ -397,7 +405,7 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
   }
   let processed = 0;
   while (Date.now() + 18000 < options.deadline && processed < maximumMessagesPerRun) {
-    const job = await claimPersonalMessage(options.deadline);
+    const job = await claimPersonalMessage(options.deadline, scope);
     if (!job) break;
     processed++;
     try {
@@ -412,8 +420,8 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
       if (code === 'personal_telegram_ocr_failed') result.status = 'partial-error';
     }
   }
-  await cleanupExpiredPersonalTelegramMessages();
-  result.deferred += await prisma.personalTelegramScanMessage.count({ where: { status: { in: ['pending', 'processing'] }, expiresAt: { gt: new Date() } } });
+  await cleanupExpiredPersonalTelegramMessages(prisma, new Date(), scope);
+  result.deferred += await prisma.personalTelegramScanMessage.count({ where: { source: { account: scope }, status: { in: ['pending', 'processing'] }, expiresAt: { gt: new Date() } } });
   if (result.status !== 'partial-error' && result.failed) result.status = 'partial';
   return result;
 }

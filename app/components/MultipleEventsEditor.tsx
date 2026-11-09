@@ -14,7 +14,7 @@ interface MultipleEventsEditorProps {
     imageProcessing?: boolean;
     imageCropStatus?: DraftImageCropStatus;
     imageCropFailure?: DraftImageCropFailure;
-    onImageChange?: (index: number, imageUrl: string, originalImageUrl?: string) => void;
+    onImageChange?: (index: number, imageUrl: string, originalImageUrl?: string, originalImageCrop?: EventData['originalImageCrop']) => void;
 }
 
 const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: initialEvents, duplicates = [], onEventsChange, onSaveAll, onPublish, onCancel, publishing = false, imageProcessing = false, imageCropStatus, imageCropFailure, onImageChange }) => {
@@ -55,7 +55,7 @@ const MultipleEventsEditor: React.FC<MultipleEventsEditorProps> = ({ events: ini
         <div className="space-y-8">
             {events.map((event, idx) => (
                 <div key={event.scanEvidence?.candidateId || idx} className="border rounded-lg p-4 bg-white shadow">
-                    <EventDisplay eventData={event} imageProcessing={imageProcessing} imageCropStatus={imageCropStatus} imageCropFailure={imageCropFailure} onImageChange={onImageChange ? (image, original) => onImageChange(idx, image, original) : undefined} onPublish={onPublish ? updated => onPublish(idx, updated) : undefined} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} showPublishButton={!isSaving && !imageProcessing} />
+                    <EventDisplay eventData={event} imageProcessing={imageProcessing} imageCropStatus={imageCropStatus} imageCropFailure={imageCropFailure} onImageChange={onImageChange ? (image, original, crop) => onImageChange(idx, image, original, crop) : undefined} onPublish={onPublish ? updated => onPublish(idx, updated) : undefined} duplicate={duplicates[idx]} onSave={updated => handleEventChange(idx, updated)} showPublishButton={!isSaving && !imageProcessing} />
                 </div>
             ))}
             {error && <div role="alert" className="text-red-500 font-semibold">{error}</div>}

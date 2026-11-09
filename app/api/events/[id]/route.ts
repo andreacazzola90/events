@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { generateUniqueSlug } from '../../../../lib/slug-utils';
 import { toIsoDate } from '../../../../lib/event-utils';
 import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase, uploadOriginalEventImageToSupabase } from '../../../lib/supabase';
-import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, validateEventMediaFile } from '../../../../lib/event-media';
+import { validateEventMediaFile, validateOriginalEventImageFile } from '../../../../lib/event-media';
 import { isCoverImageCrop } from '../../../../lib/cover-image-crop';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 import { recordSavedEventCorrections } from '../../../../lib/scan-learning-store';
@@ -94,12 +94,11 @@ export async function PUT(
             }
             if (originalImageFile) {
                 const bytes = new Uint8Array(await originalImageFile.arrayBuffer());
-                const validation = validateEventMediaFile(
+                const validation = validateOriginalEventImageFile(
                     originalImageFile.name,
                     originalImageFile.type,
                     bytes,
                     originalImageFile.size,
-                    MAX_ORIGINAL_EVENT_IMAGE_BYTES,
                 );
                 if (!validation.ok || validation.kind !== 'image') {
                     return NextResponse.json({ error: validation.ok ? 'La sorgente deve essere un’immagine' : validation.error }, { status: 400 });

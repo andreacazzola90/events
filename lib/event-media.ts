@@ -5,6 +5,25 @@ export const MAX_EVENT_ATTACHMENTS = 10;
 export const MAX_COVER_WIDTH = 1920;
 export const MAX_COVER_HEIGHT = 1080;
 
+type OriginalEventImageMetadata = {
+  originalImageUrl: string | null;
+  originalImageCropX: number | null;
+  originalImageCropY: number | null;
+  originalImageCropWidth: number | null;
+  originalImageCropHeight: number | null;
+};
+
+export function redactOriginalEventImageMetadata<T extends OriginalEventImageMetadata>(event: T): T {
+  return {
+    ...event,
+    originalImageUrl: null,
+    originalImageCropX: null,
+    originalImageCropY: null,
+    originalImageCropWidth: null,
+    originalImageCropHeight: null,
+  };
+}
+
 export function getCropOutputSize(width: number, height: number) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error("Dimensioni crop non valide");
@@ -57,4 +76,25 @@ export function validateEventMediaFile(
   if (!signatureMatches) return { ok: false, error: "Il contenuto del file non corrisponde al formato dichiarato" };
 
   return { ok: true, kind: fileType.kind };
+}
+
+export function validateOriginalEventImageFile(
+  filename: string,
+  mimeType: string,
+  signature: Uint8Array,
+  size = signature.byteLength,
+): EventMediaValidation {
+  const extension = filename.split(".").pop()?.toLowerCase() || "";
+  if (mimeType.toLowerCase() === "image/gif") {
+    if (extension !== "gif") return { ok: false, error: "Tipo file non supportato" };
+    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_ORIGINAL_EVENT_IMAGE_BYTES) {
+      return { ok: false, error: "L’immagine originale deve pesare al massimo 10 MiB" };
+    }
+    const header = String.fromCharCode(...signature.subarray(0, 6));
+    if (header !== "GIF87a" && header !== "GIF89a") {
+      return { ok: false, error: "Il contenuto del file non corrisponde al formato dichiarato" };
+    }
+    return { ok: true, kind: "image" };
+  }
+  return validateEventMediaFile(filename, mimeType, signature, size, MAX_ORIGINAL_EVENT_IMAGE_BYTES);
 }

@@ -2,7 +2,7 @@
 title: 'Conservare l’immagine originale della copertina'
 type: 'feature'
 created: '2026-11-09'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '93cc7011b2144ed8cb5cea6cd7ce8b57c3ddeacb'
 route: 'plan-code-review'
 context: []
@@ -38,6 +38,7 @@ context: []
 ## Code Map
 
 - `app/crea/page.tsx`, `app/components/ImageUploader.tsx` -- mantenere la sorgente originale nella bozza e inviarla al salvataggio.
+- `lib/poster-sections.ts`, `app/api/poster-sections/route.ts`, `lib/draft-image-crop.ts` -- riportare le coordinate della sezione evento sulla sorgente originale, anche quando la sezione è estratta da un ritaglio automatico intermedio.
 - `app/api/events/route.ts`, `app/api/events/[id]/route.ts` -- caricare sorgente e copertina e persistere il crop.
 - `prisma/schema.prisma`, `prisma/migrations/` -- aggiungere campi nullable per URL sorgente e coordinate crop.
 - `app/events/[slug]/edit/page.tsx`, `app/components/EventImageCropper.tsx` -- inizializzare il cropper con sorgente e crop salvati.
@@ -46,16 +47,18 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `app/components/ImageUploader.tsx`, `app/crea/page.tsx` -- trattenere il file originale caricato e inviarlo insieme alla cover ritagliata, senza perdere la gestione delle bozze e delle locandine multiple.
-- [ ] `prisma/schema.prisma`, `prisma/migrations/`, `app/api/events/route.ts`, `app/api/events/[id]/route.ts`, `app/types/event.ts` -- salvare URL originale e rettangolo normalizzato; mantenere compatibilità con eventi esistenti e aggiornamenti senza nuova immagine.
-- [ ] `app/events/[slug]/edit/page.tsx`, `app/components/EventImageCropper.tsx` -- aprire la sorgente originale con selezione iniziale salvata e aggiornare sorgente/crop solo al salvataggio riuscito.
-- [ ] Test mirati -- verificare persistenza, fallback legacy e ripristino delle coordinate di crop.
+- [x] `app/components/ImageUploader.tsx`, `app/crea/page.tsx` -- trattenere il file originale caricato e inviarlo insieme alla cover ritagliata, senza perdere la gestione delle bozze e delle locandine multiple.
+- [x] `prisma/schema.prisma`, `prisma/migrations/`, `app/api/events/route.ts`, `app/api/events/[id]/route.ts`, `app/types/event.ts` -- salvare URL originale e rettangolo normalizzato; mantenere compatibilità con eventi esistenti e aggiornamenti senza nuova immagine.
+- [x] `app/events/[slug]/edit/page.tsx`, `app/components/EventImageCropper.tsx` -- aprire la sorgente originale con selezione iniziale salvata e aggiornare sorgente/crop solo al salvataggio riuscito.
+- [x] Test mirati -- verificare persistenza, fallback legacy e ripristino delle coordinate di crop.
+- [x] Sezioni di locandine multiple -- salvare coordinate composte rispetto all’originale, non quelle del ritaglio intermedio.
 
 **Acceptance Criteria:**
 - Given un evento creato da un’immagine ritagliata automaticamente, when viene salvato, then sorgente originale, copertina usata e crop sono persistiti distintamente.
 - Given un evento con crop salvato, when si apre “Ritaglia immagine”, then sotto il riquadro è visibile l’originale e il riquadro coincide con il crop corrente.
 - Given un evento legacy senza sorgente salvata, when si apre il cropper, then continua a essere possibile ritagliare la copertina esistente.
 - Given un errore nel caricamento o aggiornamento, when si salva un nuovo crop, then i riferimenti precedenti restano utilizzabili e l’errore è visibile.
+- Given una locandina con più eventi, when una sezione rilevata sostituisce la copertina, then il crop riaperto è riferito alla stessa sezione dell’immagine originale.
 
 ## Spec Change Log
 

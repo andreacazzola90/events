@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       sections: sections.map(section => ({
         index: section.index,
         image: `data:image/jpeg;base64,${section.image.toString('base64')}`,
+        crop: section.crop,
       })),
     }, { headers });
   } catch (error) {

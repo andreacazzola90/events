@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link2, Unplug, Pause, Play, Trash2, RefreshCw, Send, Plus } from 'lucide-react';
+import ServiceScanControls from '../admin/ServiceScanControls';
 
 type TelegramStatus = {
   connected: boolean; status: string; botUsername: string | null; lastError: string | null;
@@ -71,6 +72,7 @@ export default function TelegramAdmin() {
     if (body?.action === 'connect') setToken('');
     try {
       const reply = await telegramRequest(body);
+      if (body?.action === 'verify') setNotice('Connessione verificata presso Telegram.');
       if (body?.action === 'disconnect' && !reply.remoteRemoved) setNotice('Accesso locale rimosso. Rimozione webhook remota non confermata: verifica il bot su Telegram.');
       if (body?.action === 'save-source') { setChatId(''); setConsent(false); }
       setStatus(body ? await telegramRequest() : reply);
@@ -90,10 +92,12 @@ export default function TelegramAdmin() {
         <div className="flex items-center gap-3 flex-wrap min-w-0 max-w-full">
           <span className="text-sm text-gray-300 break-all min-w-0">{!status ? 'Stato non disponibile' : status.connected ? `@${status.botUsername}` : status.status === 'disconnect_unknown' ? 'Disconnessione da confermare' : status.status === 'disconnecting' ? 'Disconnessione in corso' : status.status === 'connecting' ? 'Collegamento in corso' : status.status === 'disconnected' ? 'Non collegato' : 'Collegamento non attivo'}</span>
           <button type="button" className="btn btn-ghost btn-square" title="Aggiorna stato Telegram" aria-label="Aggiorna stato Telegram" disabled={busy} onClick={() => void perform()}><RefreshCw size={18} /></button>
+          <button type="button" className="btn btn-outline" disabled={busy || !status?.connected} onClick={() => void perform({ action: 'verify' })}>Verifica connessione</button>
         </div>
       </div>
       {error && <p role="alert" className="text-red-300 mt-4 break-words">{error}</p>}
       {notice && <p role="status" className="text-amber-200 mt-4 break-words">{notice}</p>}
+      <ServiceScanControls endpoint="/api/admin/telegram/run" disabled={busy || !status?.connected || !status.sources.some(source => source.isActive && source.consentedAt)} />
       {status?.lastError && <p className="text-amber-200 mt-3">{errorMessage(status.lastError)}</p>}
       {!status?.connected ? (
         <form className="flex flex-wrap items-end gap-3 mt-5" onSubmit={event => { event.preventDefault(); void perform({ action: 'connect', token }); }}>

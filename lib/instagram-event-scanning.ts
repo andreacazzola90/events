@@ -63,7 +63,7 @@ async function publishInstagramItem(connection: InstagramScanConnection, source:
 }
 
 /** Daily Instagram lot: own stories plus Business Discovery posts, each media analyzed at most once. */
-export async function scanInstagram(options: { dryRun: boolean; deadline: number; now?: Date; deps?: Partial<InstagramScanDeps> }): Promise<InstagramScanResult> {
+export async function scanInstagram(options: { dryRun: boolean; deadline: number; ownerId?: number; now?: Date; deps?: Partial<InstagramScanDeps> }): Promise<InstagramScanResult> {
   const deps: InstagramScanDeps = {
     fetchStories: fetchInstagramStories, fetchPosts: fetchInstagramBusinessPosts, downloadMedia: downloadInstagramMedia, extract: extractSocialEvents,
     ...options.deps,
@@ -77,7 +77,7 @@ export async function scanInstagram(options: { dryRun: boolean; deadline: number
     storyFetchErrors: 0, eventsExtracted: 0, storyEventsExtracted: 0, storyEventsWouldPublish: 0,
   };
   const connections = await prisma.instagramScanConnection.findMany({
-    where: { status: 'active', encryptedToken: { not: null } }, orderBy: [{ lastRunAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }], take: 5,
+    where: { ...(options.ownerId !== undefined ? { userId: options.ownerId } : {}), status: 'active', encryptedToken: { not: null } }, orderBy: [{ lastRunAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }], take: 5,
   });
   if (!connections.length) return { ...result, status: 'skipped', reason: 'not_connected' };
 

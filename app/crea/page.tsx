@@ -15,7 +15,7 @@ import MultipleEventsEditor from '../components/MultipleEventsEditor';
 import SharedImageHandler from '../components/SharedImageHandler';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
-import { appendPosterImage, detectPosterSections, prepareDraftForPublication, type DraftImageCrop, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
+import { appendPosterImage, composeDraftImageCrops, detectPosterSections, prepareDraftForPublication, type DraftImageCrop, type DraftImageCropBox, type DraftImageCropFailure, type DraftImageCropStatus, type DraftImageScan } from '../../lib/draft-image-crop';
 import { getEventStartTime, sameEventStartTime } from '../../lib/event-display';
 import { normalizeCategory, normalizePrice, toIsoDate } from '../../lib/event-utils';
 import { parseEventDate } from '../../lib/calendar-ics';
@@ -349,18 +349,24 @@ export default function CreaEvento() {
         startAutopilot({ eventCount: eventsWithImage.length, coverMissing: !newImageUrl, needsReview: !!debug?.pdfTextSummarized });
         const sectionDrafts = eventsWithImage;
         // A poster listing several events: each event gets its own section as cover, the full poster stays as extra image.
-        const startPosterSections = (posterUrl: string) => {
+        const startPosterSections = (posterUrl: string, parentCrop?: DraftImageCropBox) => {
             if (sectionDrafts.length < 2 || !/^(blob:|data:image\/)/.test(posterUrl)) return;
+            if (sourceImageUrl && sourceImageUrl !== posterUrl && !parentCrop) return;
             setPosterSectionsPending(true);
             void detectPosterSections(posterUrl, sectionDrafts).then(sections => {
                 if (cropId !== imageCropId.current) {
-                    sections.forEach(url => URL.revokeObjectURL(url));
+                    sections.forEach(section => URL.revokeObjectURL(section.imageUrl));
                     return;
                 }
-                posterSectionUrls.current.push(...sections.values());
+                posterSectionUrls.current.push(...[...sections.values()].map(section => section.imageUrl));
                 setEvents(current => current.length !== sectionDrafts.length ? current : current.map((event, index) => {
                     const section = sections.get(index);
-                    return section && event.imageUrl === posterUrl ? { ...event, imageUrl: section, posterImageUrl: posterUrl } : event;
+                    return section && event.imageUrl === posterUrl ? {
+                        ...event,
+                        imageUrl: section.imageUrl,
+                        originalImageCrop: parentCrop ? composeDraftImageCrops(parentCrop, section.crop) : section.crop,
+                        posterImageUrl: posterUrl,
+                    } : event;
                 }));
                 setPosterSectionsPending(false);
                 if (sections.size) toast.info(`Copertina ritagliata per ${sections.size} eventi su ${sectionDrafts.length}; la locandina completa verrà salvata tra le immagini.`);
@@ -380,7 +386,7 @@ export default function CreaEvento() {
                 pendingImageCrop.current = undefined;
                 setImageCropStatus(blob ? 'completed' : 'failed');
                 setImageCropFailure(blob ? undefined : crop.failureReason);
-                if (croppedUrl) startPosterSections(croppedUrl);
+                if (croppedUrl && crop.box) startPosterSections(croppedUrl, crop.box);
             });
         } else {
             crop?.cancel();
@@ -389,10 +395,15 @@ export default function CreaEvento() {
     };
 
 
-    const handleDraftImageChange = (index: number, image: string, original?: string) => {
+    const handleDraftImageChange = (index: number, image: string, original?: string, crop?: EventData['originalImageCrop']) => {
         if (image.startsWith('blob:')) manualCoverUrls.current.add(image);
         setEvents(current => current.map((event, eventIndex) => eventIndex === index
-            ? { ...event, imageUrl: image, originalImageUrl: original || event.originalImageUrl }
+            ? {
+                ...event,
+                imageUrl: image,
+                originalImageUrl: original || event.originalImageUrl,
+                ...(crop ? { originalImageCrop: crop } : {}),
+            }
             : event));
     };
 
@@ -440,7 +451,9 @@ export default function CreaEvento() {
                         if (originalSource && /^(blob:|data:image\/)/.test(originalSource)) {
                             const originalBlob = await (await fetch(originalSource)).blob();
                             if (!originalBlob.type.startsWith('image/')) throw new Error('Immagine originale non valida.');
-                            const originalExtension = originalBlob.type === 'image/png' ? 'png' : originalBlob.type === 'image/webp' ? 'webp' : 'jpg';
+                            const originalExtension = originalBlob.type === 'image/png' ? 'png'
+                                : originalBlob.type === 'image/webp' ? 'webp'
+                                    : originalBlob.type === 'image/gif' ? 'gif' : 'jpg';
                             formData.append('originalImage', originalBlob, `original-event-image.${originalExtension}`);
                         }
                         await appendPosterImage(formData, draft.posterImageUrl, eventData.imageUrl);
@@ -1049,7 +1062,7 @@ export default function CreaEvento() {
                                 imageProcessing={imageProcessing}
                                 imageCropStatus={imageCropStatus}
                                 imageCropFailure={imageCropFailure}
-                                onImageChange={(image, original) => handleDraftImageChange(0, image, original)}
+                                onImageChange={(image, original, crop) => handleDraftImageChange(0, image, original, crop)}
                                 duplicate={duplicates[0]}
                                 showPublishButton={false}
                                 onPublish={updated => handlePublishDraft(0, updated)}

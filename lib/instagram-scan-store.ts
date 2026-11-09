@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../app/lib/prisma';
 import {
   INSTAGRAM_USERNAME_PATTERN, InstagramScanError, decryptInstagramToken, encryptInstagramToken, fetchInstagramBusinessPosts,
-  instagramScanConfigured, readInstagramBody, requireInstagramSameOrigin,
+  graphRequest, instagramScanConfigured, readInstagramBody, requireInstagramSameOrigin,
 } from './instagram-scan-connection';
 
 export const INSTAGRAM_SOURCE_LIMIT = 20;
@@ -67,6 +67,20 @@ export async function mutateInstagramScanAdmin(request: Request, userId: number)
   catch (error) { if (error instanceof InstagramScanError) throw error; throw new InstagramScanError('invalid_payload'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InstagramScanError('invalid_payload');
   const current = await prisma.instagramScanConnection.findUnique({ where: { userId } });
+  if (body.action === 'verify') {
+    if (Object.keys(body).some(key => key !== 'action')) throw new InstagramScanError('invalid_payload');
+    if (current?.status !== 'active' || !current.encryptedToken) throw new InstagramScanError('instagram_not_connected', 409);
+    try {
+      const profile = await graphRequest<{ id?: string }>('account', current.igUserId, { fields: 'id,username' }, decryptInstagramToken(current.encryptedToken));
+      if (profile.id !== current.igUserId) throw new InstagramScanError('instagram_permission_denied', 403);
+      const updated = await prisma.instagramScanConnection.updateMany({ where: { id: current.id, encryptedToken: current.encryptedToken, status: 'active' }, data: { lastError: null } });
+      if (!updated.count) throw new InstagramScanError('connection_changed', 409);
+      return { verified: true };
+    } catch (error) {
+      if (error instanceof InstagramScanError && error.code === 'instagram_token_expired') await markInstagramConnectionExpired(current.id, current.encryptedToken);
+      throw error;
+    }
+  }
   if (body.action === 'disconnect') {
     if (!current) return { connected: false };
     await prisma.$transaction(async tx => {

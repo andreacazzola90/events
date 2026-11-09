@@ -10,6 +10,7 @@ type InstagramScanStatus = {
   sources: { id: string; username: string; isActive: boolean; consentedAt: string | null; lastError: string | null; lastScannedAt: string | null }[];
 };
 type InstagramScanReport = {
+  dryRun: boolean; published: number; duplicates: number; discarded: number; failed: number;
   status: string; storiesFetched: number; storiesInWindow: number; storiesScanned: number; storiesSkipped: number;
   storiesDeferred: number; storiesFailed: number; storyFetchErrors: number; eventsExtracted: number; storyEventsExtracted: number;
   storyEventsWouldPublish: number;
@@ -94,6 +95,7 @@ export default function InstagramScanAdmin() {
     setBusy(true); setError(''); setNotice('');
     try {
       const reply = await instagramRequest(body);
+      if (body?.action === 'verify') setNotice('Connessione verificata presso Meta.');
       if (body?.action === 'save-source') { setUsername(''); setConsent(false); }
       setStatus(body ? await instagramRequest() : reply);
     } catch (failure) {
@@ -101,10 +103,10 @@ export default function InstagramScanAdmin() {
     } finally { setBusy(false); }
   }
 
-  async function previewScan() {
+  async function previewScan(dryRun = true) {
     setBusy(true); setError(''); setNotice(''); setScanReport(null);
     try {
-      const response = await fetch('/api/admin/instagram-scan/run', { method: 'POST', cache: 'no-store' });
+      const response = await fetch('/api/admin/instagram-scan/run', { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dryRun }), signal: AbortSignal.timeout(280_000) });
       const data: unknown = await response.json();
       if (!response.ok) {
         const code = data && typeof data === 'object' && 'error' in data ? data.error : null;
@@ -129,6 +131,7 @@ export default function InstagramScanAdmin() {
         <div className="flex items-center gap-3 flex-wrap min-w-0 max-w-full">
           <span className="text-sm text-gray-300 break-all min-w-0">{!status ? 'Stato non disponibile' : status.connected ? `@${status.username}` : status.status === 'expired' ? 'Accesso scaduto' : 'Non collegato'}</span>
           <button type="button" className="btn btn-ghost btn-square" title="Aggiorna stato Instagram" aria-label="Aggiorna stato Instagram" disabled={busy} onClick={() => void perform()}><RefreshCw size={18} /></button>
+          <button type="button" className="btn btn-outline" disabled={busy || !status?.connected} onClick={() => void perform({ action: 'verify' })}>Verifica connessione</button>
         </div>
       </div>
       <p className="text-sm text-gray-400 mt-2">Ogni giorno legge le stories dell&apos;account professionale collegato e i post degli ultimi 7 giorni delle fonti Business/Creator autorizzate. Le stories di altri account non sono accessibili tramite le API ufficiali.</p>
@@ -164,11 +167,13 @@ export default function InstagramScanAdmin() {
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void previewScan()}>
               <RefreshCw size={18} />Prova scansione (dry-run)
             </button>
-            <p className="text-xs text-gray-400 mt-2">Legge le stories recenti senza salvare o pubblicare eventi.</p>
+            <button type="button" className="btn btn-primary ml-3" disabled={busy || !status.connected} onClick={() => void previewScan(false)}>Avvia scraping</button>
+            <p className="text-xs text-gray-400 mt-2">La prova legge stories e fonti autorizzate senza salvare o pubblicare eventi. L&apos;avvio effettivo pubblica solo per il tuo account Instagram.</p>
           </div>
           {scanReport && (
             <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-4 text-sm text-gray-200" role="status" aria-live="polite">
               <p className="font-semibold text-white">Resoconto scansione di prova</p>
+              <p>{scanReport.dryRun ? 'Prova senza pubblicazione.' : `Pubblicati: ${scanReport.published} · duplicati: ${scanReport.duplicates} · scartati: ${scanReport.discarded} · errori: ${scanReport.failed}`}{['partial', 'partial-error'].includes(scanReport.status) ? ' Risultato parziale.' : ''}</p>
               <p className="mt-2">Stories restituite da Instagram: {scanReport.storiesFetched} · nelle ultime 24 ore: {scanReport.storiesInWindow} · analizzate: {scanReport.storiesScanned}</p>
               <p>Già elaborate: {scanReport.storiesSkipped} · rinviate: {scanReport.storiesDeferred} · analisi fallite: {scanReport.storiesFailed} · errori di lettura: {scanReport.storyFetchErrors}</p>
               <p className="mt-2">Eventi estratti dalle stories: {scanReport.storyEventsExtracted} · candidati alla pubblicazione: {scanReport.storyEventsWouldPublish}</p>

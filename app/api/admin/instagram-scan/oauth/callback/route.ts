@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 function finish(result: string) {
   let origin: string;
   try { origin = instagramAppOrigin(); } catch { return NextResponse.json({ error: 'instagram_origin_not_configured' }, { status: 503 }); }
-  const response = NextResponse.redirect(`${origin}/cron?instagram=${encodeURIComponent(result)}`, 303);
+  const response = NextResponse.redirect(`${origin}/admin/servizi/instagram?instagram=${encodeURIComponent(result)}`, 303);
   response.headers.set('Cache-Control', 'no-store');
   response.headers.set('Referrer-Policy', 'no-referrer');
   response.cookies.set(INSTAGRAM_OAUTH_STATE_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/api/admin/instagram-scan/oauth', maxAge: 0 });

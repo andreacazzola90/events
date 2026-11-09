@@ -17,7 +17,7 @@ import {
 import type { DbEvent } from "../../types/event";
 import { recordScanCorrections } from "../../../lib/scan-learning-store";
 import { createEventWithSeries } from "../../../lib/event-series-create";
-import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, validateEventMediaFile } from "../../../lib/event-media";
+import { redactOriginalEventImageMetadata, validateEventMediaFile, validateOriginalEventImageFile } from "../../../lib/event-media";
 import { isCoverImageCrop } from "../../../lib/cover-image-crop";
 
 /** Stores the full poster as the event's first gallery image; failures never undo the event. */
@@ -145,12 +145,11 @@ export async function POST(request: NextRequest) {
 
       if (originalImageFile) {
         const bytes = new Uint8Array(await originalImageFile.arrayBuffer());
-        const validation = validateEventMediaFile(
+        const validation = validateOriginalEventImageFile(
           originalImageFile.name,
           originalImageFile.type,
           bytes,
           originalImageFile.size,
-          MAX_ORIGINAL_EVENT_IMAGE_BYTES,
         );
         if (!validation.ok || validation.kind !== "image") {
           return withExtensionCors(
@@ -225,7 +224,9 @@ export async function POST(request: NextRequest) {
     const duplicate = await findDuplicateEvent(eventDataToSave);
     if (duplicate) {
       if (uploadedOriginalPath) {
-        await deleteEventMediaFromSupabase(uploadedOriginalPath);
+        await deleteEventMediaFromSupabase(uploadedOriginalPath).catch(cleanupError => {
+          console.error("[API /events POST] Duplicate original cleanup failed:", cleanupError);
+        });
         uploadedOriginalPath = null;
       }
       console.log(
@@ -440,7 +441,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(responseEvents, {
+    const publicEvents = responseEvents.map(redactOriginalEventImageMetadata);
+
+    return NextResponse.json(publicEvents, {
       headers: {
         "Cache-Control": userIdParam
           ? "private, no-store"

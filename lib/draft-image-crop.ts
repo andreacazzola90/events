@@ -16,6 +16,16 @@ export type DraftImageCrop = {
 };
 export type DraftImageCropStatus = 'idle' | 'processing' | 'completed' | 'failed';
 export type DraftImageScan = { isCurrent: () => boolean; registerCrop: (crop: DraftImageCrop) => void };
+export type DraftPosterSection = { imageUrl: string; crop: DraftImageCropBox };
+
+export function composeDraftImageCrops(parent: DraftImageCropBox, child: DraftImageCropBox): DraftImageCropBox {
+  return {
+    x: parent.x + child.x * parent.width,
+    y: parent.y + child.y * parent.height,
+    width: child.width * parent.width,
+    height: child.height * parent.height,
+  };
+}
 
 export function prepareDraftForPublication<Event extends { originalImageUrl?: string; originalImageCrop?: DraftImageCropBox; posterImageUrl?: string }>(event: Event): Event {
   const publishable = { ...event };
@@ -26,14 +36,14 @@ export function prepareDraftForPublication<Event extends { originalImageUrl?: st
 
 /**
  * Asks the server to cut one detail image per event out of a poster listing several events.
- * Returns object URLs keyed by event index; events that were not located are absent.
+ * Returns section previews and normalized crop boxes keyed by event index.
  */
 export async function detectPosterSections(
   posterUrl: string,
   events: Array<{ title: string; date?: string }>,
   signal?: AbortSignal,
-): Promise<Map<number, string>> {
-  const sections = new Map<number, string>();
+): Promise<Map<number, DraftPosterSection>> {
+  const sections = new Map<number, DraftPosterSection>();
   try {
     const poster = await (await fetch(posterUrl, { signal })).blob();
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(poster.type)) return sections;
@@ -44,11 +54,20 @@ export async function detectPosterSections(
       method: 'POST', body: form, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(35_000)]),
     });
     if (!response.ok) return sections;
-    const payload = await response.json() as { sections?: Array<{ index?: unknown; image?: unknown }> };
+    const payload = await response.json() as { sections?: Array<{ index?: unknown; image?: unknown; crop?: Partial<DraftImageCropBox> }> };
     for (const section of payload.sections ?? []) {
-      if (!Number.isSafeInteger(section.index) || typeof section.image !== 'string' || !section.image.startsWith('data:image/jpeg;base64,')) continue;
+      const crop = section.crop;
+      if (!Number.isSafeInteger(section.index) || typeof section.image !== 'string' ||
+        !section.image.startsWith('data:image/jpeg;base64,') || !crop ||
+        typeof crop.x !== 'number' || typeof crop.y !== 'number' ||
+        typeof crop.width !== 'number' || typeof crop.height !== 'number' ||
+        [crop.x, crop.y, crop.width, crop.height].some(value => !Number.isFinite(value) || value < 0 || value > 1) ||
+        crop.width === 0 || crop.height === 0 || crop.x + crop.width > 1.001 || crop.y + crop.height > 1.001) continue;
       const blob = await (await fetch(section.image)).blob();
-      sections.set(section.index as number, URL.createObjectURL(blob));
+      sections.set(section.index as number, {
+        imageUrl: URL.createObjectURL(blob),
+        crop: { x: crop.x, y: crop.y, width: crop.width, height: crop.height },
+      });
     }
   } catch {
     // The full poster stays as cover when sections cannot be detected.

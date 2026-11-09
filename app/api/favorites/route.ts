@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth-helpers";
+import { redactOriginalEventImageMetadata } from "../../../lib/event-media";
 
 export async function GET(_request: NextRequest) {
   return withAuth(async (userId) => {
@@ -11,7 +12,7 @@ export async function GET(_request: NextRequest) {
         orderBy: { createdAt: "desc" },
       });
 
-      const events = favorites.map((fav) => fav.event);
+      const events = favorites.map((fav) => redactOriginalEventImageMetadata(fav.event));
       return NextResponse.json(events);
     } catch (error) {
       console.error("[API /favorites GET] Error fetching favorites:", error);

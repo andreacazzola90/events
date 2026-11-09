@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { TelegramClient, Api } from 'teleproto';
 import { StringSession } from 'teleproto/sessions';
-import { TelegramAdapter, WhatsAppAdapter, providerError } from './adapters.ts';
+import { TelegramAdapter, WhatsAppAdapter, normalizeNewsletterPage, providerError } from './adapters.ts';
+import { proto } from '@whiskeysockets/baileys';
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
 function telegram() {
@@ -206,11 +207,66 @@ function whatsapp(emit) {
   const sockets = []; const options = [];
   const adapter = new WhatsAppAdapter(emit, configuration => {
     options.push(configuration);
-    const socket = { ev: new EventEmitter(), end: () => { socket.ended = true; }, logout: async () => {}, newsletterMetadata: async () => ({ id: '12345@newsletter', name: 'News' }) };
+    const socket = { ev: new EventEmitter(), end: () => { socket.ended = true; }, logout: async () => {}, query: async () => ({}), newsletterFetchMessages: async () => newsletterPage([]), newsletterMetadata: async () => ({ id: '12345@newsletter', name: 'News' }) };
     sockets.push(socket); return socket;
   });
   return { adapter, sockets, options };
 }
+function newsletterMessage(id, text = 'Concerto pubblico 12 giugno 2027 presso Teatro Comunale') {
+  return { tag: 'message', attrs: { server_id: String(id), from: '12345@newsletter', t: String(Math.floor(Date.now() / 1000)) },
+    content: [{ tag: 'plaintext', attrs: {}, content: proto.Message.encode({ conversation: text }).finish() }] };
+}
+function newsletterPage(messages) {
+  return { tag: 'iq', attrs: { type: 'result', from: '12345@newsletter' }, content: [{ tag: 'message_updates', attrs: {}, content: messages }] };
+}
+test('newsletter binary replies validate identity, order, Int IDs and timestamps and filter private/non-event text', () => {
+  const result = normalizeNewsletterPage(newsletterPage([
+    newsletterMessage(13), newsletterMessage(11), newsletterMessage(12, 'Messaggio privato, chiamami'), newsletterMessage(10),
+  ]), '12345@newsletter', 10, 4);
+  assert.deepEqual(result.messages.map(item => item.id), [11, 13]);
+  assert.equal(result.cursor, 13); assert.equal(result.discarded, 1); assert.equal(result.readCount, 3);
+  assert.ok(!JSON.stringify(result).includes('chiamami'));
+  for (const invalid of [
+    { ...newsletterMessage(11), attrs: { ...newsletterMessage(11).attrs, from: '12345@s.whatsapp.net' } },
+    newsletterMessage(2147483648), newsletterMessage('1.5'),
+    { ...newsletterMessage(11), attrs: { ...newsletterMessage(11).attrs, t: 'not-a-time' } },
+    { ...newsletterMessage(11), attrs: { ...newsletterMessage(11).attrs, t: String(Math.floor(Date.now() / 1000) + 3600) } },
+  ]) assert.throws(() => normalizeNewsletterPage(newsletterPage([invalid]), '12345@newsletter', 0, 1), /source_unavailable/);
+  assert.throws(() => normalizeNewsletterPage(newsletterPage([newsletterMessage(1), newsletterMessage(2)]), '12345@newsletter', 0, 1), /source_unavailable/);
+  assert.throws(() => normalizeNewsletterPage({ ...newsletterPage([]), attrs: { type: 'error' } }, '12345@newsletter', 0, 1), /source_unavailable/);
+});
+test('newsletter captions are accepted, media and malformed protobuf are never forwarded', () => {
+  const caption = newsletterMessage(1);
+  caption.content[0].content = proto.Message.encode({ imageMessage: { caption: 'Festival pubblico 12 giugno 2027 presso Teatro Comunale', directPath: '/private-media' } }).finish();
+  const malformed = newsletterMessage(2); malformed.content[0].content = Uint8Array.from([255]);
+  const result = normalizeNewsletterPage(newsletterPage([caption, malformed]), '12345@newsletter', 0, 2);
+  assert.equal(result.messages.length, 1); assert.equal(result.discarded, 1);
+  assert.ok(!JSON.stringify(result).includes('private-media')); assert.equal(result.messages[0].photo, undefined);
+});
+test('WhatsApp authorization captures the latest baseline without following; polling passes only the consented newsletter and cursor', async () => {
+  const flow = whatsapp(async () => {}); await flow.adapter.start();
+  flow.sockets[0].ev.emit('connection.update', { connection: 'open' }); await turn();
+  const calls = [];
+  flow.sockets[0].newsletterFetchMessages = async (...args) => { calls.push(args); return newsletterPage([newsletterMessage(45)]); };
+  const source = await flow.adapter.verify('12345@newsletter');
+  assert.equal(source.baselineMessageId, 45);
+  assert.deepEqual(calls[0], ['12345@newsletter', 1, 0, 0]);
+  await flow.adapter.poll(source, 45, 10);
+  assert.deepEqual(calls[1], ['12345@newsletter', 10, 0, 45]);
+  await assert.rejects(flow.adapter.verify('12345@s.whatsapp.net'), /source_unavailable/);
+  await assert.rejects(flow.adapter.poll({ ...source, kind: 'group' }, 45, 10), /source_unavailable/);
+  await flow.adapter.close(false);
+});
+test('WhatsApp connection checks call the socket provider and fail when the provider is unreachable', async () => {
+  const flow = whatsapp(async () => {}); await flow.adapter.start();
+  flow.sockets[0].ev.emit('connection.update', { connection: 'open' }); await turn();
+  let probes = 0;
+  flow.sockets[0].query = async () => { probes++; };
+  await flow.adapter.status(); assert.equal(probes, 1);
+  flow.sockets[0].query = async () => { throw new Error('network'); };
+  await assert.rejects(flow.adapter.status(), /provider_unavailable/);
+  await flow.adapter.close(false);
+});
 test('WhatsApp transient close preserves session, revocation erases it, and old socket events are inert', async () => {
   const updates = []; const flow = whatsapp(async update => { updates.push(update); });
   await flow.adapter.start(); const old = flow.sockets[0]; old.ev.emit('connection.update', { connection: 'open' }); await turn();

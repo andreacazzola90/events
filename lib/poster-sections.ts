@@ -7,6 +7,7 @@ export type OcrLine = { text: string; confidence: number; bbox: OcrBox; words: O
 export type PosterSectionEvent = { title: string; date?: string };
 /** Pixel rectangle of one event inside the poster. */
 export type PosterSection = { index: number; left: number; top: number; width: number; height: number };
+export type NormalizedPosterSectionCrop = { x: number; y: number; width: number; height: number };
 
 const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 const MIN_TITLE_SCORE = 0.6;
@@ -147,6 +148,18 @@ export function locateEventSections(
     .sort((a, b) => a.index - b.index);
 }
 
+export function normalizePosterSectionCrop(
+  section: PosterSection,
+  size: { width: number; height: number },
+): NormalizedPosterSectionCrop {
+  return {
+    x: section.left / size.width,
+    y: section.top / size.height,
+    width: section.width / size.width,
+    height: section.height / size.height,
+  };
+}
+
 /** Crops one section and pads it to 16:9 with the poster background color, without distortion. */
 export async function renderPosterSection(image: Buffer, section: PosterSection): Promise<Buffer> {
   const crop = await sharp(image).extract({ left: section.left, top: section.top, width: section.width, height: section.height })
@@ -209,5 +222,9 @@ export async function extractEventSections(image: Buffer, events: PosterSectionE
   const source = await sharp(image).rotate().toBuffer({ resolveWithObject: true });
   const lines = await readPosterLines(source.data, signal);
   const sections = locateEventSections(lines, events, source.info);
-  return Promise.all(sections.map(async section => ({ ...section, image: await renderPosterSection(source.data, section) })));
+  return Promise.all(sections.map(async section => ({
+    ...section,
+    crop: normalizePosterSectionCrop(section, source.info),
+    image: await renderPosterSection(source.data, section),
+  })));
 }

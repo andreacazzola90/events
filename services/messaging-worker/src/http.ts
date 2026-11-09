@@ -24,7 +24,7 @@ export function createMessagingServer(engine: MessagingEngine, secret: string, c
       const body = await boundedJson(new Request(`http://localhost${request.url}`, { method: 'POST', body: Buffer.concat(chunks).toString('utf8') }), request.url === '/command' ? 4096 : 8192);
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new MessagingError('invalid_payload');
       const allowedKeys = request.url === '/command' ? ['owner', 'command'] : request.url === '/scan'
-        ? ['owner', 'source', 'sourceRevision', 'limit', 'dryRun'] : ['owner', 'source', 'sourceRevision', 'cursor'];
+        ? ['owner', 'platform', 'source', 'sourceRevision', 'limit', 'dryRun'] : ['owner', 'platform', 'source', 'sourceRevision', 'cursor'];
       if (Object.keys(body).some(key => !allowedKeys.includes(key))) throw new MessagingError('invalid_payload');
       const { owner } = body as { owner: number };
       if (!Number.isSafeInteger(owner) || owner < 1) throw new MessagingError('invalid_payload');
@@ -39,16 +39,18 @@ export function createMessagingServer(engine: MessagingEngine, secret: string, c
         if (parsed.action !== 'disconnect') configuration(parsed.platform);
         result = await bounded(engine.execute(owner, parsed, controller.signal), deadlineMs);
       } else {
-        configuration('telegram');
-        const params = body as { source: string; sourceRevision: number; limit?: number; dryRun?: boolean; cursor?: number };
+        const params = body as { platform?: Platform; source: string; sourceRevision: number; limit?: number; dryRun?: boolean; cursor?: number };
+        const platform = params.platform ?? 'telegram';
+        if (!['telegram', 'whatsapp'].includes(platform)) throw new MessagingError('invalid_payload');
+        configuration(platform);
         if (typeof params.source !== 'string' || !Number.isSafeInteger(params.sourceRevision) ||
           params.sourceRevision < 1 || params.source.length > 200 ||
           (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit < 1 || params.limit > 30)) ||
           (request.url === '/scan' && (params.dryRun !== undefined && typeof params.dryRun !== 'boolean')) ||
           (request.url === '/ack' && !Number.isSafeInteger(params.cursor))) throw new MessagingError('invalid_payload');
         result = request.url === '/scan'
-          ? await bounded(engine.scan(owner, params.source, params.sourceRevision, { dryRun: params.dryRun, limit: params.limit }), requestDeadline)
-          : await bounded(engine.acknowledge(owner, params.source, params.sourceRevision, params.cursor!), deadlineMs);
+          ? await bounded(engine.scan(owner, params.source, params.sourceRevision, { dryRun: params.dryRun, limit: params.limit, platform }), requestDeadline)
+          : await bounded(engine.acknowledge(owner, params.source, params.sourceRevision, params.cursor!, platform), deadlineMs);
       }
       if (controller.signal.aborted) throw new MessagingError('worker_unavailable', 503);
       response.end(JSON.stringify(result));

@@ -29,6 +29,7 @@ model Event {
   sourceUrl   String?
   externalId  String?
   origin      String     @default("user")
+  isPublished Boolean    @default(true)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   createdById Int?
@@ -43,6 +44,7 @@ model Event {
   personalTelegramPublications PersonalTelegramScanPublication[]
 
   @@index([eventSeriesId, date, time])
+  @@index([isPublished, date, time])
 }
 
 model EventSeries {

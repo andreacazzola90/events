@@ -26,6 +26,7 @@ export interface EventPreviewProps {
   category?: string | null;
   price?: string | null;
   originLabel?: string;
+  isDraft?: boolean;
   editHref?: string;
   initialIsFavorite?: boolean;
   onFavoriteToggle?: (newValue: boolean) => void;
@@ -83,6 +84,7 @@ export default function EventPreview({
   category,
   price,
   originLabel,
+  isDraft = false,
   editHref,
   initialIsFavorite,
   onFavoriteToggle,
@@ -182,6 +184,11 @@ export default function EventPreview({
               className="max-w-[75%] break-words px-1.5 py-1 text-[9px] sm:px-2.5 sm:text-[10px]"
               iconClassName="h-3 w-3 shrink-0"
             />
+          )}
+          {isDraft && (
+            <span className="shrink-0 rounded bg-amber-400 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-black sm:text-[10px]">
+              Bozza
+            </span>
           )}
           {priceLabel && (
             <span className={`ml-auto shrink-0 px-1.5 py-1 text-[9px] font-bold uppercase sm:px-2 sm:text-[10px] ${getPriceBadgeClasses(priceLabel)}`}>

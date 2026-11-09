@@ -18,6 +18,15 @@ type ScanOptions = { dryRun: boolean; deadline: number; ownerId?: number; platfo
 type GrantRow = { id: string; providerId: string; workerRevision: number; revision: number; accountId: string; active: boolean; consentedAt: Date | null; account: { ownerId: number; status: string } };
 type PublishFenceJob = { id: string; sourceId: string; sourceRevision: number; leaseId: string; source: { accountId: string; workerRevision: number } };
 
+function validateWorkerPage(page: WorkerPage, grant: { providerId: string; workerRevision: number }, dryRun: boolean) {
+  if (!page || page.status !== 'success') throw new Error(page?.status === 'not_connected' ? 'not_connected' : page?.status === 'source_unavailable' ? 'source_unavailable' : 'worker_unavailable');
+  if (page.sourceId !== grant.providerId || page.sourceRevision !== grant.workerRevision || page.dryRun !== dryRun ||
+    !Number.isSafeInteger(page.cursor) || page.cursor < 0 || page.cursor > 2147483647 ||
+    !Array.isArray(page.messages) || page.messages.length > 30 ||
+    page.messages.some(item => !item || !Number.isSafeInteger(item.id) || item.id < 1 || item.id > page.cursor || typeof item.text !== 'string' || item.text.length > 4000) ||
+    [page.readCount, page.discarded].some(value => value !== undefined && (!Number.isSafeInteger(value) || value < 0 || value > 30))) throw new Error('worker_unavailable');
+}
+
 export async function persistThenAcknowledge<Value>(cursor: number, persist: () => Promise<Value>, acknowledge: (cursor: number) => Promise<unknown>) {
   const value = await persist();
   if (cursor > 0) await acknowledge(cursor);
@@ -104,7 +113,7 @@ export async function personalMessagingSyncRevision(ownerId: number, platform: P
 
 export async function syncPersonalMessagingStatus(ownerId: number, status: {
   status: string; sources: Array<{ id: string; title: string; kind: string; active?: boolean; consentedAt?: string; verifiedAt?: string; revision?: number }>;
-}, options: { authorized?: boolean; expectedRevision?: number; platform?: Platform } = {}) {
+}, options: { authorized?: boolean; authorizedSourceId?: string; expectedRevision?: number; platform?: Platform } = {}) {
   const platform = options.platform ?? 'telegram';
   await prisma.$transaction(async tx => {
     const account = await tx.personalMessagingAccount.upsert({
@@ -126,7 +135,7 @@ export async function syncPersonalMessagingStatus(ownerId: number, status: {
       const workerRevision = Math.max(1, source.revision || 1);
       if (current && workerRevision < current.workerRevision) continue;
       const active = source.active === true && ['connected', 'restoring'].includes(status.status) &&
-        (options.authorized === true || current?.active === true);
+        ((options.authorized === true && options.authorizedSourceId === source.id) || current?.active === true);
       const consentedAt = active && source.consentedAt ? new Date(source.consentedAt) : null;
       const changed = !current || current.active !== active || current.workerRevision !== workerRevision ||
         (current.consentedAt?.getTime() ?? null) !== (consentedAt?.getTime() ?? null);
@@ -364,8 +373,7 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
         const page = await workerRequest<WorkerPage>('/scan', {
           owner: grant.account.ownerId, platform, source: grant.providerId, sourceRevision: grant.workerRevision, limit: 10, dryRun: true,
         }, Math.min(60000, options.deadline - Date.now()));
-        if (page.status !== 'success' || page.sourceId !== grant.providerId || page.sourceRevision !== grant.workerRevision ||
-          !Array.isArray(page.messages)) throw new Error('worker_unavailable');
+        validateWorkerPage(page, grant, true);
         result.sources++; result.visited += page.readCount || page.messages.length;
         const preview = await classifyDryRun(page.messages, options.deadline);
         result.wouldPublish += preview.wouldPublish; result.discarded += preview.discarded + (page.discarded || 0); result.imageOmitted += preview.imageOmitted;
@@ -384,8 +392,7 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
       const page = await workerRequest<WorkerPage>('/scan', {
         owner: grant.account.ownerId, platform, source: grant.providerId, sourceRevision: grant.workerRevision, limit: 20, dryRun: false,
       }, Math.min(60000, options.deadline - Date.now()));
-      if (page.status !== 'success' || page.sourceId !== grant.providerId || page.sourceRevision !== grant.workerRevision ||
-        !Number.isSafeInteger(page.cursor) || !Array.isArray(page.messages)) throw new Error(page.status || 'worker_unavailable');
+      validateWorkerPage(page, grant, false);
       result.sources++; result.visited += page.readCount || page.messages.length;
       const queued = await persistThenAcknowledge(page.cursor, () => persistPage(grant.account.ownerId, grant, page), cursor => workerRequest('/ack', {
         owner: grant.account.ownerId, platform, source: grant.providerId, sourceRevision: grant.workerRevision, cursor,
@@ -426,4 +433,4 @@ export async function scanPersonalTelegramSources(options: ScanOptions) {
   return result;
 }
 
-export const personalTelegramScanTestHelpers = { announcement, classifyDryRun, isPublicEventAnnouncement, socialFingerprint, clearedContent, publishPersonalMessage };
+export const personalTelegramScanTestHelpers = { announcement, classifyDryRun, isPublicEventAnnouncement, socialFingerprint, clearedContent, publishPersonalMessage, validateWorkerPage };

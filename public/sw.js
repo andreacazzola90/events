@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eventscanner-v7'; // Incrementa versione per forzare update
+const CACHE_NAME = 'eventscanner-v8'; // Incrementa versione per forzare update
 const SHARE_CACHE_NAME = 'eventscanner-shared-files-v1';
 const SHARE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STATIC_CACHE = [
@@ -14,6 +14,11 @@ function getShareRequest(shareId) {
     const url = new URL('/api/share-target', self.location.origin);
     url.searchParams.set('shareId', shareId);
     return new Request(url.toString());
+}
+
+function isCacheableResponse(response) {
+    const cacheControl = response.headers.get('Cache-Control') || '';
+    return !/\b(?:private|no-store)\b/i.test(cacheControl);
 }
 
 async function pruneSharedFiles(cache) {
@@ -151,7 +156,7 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(event.request)
                 .then((fetchResponse) => {
-                    if (fetchResponse.ok) {
+                    if (fetchResponse.ok && isCacheableResponse(fetchResponse) && !requestUrl.pathname.startsWith('/events/')) {
                         const responseToCache = fetchResponse.clone();
                         caches.open(CACHE_NAME).then((cache) => {
                             cache.put(event.request, responseToCache);
@@ -170,7 +175,7 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(event.request)
                 .then((fetchResponse) => {
-                    if (fetchResponse.ok) {
+                    if (fetchResponse.ok && isCacheableResponse(fetchResponse)) {
                         console.log('[SW] Fetched fresh API response, updating cache:', event.request.url);
                         const responseToCache = fetchResponse.clone();
                         caches.open(CACHE_NAME).then((cache) => {

@@ -528,6 +528,7 @@ export async function GET(request: NextRequest) {
     const { start, end } = getStoryWindowFromDate(now);
 
     const allEvents: StoryEvent[] = await prisma.event.findMany({
+      where: { isPublished: true },
       select: {
         id: true,
         title: true,

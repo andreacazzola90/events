@@ -207,7 +207,7 @@ function whatsapp(emit) {
   const sockets = []; const options = [];
   const adapter = new WhatsAppAdapter(emit, configuration => {
     options.push(configuration);
-    const socket = { ev: new EventEmitter(), end: () => { socket.ended = true; }, logout: async () => {}, query: async () => ({}), newsletterFetchMessages: async () => newsletterPage([]), newsletterMetadata: async () => ({ id: '12345@newsletter', name: 'News' }) };
+    const socket = { ev: new EventEmitter(), end: () => { socket.ended = true; }, logout: async () => {}, query: async () => ({ tag: 'iq', attrs: { type: 'result' } }), newsletterFetchMessages: async () => newsletterPage([]), newsletterMetadata: async () => ({ id: '12345@newsletter', name: 'News' }) };
     sockets.push(socket); return socket;
   });
   return { adapter, sockets, options };
@@ -261,7 +261,7 @@ test('WhatsApp connection checks call the socket provider and fail when the prov
   const flow = whatsapp(async () => {}); await flow.adapter.start();
   flow.sockets[0].ev.emit('connection.update', { connection: 'open' }); await turn();
   let probes = 0;
-  flow.sockets[0].query = async () => { probes++; };
+  flow.sockets[0].query = async () => { probes++; return { tag: 'iq', attrs: { type: 'result' } }; };
   await flow.adapter.status(); assert.equal(probes, 1);
   flow.sockets[0].query = async () => { throw new Error('network'); };
   await assert.rejects(flow.adapter.status(), /provider_unavailable/);

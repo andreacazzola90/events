@@ -35,3 +35,7 @@
 - Eventi da link senza immagine vengono pubblicati automaticamente senza copertina (lo spec ferma solo il crop fallito).
 - Il banner `?nuovo=1` appare solo con `canEdit` (creatori anonimi vedono solo il toast) e si perde se lo slug richiede `permanentRedirect`.
 - Accessibilità: allo stop il focus non viene spostato sull'editor riapparso.
+
+## Admin role refresh (review 2026-11-09)
+
+- Preexisting: NextAuth JWT captures `role`/`type` at sign-in and the update callback refreshes only the user's name. An administrator demoted in the database retains claim-based admin access until the token expires across routes that trust those claims; evaluate current-role authorization and session revocation across admin surfaces as a separate security change.

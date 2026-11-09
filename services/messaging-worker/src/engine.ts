@@ -34,6 +34,7 @@ export class MessagingEngine {
   entries = new Map<string, Entry>();
   loading = new Map<string, Promise<Entry>>();
   scanning = new Set<string>();
+  previewing = new Set<string>();
   now: () => number;
   constructor(store: Store, factory: Factory, now = Date.now) { this.store = store; this.factory = factory; this.now = now; }
   async entry(owner: number, platform: Platform): Promise<Entry> {
@@ -61,7 +62,7 @@ export class MessagingEngine {
   }
   snapshot(entry: Entry) {
     const account = entry.account;
-    return { platform: account.platform, status: account.status, error: account.error, revision: account.revision, expiresAt: account.expiresAt, remoteRemoved: account.remoteRemoved,
+    return { platform: account.platform, status: account.status, connectionVerified: false, error: account.error, revision: account.revision, expiresAt: account.expiresAt, remoteRemoved: account.remoteRemoved,
       qr: entry.qrExpiresAt && entry.qrExpiresAt > this.now() ? entry.qr : undefined, qrExpiresAt: entry.qrExpiresAt,
       listing: account.platform === 'whatsapp' ? 'unsupported' : 'joined-groups-and-administered-public',
       sources: account.sources.map(source => this.publicSource(source)) };
@@ -202,10 +203,16 @@ export class MessagingEngine {
       await this.write(entry, entry.account); checkSignal();
       return this.snapshot(entry);
     }
+    if (this.previewing.has(`${owner}:${command.platform}`)) {
+      if (command.action === 'status') return this.snapshot(entry);
+      throw new MessagingError('rate_limited', 429);
+    }
     if (entry.busy) { if (command.action === 'status') return this.snapshot(entry); throw new MessagingError('rate_limited', 429); }
     entry.busy = true;
     let revision = entry.account.revision;
     let started = false; let cancelled = false;
+    let connectionVerified = false;
+    let authorizedSourceId: string | undefined;
     const cancel = () => {
       cancelled = true;
       if (revision !== entry.account.revision || command.action === 'sources') return;
@@ -237,7 +244,9 @@ export class MessagingEngine {
           try { await wait(adapter.restore(entry.account.session)); }
           catch (error) { if (revision === entry.account.revision) await this.offline(entry); throw error; }
         }
-        if (command.action === 'status' && entry.account.status === 'connected' && entry.adapter?.status) await wait(entry.adapter.status());
+        if (command.action === 'status' && entry.account.status === 'connected' && entry.adapter?.status) {
+          await wait(entry.adapter.status()); connectionVerified = true;
+        }
         if (command.action === 'code' || command.action === 'password') {
           if (entry.account.status !== command.action || !entry.adapter) throw new MessagingError('login_expired');
           if (++entry.account.attempts > 5) { await this.invalidate(entry, 'expired'); throw new MessagingError('rate_limited', 429); }
@@ -281,10 +290,11 @@ export class MessagingEngine {
           }
           if (existing) { delete existing.pendingCursorMessageId; Object.assign(existing, source); } else candidate.sources.push(source);
           await this.publish(entry, candidate, ensureCurrent);
+          authorizedSourceId = source.id;
         }
       }
       ensureCurrent();
-      return this.snapshot(entry);
+      return { ...this.snapshot(entry), connectionVerified, authorizedSourceId };
     } catch (error) {
       if (revision === entry.account.revision && !cancelled && ((command.action === 'start' && started) || !(error instanceof MessagingError) || error.code === 'worker_unavailable')) {
         entry.account.error = error instanceof MessagingError ? error.code : 'provider_unavailable';
@@ -306,8 +316,9 @@ export class MessagingEngine {
     const key = `${owner}:${options.platform ?? 'telegram'}`;
     if (this.scanning.has(key)) throw new MessagingError('rate_limited', 429);
     this.scanning.add(key);
+    if (options.dryRun) this.previewing.add(key);
     try { return await this.scanAccount(owner, sourceId, sourceRevision, options); }
-    finally { this.scanning.delete(key); }
+    finally { this.scanning.delete(key); this.previewing.delete(key); }
   }
   private async scanAccount(owner: number, sourceId: string, sourceRevision: number, options: { dryRun?: boolean; limit?: number; platform?: Platform }) {
     const platform = options.platform ?? 'telegram';

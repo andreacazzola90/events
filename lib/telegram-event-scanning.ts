@@ -160,7 +160,7 @@ export async function scanTelegramQueue(options: { dryRun: boolean; deadline: nu
     }
   }
   result.deferred = await prisma.telegramMessage.count({ where: {
-    status: { in: ['pending', 'processing'] }, source: { isActive: true, connection: { status: 'active' } },
+    status: { in: ['pending', 'processing'] }, source: { isActive: true, connection: { ...(options.ownerId !== undefined ? { userId: options.ownerId } : {}), status: 'active' } },
   } });
   result.status = result.failed || result.retried ? 'partial-error' : result.deferred ? 'partial' : options.dryRun ? 'dry-run' : 'success';
   return result;

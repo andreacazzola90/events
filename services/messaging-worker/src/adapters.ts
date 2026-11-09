@@ -323,8 +323,10 @@ export class WhatsAppAdapter implements Adapter {
   async list(): Promise<SourceList> { return []; }
   async status() {
     if (!this.connected || !this.socket) { await this.emit({ status: 'restoring' }); throw new MessagingError('not_connected'); }
-    try { await bounded(this.socket.query({ tag: 'iq', attrs: { type: 'get', xmlns: 'w:p', to: 's.whatsapp.net' }, content: [{ tag: 'ping', attrs: {} }] }), 8000); }
-    catch { throw new MessagingError('provider_unavailable', 503); }
+    try {
+      const reply: unknown = await bounded(this.socket.query({ tag: 'iq', attrs: { type: 'get', xmlns: 'w:p', to: 's.whatsapp.net' }, content: [{ tag: 'ping', attrs: {} }] }), 8000);
+      if (!newsletterNode(reply) || reply.tag !== 'iq' || reply.attrs.type !== 'result') throw new Error('unavailable');
+    } catch { this.connected = false; await this.emit({ status: 'restoring' }); throw new MessagingError('provider_unavailable', 503); }
   }
   async verify(source: string): Promise<Source> {
     const invite = /^https:\/\/whatsapp\.com\/channel\/([A-Za-z0-9]{8,100})$/.exec(source);
@@ -332,7 +334,7 @@ export class WhatsAppAdapter implements Adapter {
     if (!this.connected || !this.socket || (!invite && !jid)) throw new MessagingError('source_unavailable');
     try {
       const metadata = await this.socket.newsletterMetadata(invite ? 'invite' : 'jid', invite ? invite[1] : jid!);
-      if (!metadata || !/^\d+@newsletter$/.test(metadata.id)) throw new Error('unavailable');
+      if (!metadata || !/^\d{5,40}@newsletter$/.test(metadata.id)) throw new Error('unavailable');
       const page = normalizeNewsletterPage(await this.socket.newsletterFetchMessages(metadata.id, 1, 0, 0), metadata.id, 0, 1);
       return { id: metadata.id, title: metadata.name.slice(0, 200), kind: 'newsletter', baselineMessageId: page.cursor };
     } catch { throw new MessagingError('source_unavailable'); }
@@ -358,13 +360,15 @@ export function normalizeNewsletterPage(payload: unknown, jid: string, after: nu
     (payload.attrs.from !== undefined && payload.attrs.from !== jid)) throw new MessagingError('source_unavailable');
   const updates = Array.isArray(payload.content) ? payload.content.filter(newsletterNode).find(node => node.tag === 'message_updates') : undefined;
   if (!updates || !Array.isArray(updates.content) || updates.content.length > limit ||
-    (updates.attrs.jid !== undefined && updates.attrs.jid !== jid)) throw new MessagingError('source_unavailable');
+    (updates.attrs.jid !== undefined && updates.attrs.jid !== jid) ||
+    (updates.attrs.from !== undefined && updates.attrs.from !== jid)) throw new MessagingError('source_unavailable');
   const messages: PersonalMessage[] = [];
   let cursor = after; let discarded = 0; let readCount = 0;
   const seen = new Set<number>();
   const rows = updates.content.map((item: unknown) => {
     if (!newsletterNode(item) || item.tag !== 'message' ||
       (item.attrs.from !== undefined && item.attrs.from !== jid) ||
+      (item.attrs.jid !== undefined && item.attrs.jid !== jid) ||
       typeof item.attrs.server_id !== 'string' || !/^[1-9]\d{0,9}$/.test(item.attrs.server_id)) throw new MessagingError('source_unavailable');
     const id = Number(item.attrs.server_id);
     const timestamp = typeof item.attrs.t === 'string' && /^\d{1,12}$/.test(item.attrs.t) ? Number(item.attrs.t) : NaN;

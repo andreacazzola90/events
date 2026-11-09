@@ -31,7 +31,10 @@ async function handle(request: Request, mutate: boolean) {
       const expectedRevision = sync ? await personalMessagingSyncRevision(owner, command.platform) : undefined;
       const result = await callMessagingWorker(owner, command);
       if (sync) {
-        await syncPersonalMessagingStatus(owner, result, { authorized: command.action === 'authorize', expectedRevision, platform: command.platform });
+        const authorizedSourceId = command.action === 'authorize'
+          ? result.authorizedSourceId || result.sources.find(source => source.id === command.source || source.reference === command.source)?.id
+          : undefined;
+        await syncPersonalMessagingStatus(owner, result, { authorized: command.action === 'authorize', authorizedSourceId, expectedRevision, platform: command.platform });
       }
       return NextResponse.json({ ...result, scanning: await personalTelegramAdminScanStatus(owner, command.platform) }, { headers });
     } catch (error) {

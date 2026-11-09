@@ -86,7 +86,7 @@ export default function TelegramAdmin() {
   }
 
   return (
-    <section aria-labelledby="telegram-heading" className="glass-effect rounded-2xl p-6 sm:p-8 min-w-0" data-testid="telegram-admin">
+    <section aria-labelledby="telegram-heading" aria-busy={busy} className="glass-effect rounded-2xl p-6 sm:p-8 min-w-0" data-testid="telegram-admin">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 id="telegram-heading" className="text-2xl font-semibold text-white flex items-center gap-2"><Send size={22} aria-hidden="true" />Telegram</h2>
         <div className="flex items-center gap-3 flex-wrap min-w-0 max-w-full">

@@ -2,7 +2,7 @@
 title: 'Admin Event Moderation'
 type: 'feature'
 created: '2026-11-09'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '67dfcef361aba1405bcffdcefed1285cac1d3cfc'
 context:
   - '{project-root}/docs/API_REFERENCE.md'
@@ -52,11 +52,11 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `prisma/schema.prisma`, `prisma/migrations/` -- aggiungere `isPublished` predefinito a `true` e la migration corrispondente -- mantenere visibili gli eventi esistenti.
-- [ ] `app/api/events/[id]/route.ts` -- implementare `PATCH { isPublished: boolean }` e `DELETE` admin-only; cancellare in transazione preferiti e record, poi pulire i file storage associati e riportare eventuali errori di pulizia -- impedire modifiche non autorizzate e successi silenziosamente parziali.
-- [ ] `app/api/events/route.ts`, `app/events/[slug]/page.tsx`, `lib/public-event-list.ts`, `app/sitemap.ts`, `app/api/favorites/route.ts` -- escludere le bozze dalle risposte e pagine pubbliche; permetterne la lettura admin necessaria alla gestione -- evitare esposizioni tramite URL diretti, ricerca o cache.
-- [ ] `app/account/page.tsx`, `app/components/EventPreview.tsx`, `app/events/[slug]/edit/page.tsx` -- richiedere `includeDrafts=true` solo nella lista admin, distinguere le bozze e aggiungere “Metti in bozza”/“Ripubblica” e “Elimina” con stato di caricamento, conferma e feedback -- rendere la funzione accessibile dalla UI.
-- [ ] `docs/API_REFERENCE.md` -- aggiornare la documentazione API -- descrivere autorizzazioni, risposte e stati.
+- [x] `prisma/schema.prisma`, `prisma/migrations/` -- aggiungere `isPublished` predefinito a `true` e la migration corrispondente -- mantenere visibili gli eventi esistenti.
+- [x] `app/api/events/[id]/route.ts` -- implementare `PATCH { isPublished: boolean }` e `DELETE` admin-only; cancellare in transazione preferiti e record, poi pulire i file storage associati e riportare eventuali errori di pulizia -- impedire modifiche non autorizzate e successi silenziosamente parziali.
+- [x] `app/api/events/route.ts`, `app/events/[slug]/page.tsx`, `lib/public-event-list.ts`, `app/sitemap.ts`, `app/api/favorites/route.ts` -- escludere le bozze dalle risposte e pagine pubbliche; permetterne la lettura admin necessaria alla gestione -- evitare esposizioni tramite URL diretti, ricerca o cache.
+- [x] `app/account/page.tsx`, `app/components/EventPreview.tsx`, `app/events/[slug]/edit/page.tsx` -- richiedere `includeDrafts=true` solo nella lista admin, distinguere le bozze e aggiungere “Metti in bozza”/“Ripubblica” e “Elimina” con stato di caricamento, conferma e feedback -- rendere la funzione accessibile dalla UI.
+- [x] `docs/API_REFERENCE.md` -- aggiornare la documentazione API -- descrivere autorizzazioni, risposte e stati.
 
 **Acceptance Criteria:**
 - Given un evento esistente prima della migration, when la migration è applicata, then resta pubblicato senza modifiche manuali.
@@ -77,3 +77,72 @@ context:
 - `npx prisma validate` -- schema Prisma valido.
 - `npx tsc --noEmit` -- nessun errore di tipo.
 - `npx eslint <file interessati>` -- nessun errore lint nei file modificati.
+
+## Suggested Review Order
+
+**Authorization and deletion**
+
+- Le azioni admin concentrano autenticazione, transazione, pulizia storage e invalidazione cache.
+  [`route.ts:237`](../../app/api/events/%5Bid%5D/route.ts#L237)
+
+- La cancellazione rimuove prima i riferimenti e segnala esplicitamente le pulizie parziali.
+  [`route.ts:282`](../../app/api/events/%5Bid%5D/route.ts#L282)
+
+**Publication and public visibility**
+
+- Il default SQL mantiene pubblicati i record esistenti, mentre Prisma espone il nuovo stato.
+  [`migration.sql:1`](../../prisma/migrations/20261109180000_add_event_publication_status/migration.sql#L1)
+
+- Il modello Prisma rende esplicito il default pubblicato per le nuove creazioni.
+  [`schema.prisma:32`](../../prisma/schema.prisma#L32)
+
+- La pagina evento separa la lettura admin dalle query pubbliche e dai suggerimenti.
+  [`page.tsx:71`](../../app/events/%5Bslug%5D/page.tsx#L71)
+
+- La lista API non condivide bozze e le serve solo a un admin autenticato.
+  [`route.ts:374`](../../app/api/events/route.ts#L374)
+
+- Calendario, preferiti, rassegne e sitemap interrogano soltanto eventi pubblicati.
+  [`public-event-list.ts:27`](../../lib/public-event-list.ts#L27)
+
+- Preferiti e indice sitemap applicano la stessa condizione di pubblicazione.
+  [`route.ts:10`](../../app/api/favorites/route.ts#L10)
+  [`sitemap.ts:37`](../../app/sitemap.ts#L37)
+
+- Le rassegne pubbliche non includono eventi in bozza né nei conteggi.
+  [`page.tsx:66`](../../app/rassegne/%5Bslug%5D/page.tsx#L66)
+  [`page.tsx:23`](../../app/rassegne/page.tsx#L23)
+
+- Le storie pianificate usano solo eventi pubblicati.
+  [`route.ts:531`](../../app/api/cron/generate-instagram-story/route.ts#L531)
+
+- Il service worker evita cache private e pagine evento potenzialmente amministrative.
+  [`sw.js:19`](../../public/sw.js#L19)
+
+**Moderation interface**
+
+- I controlli nell’editor gestiscono caricamento, conferma, feedback e aggiornamento dello stato.
+  [`page.tsx:326`](../../app/events/%5Bslug%5D/edit/page.tsx#L326)
+
+- L’account richiede draft inclusion per la vista admin e marca le schede.
+  [`page.tsx:227`](../../app/account/page.tsx#L227)
+
+- Il badge distingue visivamente le bozze dalla normale lista eventi.
+  [`EventPreview.tsx:188`](../../app/components/EventPreview.tsx#L188)
+
+**Contracts and verification**
+
+- La reference descrive autorizzazioni, risposte e pulizia dei file.
+  [`API_REFERENCE.md:324`](../../docs/API_REFERENCE.md#L324)
+
+- I test coprono autorizzazione, stato, cancellazione e fallimenti storage/database.
+  [`event-moderation-api.test.mjs:108`](../../lib/event-moderation-api.test.mjs#L108)
+
+- I test della lista verificano che solo l’admin possa includere le bozze.
+  [`event-list-api.test.mjs:72`](../../lib/event-list-api.test.mjs#L72)
+
+- La pulizia storage riconosce URL del bucket e mantiene al sicuro oggetti condivisi.
+  [`supabase.ts:173`](../../app/lib/supabase.ts#L173)
+
+- Il tipo applicativo riflette il flag generato da Prisma.
+  [`event.ts:24`](../../app/types/event.ts#L24)

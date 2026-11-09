@@ -21,6 +21,7 @@ export interface DbEvent {
   sourceUrl: string | null;
   externalId: string | null;
   origin: string;
+  isPublished: boolean;
   createdAt: Date;
   updatedAt: Date;
   createdById: number | null;

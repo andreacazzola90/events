@@ -218,9 +218,13 @@ export default function AccountPage() {
         userData?.type === 'admin' ||
         userEmail === 'andreacazzola90@gmail.com' ||
         userEmail.startsWith('andreacazzola90@');
+      const canIncludeDrafts =
+        userData?.role === 'admin' ||
+        userData?.type === 'admin' ||
+        userEmail === 'andreacazzola90@gmail.com';
 
       const eventsUrl = adminView
-        ? '/api/events?limit=200&includePast=true'
+        ? `/api/events?limit=200&includePast=true${canIncludeDrafts ? '&includeDrafts=true' : ''}`
         : '/api/events?userId=' + userId + '&includePast=true';
 
       const [eventsRes, favoritesRes] = await Promise.all([
@@ -984,9 +988,11 @@ export default function AccountPage() {
                             organizer={event.organizer}
                             category={event.category}
                             price={event.price}
+                            isDraft={!event.isPublished}
                             originLabel={event.origin === "user" ? isAdminEventsView ? "UTENTE" : "TU" : "CRON"}
                             initialIsFavorite={favoriteEvents.some((favorite) => favorite.id === event.id)}
                             onFavoriteToggle={(isFavorite) => syncFavoriteEvent(event, isFavorite)}
+                            showFavorite={event.isPublished}
                             editHref={`/events/${generateUniqueSlug(event.title, event.id)}/edit`}
                             imageSizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                           />

@@ -25,7 +25,7 @@ function normalizePublicEvents<Event extends PublicCalendarEvent>(events: Event[
 
 const cachedList = unstable_cache(async (today: string, range: "today" | "upcoming") => {
   const events = await prisma.event.findMany({
-    where: { OR: [{ date: { gte: today } }, { date: { contains: "/" } }] },
+    where: { isPublished: true, OR: [{ date: { gte: today } }, { date: { contains: "/" } }] },
     select: {
       ...calendarSelect,
       description: true,
@@ -51,7 +51,7 @@ const cachedList = unstable_cache(async (today: string, range: "today" | "upcomi
 
 const cachedCalendar = unstable_cache(async (today: string) => {
   const events = await prisma.event.findMany({
-    where: { OR: [{ date: { gte: today } }, { date: { contains: "/" } }] },
+    where: { isPublished: true, OR: [{ date: { gte: today } }, { date: { contains: "/" } }] },
     select: calendarSelect,
     orderBy: [{ date: "asc" }, { time: "asc" }, { id: "asc" }],
     take: 2000,

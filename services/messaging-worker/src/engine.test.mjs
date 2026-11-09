@@ -40,6 +40,15 @@ test('fake provider login errors, 2FA and session-free response; no events', asy
   assert.equal(result.status, 'connected');
   assert.ok(!JSON.stringify(result).includes('fixture-private-session'));
 });
+test('only a completed provider status probe can claim a verified connection, never a busy local snapshot', async () => {
+  const flow = fixture(); await flow.connect();
+  let probes = 0;
+  flow.adapters[0].status = async () => { probes++; };
+  assert.equal((await flow.run('status')).connectionVerified, true);
+  const entry = flow.engine.entries.get('1:telegram'); entry.busy = true;
+  assert.equal((await flow.run('status')).connectionVerified, false);
+  assert.equal(probes, 1); entry.busy = false;
+});
 test('owners never share QR, session or sources', async () => {
   const flow = fixture(); await flow.connect(); await flow.run('authorize', { source: '@news', consent: true });
   const other = await flow.run('status', {}, 2);
@@ -109,7 +118,7 @@ async function newsletterFlow() {
   await flow.callbacks[0]({ status: 'connected', session: 'whatsapp-fixture-session' });
   flow.adapters[0].verify = async id => ({ id, title: 'Newsletter', kind: 'newsletter', baselineMessageId: 10 });
   const run = (action, extra = {}) => flow.engine.execute(1, { action, platform: 'whatsapp', ...extra });
-  await run('authorize', { source: '12345@newsletter', consent: true });
+  assert.equal((await run('authorize', { source: '12345@newsletter', consent: true })).authorizedSourceId, '12345@newsletter');
   return { ...flow, run, source: flow.saved.get('1:whatsapp').sources[0] };
 }
 test('newsletter baseline, dry-run, replay and ack are platform isolated and never backfill', async () => {
@@ -433,4 +442,32 @@ test('authorization cannot silently use zero when a group baseline was not verif
   flow.adapters[0].verify = async id => ({ id, kind: 'group', title: 'Group', groupType: 'basic' });
   await assert.rejects(flow.run('authorize', { source: 'group:basic:1', consent: true }), /source_unavailable/);
   assert.equal(flow.saved.get('1:telegram').sources.length, 0);
+});
+test('worker HTTP scan/ack accepts WhatsApp explicitly, defaults Telegram and rejects unsupported payloads', async () => {
+  const calls = [];
+  const configured = [];
+  const engine = {
+    scan: async (...args) => { calls.push(['scan', ...args]); return { status: 'success' }; },
+    acknowledge: async (...args) => { calls.push(['ack', ...args]); return { status: 'acknowledged' }; },
+  };
+  const secret = 'a'.repeat(64);
+  const server = createMessagingServer(engine, secret, platform => { configured.push(platform); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const send = (path, body) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+    method: 'POST', headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  try {
+    const body = { owner: 7, source: '12345@newsletter', sourceRevision: 1 };
+    assert.equal((await send('/scan', { ...body, platform: 'whatsapp', dryRun: true })).status, 200);
+    assert.equal(calls[0][4].platform, 'whatsapp');
+    assert.equal((await send('/ack', { ...body, platform: 'whatsapp', cursor: 9 })).status, 200);
+    assert.equal(calls[1][5], 'whatsapp');
+    assert.equal((await send('/scan', body)).status, 200);
+    assert.equal(calls[2][4].platform, 'telegram');
+    for (const invalid of [{ platform: 'instagram' }, { dryRun: 'true' }, { owner: '7' }, { limit: 31 }, { otherOwner: 9 }]) {
+      assert.equal((await send('/scan', { ...body, ...invalid })).status, 400);
+    }
+    assert.deepEqual(configured.slice(0, 3), ['whatsapp', 'whatsapp', 'telegram']);
+    assert.equal(calls.length, 3);
+  } finally { await new Promise(resolve => server.close(resolve)); }
 });

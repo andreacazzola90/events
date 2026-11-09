@@ -170,6 +170,30 @@ export async function deleteEventMediaFromSupabase(storagePath: string, options:
   if (error) throw error;
 }
 
+export function getEventStoragePathFromPublicUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const configuredUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!configuredUrl) return null;
+
+  try {
+    const publicUrl = new URL(value);
+    const baseUrl = new URL(configuredUrl);
+    if (publicUrl.origin !== baseUrl.origin) return null;
+
+    const basePath = baseUrl.pathname.replace(/\/$/, "");
+    const bucketPrefix = `${basePath}/storage/v1/object/public/events/`;
+    if (!publicUrl.pathname.startsWith(bucketPrefix)) return null;
+
+    const storagePath = decodeURIComponent(publicUrl.pathname.slice(bucketPrefix.length));
+    if (!storagePath || storagePath.split("/").some(part => !part || part === "." || part === ".." || part.includes("\\"))) {
+      return null;
+    }
+    return storagePath;
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadPrivateCropLearningPair(
   userId: number,
   original: Buffer,

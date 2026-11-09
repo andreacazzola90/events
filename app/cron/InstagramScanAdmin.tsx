@@ -50,7 +50,8 @@ const formatDate = (value: string | null) => value ? new Date(value).toLocaleStr
 function isInstagramScanReport(value: unknown): value is InstagramScanReport {
   if (!value || typeof value !== 'object') return false;
   const report = value as Record<string, unknown>;
-  return typeof report.status === 'string' &&
+  return typeof report.status === 'string' && typeof report.dryRun === 'boolean' &&
+    ['published', 'duplicates', 'discarded', 'failed'].every(key => typeof report[key] === 'number') &&
     ['storiesFetched', 'storiesInWindow', 'storiesScanned', 'storiesSkipped', 'storiesDeferred', 'storiesFailed',
       'storyFetchErrors', 'eventsExtracted', 'storyEventsExtracted', 'storyEventsWouldPublish'].every(key => typeof report[key] === 'number');
 }
@@ -125,7 +126,7 @@ export default function InstagramScanAdmin() {
   );
 
   return (
-    <section aria-labelledby="instagram-scan-heading" className="glass-effect rounded-2xl p-6 sm:p-8 min-w-0" data-testid="instagram-scan-admin">
+    <section aria-labelledby="instagram-scan-heading" aria-busy={busy} className="glass-effect rounded-2xl p-6 sm:p-8 min-w-0" data-testid="instagram-scan-admin">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 id="instagram-scan-heading" className="text-2xl font-semibold text-white flex items-center gap-2"><Camera size={22} aria-hidden="true" />Scansione Instagram</h2>
         <div className="flex items-center gap-3 flex-wrap min-w-0 max-w-full">
@@ -136,6 +137,7 @@ export default function InstagramScanAdmin() {
       </div>
       <p className="text-sm text-gray-400 mt-2">Ogni giorno legge le stories dell&apos;account professionale collegato e i post degli ultimi 7 giorni delle fonti Business/Creator autorizzate. Le stories di altri account non sono accessibili tramite le API ufficiali.</p>
       {error && <p role="alert" className="text-red-300 mt-4 break-words">{error}</p>}
+      {busy && <p role="status" className="text-gray-300 mt-4">Operazione Instagram in corso…</p>}
       {notice && <p role="status" className="text-emerald-200 mt-4 break-words">{notice}</p>}
       {status?.lastError && <p className="text-amber-200 mt-3">{errorMessage(status.lastError)}</p>}
       {status && !status.configured && !status.connected && (
@@ -172,7 +174,7 @@ export default function InstagramScanAdmin() {
           </div>
           {scanReport && (
             <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-4 text-sm text-gray-200" role="status" aria-live="polite">
-              <p className="font-semibold text-white">Resoconto scansione di prova</p>
+              <p className="font-semibold text-white">{scanReport.dryRun ? 'Resoconto scansione di prova' : 'Resoconto scraping'}</p>
               <p>{scanReport.dryRun ? 'Prova senza pubblicazione.' : `Pubblicati: ${scanReport.published} · duplicati: ${scanReport.duplicates} · scartati: ${scanReport.discarded} · errori: ${scanReport.failed}`}{['partial', 'partial-error'].includes(scanReport.status) ? ' Risultato parziale.' : ''}</p>
               <p className="mt-2">Stories restituite da Instagram: {scanReport.storiesFetched} · nelle ultime 24 ore: {scanReport.storiesInWindow} · analizzate: {scanReport.storiesScanned}</p>
               <p>Già elaborate: {scanReport.storiesSkipped} · rinviate: {scanReport.storiesDeferred} · analisi fallite: {scanReport.storiesFailed} · errori di lettura: {scanReport.storyFetchErrors}</p>

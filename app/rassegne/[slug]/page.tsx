@@ -63,6 +63,7 @@ async function getSeries(slug: string) {
     where: { slug },
     include: {
       events: {
+        where: { isPublished: true },
         select: {
           id: true, title: true, description: true, date: true, time: true, location: true, category: true, imageUrl: true,
           media: { where: { kind: "image", fileName: "Locandina completa" }, select: { url: true }, orderBy: { position: "asc" }, take: 1 },

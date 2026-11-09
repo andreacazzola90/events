@@ -11,7 +11,7 @@ export async function runServiceScan(
   scan: (options: { dryRun: boolean; deadline: number; ownerId: number; platform?: Platform }) => Promise<unknown>,
   personal = false,
 ) {
-  return withAuth(async ownerId => {
+  const response = await withAuth(async ownerId => {
     let key: string | undefined;
     try {
       const user = await prisma.user.findUnique({ where: { id: ownerId }, select: { role: true, type: true } });
@@ -28,4 +28,6 @@ export async function runServiceScan(
       return NextResponse.json({ error: error instanceof MessagingError ? error.code : 'service_scan_failed' }, { status: error instanceof MessagingError ? error.status : 503, headers });
     } finally { if (key) running.delete(key); }
   });
+  for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
+  return response;
 }

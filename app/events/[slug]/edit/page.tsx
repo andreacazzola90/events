@@ -337,7 +337,10 @@ export default function EditEventPage() {
       if (!response.ok) throw new Error(payload.error || "Impossibile aggiornare la pubblicazione");
       clearServiceWorkerCache();
       setEvent(current => current ? { ...current, isPublished: payload.isPublished } : current);
-      setModerationMessage(payload.isPublished ? "Evento ripubblicato." : "Evento spostato in bozza.");
+      const message = payload.isPublished ? "Evento ripubblicato." : "Evento spostato in bozza.";
+      setModerationMessage(payload.cacheInvalidated === false
+        ? `${message} Le cache pubbliche non sono state aggiornate.`
+        : message);
     } catch (error) {
       setModerationMessage(error instanceof Error ? error.message : "Impossibile aggiornare la pubblicazione");
     } finally {

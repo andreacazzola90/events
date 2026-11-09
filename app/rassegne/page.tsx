@@ -20,12 +20,17 @@ export default async function EventSeriesIndexPage() {
     prisma.eventSeries.findMany({
       where: { isPublished: true },
       include: {
-        _count: { select: { events: true } },
+        _count: { select: { events: { where: { isPublished: true } } } },
         events: {
           where: {
-            OR: [
-              { imageUrl: { not: null } },
-              { media: { some: { kind: "image" } } },
+            AND: [
+              { isPublished: true },
+              {
+                OR: [
+                  { imageUrl: { not: null } },
+                  { media: { some: { kind: "image" } } },
+                ],
+              },
             ],
           },
           orderBy: [{ date: "asc" }, { time: "asc" }],

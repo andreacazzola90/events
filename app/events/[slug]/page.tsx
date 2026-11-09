@@ -18,11 +18,18 @@ import { calendarToday } from '../../../lib/calendar-view';
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
+function isAdminEventSession(session: any): boolean {
+    const user = session?.user as any;
+    const email = (user?.email || '').toLowerCase();
+    return user?.role === 'admin' || user?.type === 'admin' || email === 'andreacazzola90@gmail.com';
+}
+
 export async function generateMetadata(
     { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
     const { slug } = await params;
-    const event = await getEvent(slug);
+    const session = await getServerSession(authOptions as any);
+    const event = await getEvent(slug, isAdminEventSession(session));
 
     if (!event) {
         return {
@@ -41,6 +48,7 @@ export async function generateMetadata(
 export async function generateStaticParams() {
     try {
         const events = await prisma.event.findMany({
+            where: { isPublished: true },
             select: {
                 id: true,
                 title: true,
@@ -60,7 +68,7 @@ export async function generateStaticParams() {
     }
 }
 
-const getEvent = cache(async (slug: string) => {
+const getEvent = cache(async (slug: string, includeDrafts: boolean) => {
     const eventId = getEventIdFromSlug(slug);
     if (!eventId) return null;
 
@@ -72,6 +80,7 @@ const getEvent = cache(async (slug: string) => {
            },
     });
 
+    if (!includeDrafts && !event?.isPublished) return null;
     return event;
 });
 
@@ -82,6 +91,7 @@ function getPreviewImageUrls(event: { imageUrl: string | null; media?: { url: st
 async function getSameDayEvents(date: string, currentEventId: number) {
     const events = await prisma.event.findMany({
         where: {
+            isPublished: true,
             date: date,
             id: { not: currentEventId },
         },
@@ -115,6 +125,7 @@ async function getSimilarEvents(currentEvent: any) {
     const similarEvents = await prisma.event.findMany({
         where: {
             AND: [
+                { isPublished: true },
                 { id: { not: currentEvent.id } }, // Exclude current event
                 { date: { gte: today } },
                 {
@@ -155,7 +166,9 @@ async function getSimilarEvents(currentEvent: any) {
 
 export default async function EventDetailPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
-    const event = await getEvent(slug);
+    const session = await getServerSession(authOptions as any);
+    const isAdmin = isAdminEventSession(session);
+    const event = await getEvent(slug, isAdmin);
 
     if (!event) {
         notFound();
@@ -168,18 +181,12 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
     const eventJsonLd = getEventJsonLd(event);
     const startDate = getEventStartDate(event.date, event.time);
 
-    const [session, sameDayEvents, similarEvents] = await Promise.all([
-        getServerSession(authOptions as any),
+    const [sameDayEvents, similarEvents] = await Promise.all([
         getSameDayEvents(event.date, event.id),
         getSimilarEvents(event),
     ]);
     const sessionUser = (session as any)?.user as any;
     const sessionUserId = parseInt((sessionUser?.id || '').toString(), 10);
-    const sessionEmail = (sessionUser?.email || '').toLowerCase();
-    const isAdmin =
-        sessionUser?.role === 'admin' ||
-        sessionUser?.type === 'admin' ||
-        sessionEmail === 'andreacazzola90@gmail.com';
 
     const canEdit =
         isAdmin ||
@@ -195,7 +202,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                         <div className="event-image-sticky">
                             {event.imageUrl && (
                                 <div className="relative group event-image-container">
-                                    <FavoriteButton eventId={event.id} />
+                                    {event.isPublished && <FavoriteButton eventId={event.id} />}
                                     <Image
                                         src={event.imageUrl}
                                         alt={event.title}

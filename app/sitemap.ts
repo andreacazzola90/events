@@ -34,6 +34,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (remaining > 0) {
     try {
       const events = await prisma.event.findMany({
+        where: { isPublished: true },
         select: { id: true, title: true, updatedAt: true },
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         take: remaining + 1,

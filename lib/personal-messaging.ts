@@ -110,7 +110,9 @@ export function publicMessagingStatus(result: Record<string, unknown>, platform:
     });
   };
   const qr = typeof result.qr === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.qr) && result.qr.length < 65536 && typeof result.qrExpiresAt === 'number' && result.qrExpiresAt > Date.now() && result.qrExpiresAt <= Date.now() + 60000 ? result.qr : undefined;
-  return { platform, status: String(result.status), sources: sources(result.sources, 50),
+  return { platform, status: String(result.status), connectionVerified: result.connectionVerified === true, sources: sources(result.sources, 50),
+    authorizedSourceId: typeof result.authorizedSourceId === 'string' && result.sources.some(item =>
+      item?.id === result.authorizedSourceId && item.active === true) ? result.authorizedSourceId : undefined,
     listing: platform === 'whatsapp' ? 'unsupported' : 'joined-groups-and-administered-public',
     availableSources: result.availableSources === undefined ? undefined : sources(result.availableSources, 600),
     availableSourcesTruncated: result.availableSourcesTruncated === true,

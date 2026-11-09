@@ -7,7 +7,7 @@ import ServiceScanControls from './ServiceScanControls';
 
 type Source = { id: string; title: string; kind: string; reference?: string; active?: boolean; consentedAt?: string; groupType?: string };
 type ScanState = { sourceId: string; active: boolean; backlog: number; lastScannedAt?: string; lastError?: string; messagesSeen: number; messagesDiscarded: number };
-type Account = { platform: Platform; status: string; error?: string; qr?: string; qrExpiresAt?: number; expiresAt?: number; remoteRemoved?: boolean; listing: string; sources: Source[]; availableSources?: Source[]; availableSourcesTruncated?: boolean; scanning?: ScanState[] };
+type Account = { platform: Platform; status: string; connectionVerified?: boolean; error?: string; qr?: string; qrExpiresAt?: number; expiresAt?: number; remoteRemoved?: boolean; listing: string; sources: Source[]; availableSources?: Source[]; availableSourcesTruncated?: boolean; scanning?: ScanState[] };
 const labels: Record<string, string> = { disconnected: 'Non collegato', connecting: 'Collegamento in corso', code: 'Codice richiesto', password: 'Verifica 2FA richiesta', qr: 'Scansione QR richiesta', connected: 'Collegato', restoring: 'Ripristino in corso', expired: 'Accesso scaduto' };
 const errors: Record<string, string> = {
   worker_unavailable: 'Servizio non disponibile. Configurare o riattivare il worker personale.',
@@ -91,7 +91,10 @@ export function PlatformAccount({ platform }: { platform: Platform }) {
       }
       if (alive.current && current === version.current) {
         accept(result);
-        if (action === 'status' && result.status === 'connected') setVerified(true);
+        if (action === 'status' && result.status === 'connected') {
+          setVerified(result.connectionVerified === true);
+          if (!result.connectionVerified) setError('Connessione non verificata: servizio occupato. Riprova dopo la scansione.');
+        }
         if (result.availableSources) setAvailable(result.availableSources);
         if (action === 'authorize') { setSource(''); setConsent(false); }
         if (action === 'disconnect' || action === 'start') { setAvailable([]); setConsent(false); setSource(''); }

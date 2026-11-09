@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth/next';
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
+import ServiceNavigation from './ServiceNavigation';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 import { prisma } from '../../lib/prisma';
 
@@ -16,12 +16,7 @@ export default async function ServicesLayout({ children }: { children: React.Rea
   return <main className="min-h-screen p-4 pt-24 sm:p-8 sm:pt-28 cron-page">
     <div className="max-w-5xl mx-auto space-y-6">
       <h1 className="text-3xl font-semibold">Servizi di scraping</h1>
-      <nav aria-label="Servizi di scraping" className="flex flex-wrap gap-4">
-        <Link href="/admin/servizi/telegram">Telegram</Link>
-        <Link href="/admin/servizi/whatsapp">WhatsApp</Link>
-        <Link href="/admin/servizi/instagram">Instagram</Link>
-        <Link href="/admin">Amministrazione</Link><Link href="/cron">Cron</Link>
-      </nav>
+      <ServiceNavigation />
       {children}
     </div>
   </main>;

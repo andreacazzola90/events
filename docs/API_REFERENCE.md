@@ -323,12 +323,12 @@ Example 200 response (shape):
 - Supports JSON updates or multipart updates with a cropped `coverImage` (JPEG/PNG/WebP, maximum 4 MiB) and optional `originalImage` source (JPEG/PNG/WebP/GIF, maximum 10 MiB). Crop coordinates are supplied in `originalImageCrop`, normalized to the source dimensions. The previous `imageUrl` remains unchanged if no new cover is uploaded.
 
 ### PATCH /api/events/[id]
-- Requires an admin session. Accepts `{ "isPublished": true|false }` and returns the event ID, title and publication state.
-- Invalid IDs/body return 400, missing events 404, anonymous/nonadmin requests 401/403. Publication updates invalidate event-list, page and sitemap caches.
+- Requires an admin session. Accepts `{ "isPublished": true|false }` and returns the event ID, title, publication state and `cacheInvalidated`.
+- Invalid IDs/body return 400, missing events 404, anonymous/nonadmin requests 401/403. Publication updates invalidate event-list, page and sitemap caches; if cache invalidation fails after the database update, the committed state is returned with `cacheInvalidated: false`.
 
 ### DELETE /api/events/[id]
 - Requires an admin session. Permanently deletes the event and its favorite rows in one database transaction. Dependent media/calendar/publication records follow their database relations.
-- After commit, removes event-owned media, cover and original-image objects from the `events` storage bucket; objects still referenced by another event are retained. A storage cleanup failure returns 500 with `deleted: true` and `cleanupFailures`; the event remains deleted and failed paths require cleanup. A database failure returns 500 without reporting success.
+- After commit, removes event-owned media, cover and original-image objects from the `events` storage bucket; objects still referenced by another event are retained. A storage cleanup or cache invalidation failure returns 500 with `deleted: true`; storage failures include `cleanupFailures`, and cache status is in `cacheInvalidated`. The event remains deleted and failed cleanup paths require cleanup. A database failure returns 500 without reporting success.
 - Invalid IDs return 400 and missing events return 404.
 
 ### POST /api/events/[id]/media
@@ -361,7 +361,7 @@ curl -X PUT "http://localhost:3000/api/events/120" \
 
 ### GET /api/events/[id]
 - File: [app/api/events/[id]/route.ts](../app/api/events/[id]/route.ts)
-- Purpose: fetch a published event by numeric id, including ordered media attachments. Drafts are returned only to an admin; other readers receive 404 even when they know the URL.
+- Purpose: fetch a published event by numeric id, including ordered media attachments. Drafts are returned only to an admin or their creator; other readers receive 404 even when they know the URL.
 
 Example request:
 

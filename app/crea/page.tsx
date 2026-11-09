@@ -311,13 +311,14 @@ export default function CreaEvento() {
 
         // Converti in array se è un singolo evento
         const newEvents = Array.isArray(newEventsOrSingle) ? newEventsOrSingle : [newEventsOrSingle];
-        setOriginalImageUrl(newImageUrl || null);
+        const sourceImageUrl = newEvents[0]?.originalImageUrl || (crop ? newImageUrl : undefined);
+        setOriginalImageUrl(sourceImageUrl || null);
 
         // Normalizza e aggiungi imageUrl
         let eventsWithImage = newEvents.map(ev => normalizeEventFields({
             ...ev,
             imageUrl: crop ? newImageUrl : ev.imageUrl || newImageUrl,
-            originalImageUrl: newImageUrl || undefined,
+            originalImageUrl: ev.originalImageUrl || sourceImageUrl,
         }));
         const eventIdentities = new Set<string>();
         eventsWithImage = eventsWithImage.filter(event => {
@@ -373,7 +374,7 @@ export default function CreaEvento() {
                 if (cropId !== imageCropId.current) return;
                 const croppedUrl = blob ? URL.createObjectURL(blob) : undefined;
                 setEvents(current => current.map(event => event.imageUrl === newImageUrl
-                    ? { ...event, imageUrl: croppedUrl, originalImageUrl: newImageUrl, originalImageCrop: blob ? crop.box : undefined }
+                    ? { ...event, imageUrl: croppedUrl, originalImageUrl: event.originalImageUrl || newImageUrl, originalImageCrop: blob ? crop.box : undefined }
                     : event));
                 setImageUrl(croppedUrl || null);
                 pendingImageCrop.current = undefined;
@@ -435,6 +436,13 @@ export default function CreaEvento() {
                         const formData = new FormData();
                         formData.append('eventData', JSON.stringify(eventData));
                         formData.append('image', blob, `event-image.${blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
+                        const originalSource = draft.originalImageUrl;
+                        if (originalSource && /^(blob:|data:image\/)/.test(originalSource)) {
+                            const originalBlob = await (await fetch(originalSource)).blob();
+                            if (!originalBlob.type.startsWith('image/')) throw new Error('Immagine originale non valida.');
+                            const originalExtension = originalBlob.type === 'image/png' ? 'png' : originalBlob.type === 'image/webp' ? 'webp' : 'jpg';
+                            formData.append('originalImage', originalBlob, `original-event-image.${originalExtension}`);
+                        }
                         await appendPosterImage(formData, draft.posterImageUrl, eventData.imageUrl);
 
                         const saveResponse = await fetch('/api/events', {
@@ -650,17 +658,6 @@ export default function CreaEvento() {
             const msg = 'Inserisci un link valido';
             setError(msg);
             toast.error(msg);
-            return;
-        }
-
-        // Check if it's a Facebook URL (including short links)
-        const isFacebookUrl = linkUrl.includes('facebook.com') ||
-            linkUrl.includes('fb.me') ||
-            linkUrl.includes('fb.com') ||
-            linkUrl.includes('m.facebook.com');
-
-        if (isFacebookUrl) {
-            alert('Gli eventi di Facebook non possono essere scansionati, prova a fare uno screenshot');
             return;
         }
 

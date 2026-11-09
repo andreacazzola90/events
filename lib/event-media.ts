@@ -1,4 +1,5 @@
 export const MAX_EVENT_MEDIA_BYTES = 4 * 1024 * 1024;
+export const MAX_ORIGINAL_EVENT_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_EVENT_MEDIA_REQUEST_BYTES = MAX_EVENT_MEDIA_BYTES + 64 * 1024;
 export const MAX_EVENT_ATTACHMENTS = 10;
 export const MAX_COVER_WIDTH = 1920;
@@ -30,14 +31,15 @@ export function validateEventMediaFile(
   mimeType: string,
   signature: Uint8Array,
   size = signature.byteLength,
+  maxBytes = MAX_EVENT_MEDIA_BYTES,
 ): EventMediaValidation {
   const extension = filename.split(".").pop()?.toLowerCase() || "";
   const fileType = EXTENSION_TYPES[extension];
   if (!fileType || fileType.mimeType !== mimeType.toLowerCase()) {
     return { ok: false, error: "Tipo file non supportato" };
   }
-  if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_EVENT_MEDIA_BYTES) {
-    return { ok: false, error: "Ogni file deve pesare al massimo 4 MiB" };
+  if (!Number.isSafeInteger(size) || size <= 0 || size > maxBytes) {
+    return { ok: false, error: `Ogni file deve pesare al massimo ${Math.floor(maxBytes / (1024 * 1024))} MiB` };
   }
 
   const isJpeg = signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff;

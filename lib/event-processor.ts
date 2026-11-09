@@ -13,6 +13,8 @@ import { completeMissingEventFields, verifyScannedEvents, SCAN_AGENT_VERSION } f
 import type { ScanAgentCompletion, ScanAgentReport } from './event-scan-agents';
 import { validatePublicScanUrl } from './pdf-url';
 import { withGroqRateLimit } from './groq-rate-limit';
+import { htmlToEventText } from './http-scraper';
+import { FACEBOOK_EVENT_UNAVAILABLE, hasFacebookEventDetails, isFacebookEventSource, normalizeFacebookEventUrl } from './facebook-event';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -95,15 +97,8 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
 
     logger.log('Processing URL:', url);
 
-    // Check if it's a Facebook URL and reject it
-    const isFacebookUrl = url.includes('facebook.com') || 
-                         url.includes('fb.me') || 
-                         url.includes('fb.com') ||
-                         url.includes('m.facebook.com');
-
-    if (isFacebookUrl) {
-        throw new Error('Gli eventi di Facebook non possono essere scansionati, prova a fare uno screenshot');
-    }
+    url = normalizeFacebookEventUrl(url);
+    let isFacebookUrl = isFacebookEventSource(url);
 
     // Verifica che GROQ_API_SECRET_KEY sia configurata
     if (!process.env.GROQ_API_SECRET_KEY) {
@@ -264,6 +259,7 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                     throw new Error(`Failed to navigate to ${url} after ${maxRetries} attempts. Last error: ${lastError}`);
                 }
 
+                isFacebookUrl ||= isFacebookEventSource(page.url());
                 logger.log('Extracting page text...');
                 try {
                     pageText = await page.evaluate(() => {
@@ -460,7 +456,7 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                             return text;
                         };
                         const axText = flattenAxNode(axSnapshot);
-                        if (axText.trim().length > pageText.trim().length) {
+                        if (!isFacebookUrl && axText.trim().length > pageText.trim().length) {
                             logger.log(`📄 Using accessibility-tree text instead (${axText.length} vs ${pageText.length} chars)`);
                             pageText = axText;
                         }
@@ -475,6 +471,11 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                         logger.error('Could not extract even title:', titleError);
                         pageText = 'Unable to extract page content';
                     }
+                }
+
+                if (isFacebookUrl) {
+                    pageText = htmlToEventText(await page.content());
+                    if (!hasFacebookEventDetails(pageText)) throw new Error(FACEBOOK_EVENT_UNAVAILABLE);
                 }
             
                 logger.log('Looking for images...');
@@ -549,11 +550,14 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
         );
         const fallback = await httpResult;
         const fallbackLength = fallback?.pageText.trim().length || 0;
-        if (fallback && (fallbackLength >= MIN_HTTP_TEXT_LENGTH || (browserUnavailable && fallbackLength > 0))) {
+        if (fallback && (!isFacebookUrl || hasFacebookEventDetails(fallback.pageText)) &&
+            (fallbackLength >= MIN_HTTP_TEXT_LENGTH || (browserUnavailable && fallbackLength > 0) || isFacebookUrl)) {
             logger.log('🔄 Using HTTP scraping result instead of the browser');
             pageText = fallback.pageText;
             finalImageUrl = fallback.finalImageUrl;
             pageScreenshotForOcr = null;
+        } else if (isFacebookUrl) {
+            throw new Error(FACEBOOK_EVENT_UNAVAILABLE);
         } else if (browserError instanceof Error && browserError.message.includes('timed out')) {
             throw new Error('La richiesta ha impiegato troppo tempo. Riprova più tardi.');
         } else if (browserUnavailable) {

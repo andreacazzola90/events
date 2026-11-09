@@ -492,6 +492,8 @@ Example 200 response (shape):
 - File: [app/api/process-link/route.ts](../app/api/process-link/route.ts)
 - Purpose: scrape URL and extract event data
 - Delegates to [lib/event-processor.ts](../lib/event-processor.ts)
+- Accepts public Facebook event URLs, including mobile URLs and tracking parameters such as `acontext`. Direct event links are normalized to `https://www.facebook.com/events/<id>/`.
+- Facebook extraction reads public metadata, structured event data and page text, without logging in. When event details are unavailable (login required, private/deleted event or access restrictions), the API returns HTTP 400 with a message suggesting a screenshot instead; it does not extract events from a generic login page.
 
 Example request:
 

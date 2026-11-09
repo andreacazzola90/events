@@ -5,6 +5,39 @@ const describeByTitle = (title: string, suite: () => void) => {
   (grep && !new RegExp(grep).test(title) ? describe.skip : describe)(title, suite);
 };
 
+describeByTitle('Facebook Event URL Scanning', () => {
+  beforeEach(() => {
+    cy.visit('/crea', {
+      failOnStatusCode: false,
+      onBeforeLoad(window) {
+        window.localStorage.setItem('eventscanner:autopublish', '0');
+      },
+    });
+    cy.wait(2000);
+  });
+
+  it('submits a Facebook event URL with tracking parameters without blocking it', () => {
+    const url = 'https://www.facebook.com/events/1354941083239823/?acontext=%7B%22ref_notif_type%22%3Anull%7D';
+    const alert = cy.stub();
+    cy.on('window:alert', alert);
+    cy.intercept('POST', '/api/process-link', { statusCode: 200, body: { events: [] } }).as('facebookLink');
+    cy.get('input[type="url"]').clear().type(url, { parseSpecialCharSequences: false });
+    cy.contains('button', 'Estrai evento').click();
+    cy.wait('@facebookLink').its('request.body.url').should('equal', url);
+    cy.then(() => expect(alert).not.to.have.been.called);
+  });
+
+  it('shows the screenshot alternative when Facebook requires login', () => {
+    const error = 'Facebook non rende disponibili i dettagli di questo evento senza accesso. Verifica che sia pubblico oppure carica uno screenshot.';
+    cy.intercept('POST', '/api/process-link', { statusCode: 400, body: { error } }).as('facebookRestricted');
+    cy.get('input[type="url"]').clear().type('https://www.facebook.com/events/1354941083239823/');
+    cy.contains('button', 'Estrai evento').click();
+    cy.wait('@facebookRestricted');
+    cy.contains(error).should('be.visible');
+    cy.contains('button', 'Estrai evento').should('not.be.disabled');
+  });
+});
+
 describeByTitle('Event Creation via Link - AI Testing', () => {
   beforeEach(() => {
     cy.visit('/crea', {

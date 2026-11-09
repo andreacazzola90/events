@@ -37,6 +37,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
         if (crop) scan?.registerCrop(crop);
         let cancelled = false;
         let handedOff = false;
+        let originalImageUrl: string | undefined;
         const controller = new AbortController();
         cancelRequest.current = () => {
             cancelled = true;
@@ -102,12 +103,14 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
                         ? `Nessun candidato completato (${counts.failed || 0} non riusciti, ${counts.pending || 0} in attesa). Riprova con il documento o un URL sorgente.`
                         : 'Nessun evento trovato nella fonte selezionata.');
                 }
+                if (!isPdf) originalImageUrl = URL.createObjectURL(file);
                 console.log(`[ImageUploader] ✅ Ricevuti ${data.events.length} eventi`);
-                onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug, crop);
+                onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl })), imageUrl, data.debug, crop);
             } else {
                 // Fallback for old structure or single event
+                if (!isPdf) originalImageUrl = URL.createObjectURL(file);
                 console.log('[ImageUploader] ✅ Ricevuto evento singolo/vecchio formato');
-                onProcessed({ ...data, imageUrl: undefined, originalImageUrl: undefined }, imageUrl, data.debug, crop);
+                onProcessed({ ...data, imageUrl: undefined, originalImageUrl }, imageUrl, data.debug, crop);
             }
             handedOff = true;
         } catch (error) {
@@ -141,6 +144,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
             onError(errorMessage);
         } finally {
             if (!handedOff) crop?.cancel();
+            if (!handedOff && originalImageUrl) URL.revokeObjectURL(originalImageUrl);
             if (!cancelled) {
                 setIsProcessing(false);
                 setShowSourcePicker(false);

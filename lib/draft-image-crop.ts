@@ -20,7 +20,6 @@ export type DraftImageScan = { isCurrent: () => boolean; registerCrop: (crop: Dr
 export function prepareDraftForPublication<Event extends { originalImageUrl?: string; originalImageCrop?: DraftImageCropBox; posterImageUrl?: string }>(event: Event): Event {
   const publishable = { ...event };
   delete publishable.originalImageUrl;
-  delete publishable.originalImageCrop;
   delete publishable.posterImageUrl;
   return publishable;
 }

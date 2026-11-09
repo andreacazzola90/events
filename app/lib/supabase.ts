@@ -146,6 +146,23 @@ export async function uploadEventMediaToSupabase(file: File, eventId: number, op
   return { storagePath, url: data.publicUrl };
 }
 
+export async function uploadOriginalEventImageToSupabase(file: File) {
+  const safeName = file.name
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(-120) || "original-image";
+  const storagePath = `originals/${randomUUID()}-${safeName}`;
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { error } = await getSupabaseClient().storage.from("events").upload(storagePath, bytes, {
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = getSupabaseClient().storage.from("events").getPublicUrl(storagePath);
+  return { storagePath, url: data.publicUrl };
+}
+
 export async function deleteEventMediaFromSupabase(storagePath: string, options: { signal?: AbortSignal } = {}) {
   options.signal?.throwIfAborted();
   const client = options.signal ? createSupabaseClient(options.signal) : getSupabaseClient();

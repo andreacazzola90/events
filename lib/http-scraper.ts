@@ -1,5 +1,6 @@
 import { extractEventImageFromHtml } from './event-image';
 import { fetchCoverResource } from './event-cover-network';
+import { FACEBOOK_EVENT_UNAVAILABLE, hasFacebookEventDetails, isFacebookEventSource } from './facebook-event';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 
@@ -18,6 +19,9 @@ export async function httpScraper(url: string): Promise<{ pageText: string; fina
       });
       const html = resource.bytes.toString('utf8');
       const textContent = htmlToEventText(html);
+      if ((isFacebookEventSource(url) || isFacebookEventSource(resource.url)) && !hasFacebookEventDetails(textContent)) {
+        throw new Error(FACEBOOK_EVENT_UNAVAILABLE);
+      }
       const imageUrl = extractEventImageFromHtml(html, resource.url);
 
       console.log('✅ HTTP fallback scraping successful');

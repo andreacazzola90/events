@@ -1,7 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scheduleCalendarDeliveries } from "../../lib/google-calendar";
-import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase, uploadImageToSupabase } from "../../lib/supabase";
+import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase, uploadImageToSupabase, uploadOriginalEventImageToSupabase } from "../../lib/supabase";
 import { geocodeLocation } from "@/lib/geocoding";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth/next";
@@ -17,7 +17,8 @@ import {
 import type { DbEvent } from "../../types/event";
 import { recordScanCorrections } from "../../../lib/scan-learning-store";
 import { createEventWithSeries } from "../../../lib/event-series-create";
-import { validateEventMediaFile } from "../../../lib/event-media";
+import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, validateEventMediaFile } from "../../../lib/event-media";
+import { isCoverImageCrop } from "../../../lib/cover-image-crop";
 
 /** Stores the full poster as the event's first gallery image; failures never undo the event. */
 async function attachPosterImage(eventId: number, poster: File) {
@@ -67,11 +68,15 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let uploadedOriginalPath: string | null = null;
   try {
     let eventData: any = null;
     let imageFile: File | null = null;
+    let originalImageFile: File | null = null;
     let posterFile: File | null = null;
     let imageUrl: string | undefined = undefined;
+    let originalImageUrl: string | undefined = undefined;
+    let originalImageCrop: { x: number; y: number; width: number; height: number } | null = null;
 
     const contentType = request.headers.get("content-type") || "";
     console.log(
@@ -84,11 +89,16 @@ export async function POST(request: NextRequest) {
     if (contentType.includes("application/json")) {
       // Handle JSON body
       eventData = await request.json();
+      if (eventData.originalImageCrop != null && !isCoverImageCrop(eventData.originalImageCrop)) {
+        return withExtensionCors(NextResponse.json({ error: "Coordinate di ritaglio non valide" }, { status: 400 }), request);
+      }
+      originalImageCrop = isCoverImageCrop(eventData.originalImageCrop) ? eventData.originalImageCrop : null;
       console.log(
         "[API /events POST] JSON body received:",
         JSON.stringify(eventData, null, 2),
       );
       imageUrl = eventData.imageUrl;
+      originalImageUrl = imageUrl;
 
       // Se c'è un URL di immagine esterno, scaricalo e caricalo su Supabase
       if (imageUrl && !imageUrl.includes("supabase.co")) {
@@ -105,6 +115,7 @@ export async function POST(request: NextRequest) {
             "[API /events POST] Uploading external image to Supabase...",
           );
           imageUrl = await uploadImageToSupabase(imageBuffer, "events");
+          originalImageUrl = imageUrl;
           console.log(
             "[API /events POST] External image uploaded to Supabase:",
             imageUrl,
@@ -121,16 +132,47 @@ export async function POST(request: NextRequest) {
       // Handle multipart/form-data
       const formData = await request.formData();
       eventData = JSON.parse(formData.get("eventData") as string);
+      if (eventData.originalImageCrop != null && !isCoverImageCrop(eventData.originalImageCrop)) {
+        return withExtensionCors(NextResponse.json({ error: "Coordinate di ritaglio non valide" }, { status: 400 }), request);
+      }
+      originalImageCrop = isCoverImageCrop(eventData.originalImageCrop) ? eventData.originalImageCrop : null;
       imageFile = formData.get("image") as File | null;
+      const original = formData.get("originalImage");
+      originalImageFile = original instanceof File && original.size > 0 ? original : null;
       const poster = formData.get("posterImage");
       posterFile = poster instanceof File && poster.size > 0 ? poster : null;
       imageUrl = eventData.imageUrl;
+
+      if (originalImageFile) {
+        const bytes = new Uint8Array(await originalImageFile.arrayBuffer());
+        const validation = validateEventMediaFile(
+          originalImageFile.name,
+          originalImageFile.type,
+          bytes,
+          originalImageFile.size,
+          MAX_ORIGINAL_EVENT_IMAGE_BYTES,
+        );
+        if (!validation.ok || validation.kind !== "image") {
+          return withExtensionCors(
+            NextResponse.json({ error: validation.ok ? "La sorgente deve essere un’immagine" : validation.error }, { status: 400 }),
+            request,
+          );
+        }
+      }
+      if (originalImageFile) {
+        const uploaded = await uploadOriginalEventImageToSupabase(originalImageFile);
+        uploadedOriginalPath = uploaded.storagePath;
+        originalImageUrl = uploaded.url;
+      } else {
+        originalImageUrl = imageUrl;
+      }
 
       // Upload image to Supabase if provided
       if (imageFile) {
         console.log("[API /events POST] Uploading image to Supabase...");
         imageUrl = await uploadImageToSupabase(imageFile, "events");
         console.log("[API /events POST] Image uploaded to Supabase:", imageUrl);
+        if (!originalImageFile) originalImageUrl = imageUrl;
       }
     } else {
       return withExtensionCors(
@@ -158,6 +200,11 @@ export async function POST(request: NextRequest) {
       price: eventData.price || "",
       rawText: typeof eventData.rawText === "string" ? eventData.rawText : "",
       imageUrl: imageUrl || null,
+      originalImageUrl: originalImageUrl || imageUrl || null,
+      originalImageCropX: originalImageCrop?.x ?? null,
+      originalImageCropY: originalImageCrop?.y ?? null,
+      originalImageCropWidth: originalImageCrop?.width ?? null,
+      originalImageCropHeight: originalImageCrop?.height ?? null,
       sourceUrl: eventData.sourceUrl || null,
       origin: "user",
     };
@@ -177,6 +224,10 @@ export async function POST(request: NextRequest) {
 
     const duplicate = await findDuplicateEvent(eventDataToSave);
     if (duplicate) {
+      if (uploadedOriginalPath) {
+        await deleteEventMediaFromSupabase(uploadedOriginalPath);
+        uploadedOriginalPath = null;
+      }
       console.log(
         "[API /events POST] Duplicate event detected, skipping create. Existing ID:",
         duplicate.id,
@@ -201,6 +252,7 @@ export async function POST(request: NextRequest) {
     );
 
     const { event, seriesSlug } = await createEventWithSeries(eventDataToSave, eventData.seriesTitle);
+    uploadedOriginalPath = null;
     scheduleCalendarDeliveries();
 
     console.log("[API /events POST] Event saved successfully, ID:", event.id);
@@ -262,6 +314,11 @@ export async function POST(request: NextRequest) {
         try {
           await task();
         } catch (error) {
+          if (uploadedOriginalPath) {
+            await deleteEventMediaFromSupabase(uploadedOriginalPath).catch(cleanupError => {
+              console.error("[API /events POST] Original image cleanup failed:", cleanupError);
+            });
+          }
           console.warn("[API /events POST] Event saved; background task unavailable:", error);
         }
       }));

@@ -18,10 +18,11 @@ import {
 } from "../../../../lib/slug-utils";
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from "../../../../lib/event-media";
 import type { DbEvent } from "../../../types/event";
+import type { DraftImageCropBox } from "../../../../lib/draft-image-crop";
 
 type Event = DbEvent;
 type EventMediaRecord = { id: number; kind: "image" | "pdf"; fileName: string; mimeType: string; sizeBytes: number; url: string; position: number };
-type EditableEvent = Event & { media: EventMediaRecord[] };
+type EditableEvent = Event & { media: EventMediaRecord[]; originalImageCrop?: DraftImageCropBox | null };
 
 async function cropCoverToFile(imageSource: string, area: Area) {
   const image = new window.Image();
@@ -79,8 +80,12 @@ export default function EditEventPage() {
   const [saving, setSaving] = useState(false);
   const [newImage, setNewImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [originalImagePreview, setOriginalImagePreview] = useState<string | null>(null);
+  const [originalImageFile, setOriginalImageFile] = useState<File | null>(null);
+  const [originalImageCrop, setOriginalImageCrop] = useState<DraftImageCropBox | null>(null);
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [cropSelection, setCropSelection] = useState<DraftImageCropBox | null>(null);
   const [pendingMedia, setPendingMedia] = useState<File[]>([]);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [pendingMediaPreviews, setPendingMediaPreviews] = useState<(string | null)[]>([]);
@@ -99,9 +104,9 @@ export default function EditEventPage() {
   }, [imagePreview]);
 
   useEffect(() => {
-    if (!cropSource?.startsWith("blob:")) return;
-    return () => URL.revokeObjectURL(cropSource);
-  }, [cropSource]);
+    if (!originalImagePreview?.startsWith("blob:")) return;
+    return () => URL.revokeObjectURL(originalImagePreview);
+  }, [originalImagePreview]);
 
   const fetchEvent = async (eventId: number) => {
     try {
@@ -110,6 +115,13 @@ export default function EditEventPage() {
         const data = await response.json();
         // Convert date to input format if needed
         data.date = toInputDateFormat(data.date);
+        const cropValues = [data.originalImageCropX, data.originalImageCropY, data.originalImageCropWidth, data.originalImageCropHeight];
+        const crop = cropValues.every(value => typeof value === "number" && Number.isFinite(value))
+          ? { x: cropValues[0], y: cropValues[1], width: cropValues[2], height: cropValues[3] }
+          : null;
+        data.originalImageCrop = crop;
+        setOriginalImagePreview(data.originalImageUrl || null);
+        setOriginalImageCrop(crop);
         setEvent({ ...data, media: Array.isArray(data.media) ? data.media : [] });
       } else {
         setError("Evento non trovato");
@@ -155,7 +167,13 @@ export default function EditEventPage() {
     }
     setMediaError(null);
     setCroppedAreaPixels(null);
-    setCropSource(URL.createObjectURL(file));
+    const source = URL.createObjectURL(file);
+    setOriginalImageFile(file);
+    setOriginalImagePreview(source);
+    setOriginalImageCrop(null);
+    setCropSelection(null);
+    setEvent(current => current ? { ...current, originalImageCrop: null } : current);
+    setCropSource(source);
     e.target.value = "";
   };
 
@@ -186,6 +204,8 @@ export default function EditEventPage() {
       const croppedFile = await cropCoverToFile(cropSource, croppedAreaPixels);
       setNewImage(croppedFile);
       setImagePreview(URL.createObjectURL(croppedFile));
+      setOriginalImageCrop(cropSelection);
+      setEvent(current => current ? { ...current, originalImageCrop: cropSelection } : current);
       setCropSource(null);
       setMediaError(null);
     } catch {
@@ -194,10 +214,11 @@ export default function EditEventPage() {
   };
 
   const handleOpenCropper = () => {
-    const source = imagePreview || event?.imageUrl;
+    const source = originalImagePreview || event?.originalImageUrl || imagePreview || event?.imageUrl;
     if (!source) return;
     setCropSource(source);
     setCroppedAreaPixels(null);
+    setCropSelection(null);
   };
 
   const handleRemoveMedia = async (mediaId: number) => {
@@ -219,12 +240,13 @@ export default function EditEventPage() {
     setSaving(true);
     setMediaError(null);
     try {
-      const eventToSave = { ...event, date: toDisplayDateFormat(event.date) };
+      const eventToSave = { ...event, date: toDisplayDateFormat(event.date), originalImageCrop };
       let response: Response;
       if (newImage) {
         const formData = new FormData();
         formData.append("eventData", JSON.stringify(eventToSave));
         formData.append("coverImage", newImage);
+        if (originalImageFile) formData.append("originalImage", originalImageFile);
         response = await fetch(`/api/events/${event.id}`, {
           method: "PUT",
           body: formData,
@@ -238,9 +260,21 @@ export default function EditEventPage() {
       }
       const eventPayload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(eventPayload.error || "Errore nel salvataggio dell'evento");
-      setEvent(current => current ? { ...current, imageUrl: eventPayload.imageUrl ?? current.imageUrl } : current);
+      const savedCropValues = [eventPayload.originalImageCropX, eventPayload.originalImageCropY, eventPayload.originalImageCropWidth, eventPayload.originalImageCropHeight];
+      const savedCrop = savedCropValues.every(value => typeof value === "number" && Number.isFinite(value))
+        ? { x: savedCropValues[0], y: savedCropValues[1], width: savedCropValues[2], height: savedCropValues[3] }
+        : null;
+      setEvent(current => current ? {
+        ...current,
+        imageUrl: eventPayload.imageUrl ?? current.imageUrl,
+        originalImageUrl: eventPayload.originalImageUrl ?? current.originalImageUrl,
+        originalImageCrop: savedCrop,
+      } : current);
+      setOriginalImagePreview(eventPayload.originalImageUrl ?? originalImagePreview);
+      setOriginalImageCrop(savedCrop);
       setNewImage(null);
       setImagePreview(null);
+      setOriginalImageFile(null);
 
       const failedMedia: File[] = [];
       for (const file of pendingMedia) {
@@ -554,7 +588,16 @@ export default function EditEventPage() {
             </div>
             <EventImageCropper
               image={cropSource}
-              onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
+              initialCrop={originalImageCrop ?? undefined}
+              onCropComplete={(_, areaPixels, natural) => {
+                setCroppedAreaPixels(areaPixels);
+                setCropSelection({
+                  x: areaPixels.x / natural.width,
+                  y: areaPixels.y / natural.height,
+                  width: areaPixels.width / natural.width,
+                  height: areaPixels.height / natural.height,
+                });
+              }}
             />
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => setCropSource(null)} className="px-4 py-2 border border-gray-300 text-sm font-semibold text-gray-700">Annulla</button>

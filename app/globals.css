@@ -886,12 +886,6 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
   content: "";
 }
 
-.home-hero-image {
-  z-index: -2;
-  object-fit: cover;
-  object-position: center 42%;
-}
-
 .home-hero .editorial-container {
   position: relative;
   z-index: 1;

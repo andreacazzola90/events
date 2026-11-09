@@ -55,6 +55,7 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
             const isCurrent = () => !cancelled && (!scan || scan.isCurrent());
 
             const handleSharedData = async () => {
+                let originalImageUrl: string | undefined;
                 try {
                     if (sharedFileRequest.current?.id !== shareId) {
                         sharedFileRequest.current = {
@@ -109,9 +110,11 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
                         return;
                     }
                     if (data.events && Array.isArray(data.events)) {
-                        onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl: undefined })), imageUrl, data.debug, crop);
+                        originalImageUrl = URL.createObjectURL(file);
+                        onProcessed(data.events.map((event: EventData) => ({ ...event, imageUrl: undefined, originalImageUrl })), imageUrl, data.debug, crop);
                     } else {
-                        onProcessed({ ...data, imageUrl: undefined, originalImageUrl: undefined }, imageUrl, data.debug, crop);
+                        originalImageUrl = URL.createObjectURL(file);
+                        onProcessed({ ...data, imageUrl: undefined, originalImageUrl }, imageUrl, data.debug, crop);
                     }
                     handedOff = true;
                 } catch (err) {
@@ -123,6 +126,7 @@ export default function SharedImageHandler({ onProcessed, onStart, onError }: Sh
                     onError?.(message);
                 } finally {
                     if (!handedOff) crop?.cancel();
+                    if (!handedOff && originalImageUrl) URL.revokeObjectURL(originalImageUrl);
                 }
             };
 

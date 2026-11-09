@@ -4,8 +4,9 @@ import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import { generateUniqueSlug } from '../../../../lib/slug-utils';
 import { toIsoDate } from '../../../../lib/event-utils';
-import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase } from '../../../lib/supabase';
-import { validateEventMediaFile } from '../../../../lib/event-media';
+import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase, uploadOriginalEventImageToSupabase } from '../../../lib/supabase';
+import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, validateEventMediaFile } from '../../../../lib/event-media';
+import { isCoverImageCrop } from '../../../../lib/cover-image-crop';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 import { recordSavedEventCorrections } from '../../../../lib/scan-learning-store';
 
@@ -24,6 +25,7 @@ export async function PUT(
     { params }: { params: Promise<{ id: string }> }
 ) {
     let uploadedCoverPath: string | null = null;
+    let uploadedOriginalPath: string | null = null;
     try {
         const session: any = await getServerSession(authOptions as any);
         if (!session?.user) {
@@ -43,7 +45,12 @@ export async function PUT(
 
         const event = await prisma.event.findUnique({
             where: { id: eventId },
-            select: { id: true, createdById: true, title: true, date: true, time: true, location: true, organizer: true, category: true, price: true, rawText: true },
+            select: {
+                id: true, createdById: true, title: true, date: true, time: true, location: true, imageUrl: true,
+                organizer: true, category: true, price: true, rawText: true, originalImageUrl: true,
+                originalImageCropX: true, originalImageCropY: true,
+                originalImageCropWidth: true, originalImageCropHeight: true,
+            },
         });
 
         if (!event) {
@@ -62,6 +69,7 @@ export async function PUT(
         const contentType = request.headers.get('content-type') || '';
         let data: any = null;
         let imageFile: File | null = null;
+        let originalImageFile: File | null = null;
         let imageUrl: string | undefined = undefined;
 
         if (contentType.includes('application/json')) {
@@ -70,7 +78,12 @@ export async function PUT(
         } else if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
             data = JSON.parse(formData.get('eventData') as string);
+            if (data.originalImageCrop != null && !isCoverImageCrop(data.originalImageCrop)) {
+                return NextResponse.json({ error: 'Coordinate di ritaglio non valide' }, { status: 400 });
+            }
             imageFile = (formData.get('coverImage') || formData.get('image')) as File | null;
+            const original = formData.get('originalImage');
+            originalImageFile = original instanceof File && original.size > 0 ? original : null;
             imageUrl = data.imageUrl;
 
             if (imageFile instanceof File && imageFile.size > 0) {
@@ -82,9 +95,48 @@ export async function PUT(
                 uploadedCoverPath = uploaded.storagePath;
                 imageUrl = uploaded.url;
             }
+            if (originalImageFile) {
+                const bytes = new Uint8Array(await originalImageFile.arrayBuffer());
+                const validation = validateEventMediaFile(
+                    originalImageFile.name,
+                    originalImageFile.type,
+                    bytes,
+                    originalImageFile.size,
+                    MAX_ORIGINAL_EVENT_IMAGE_BYTES,
+                );
+                if (!validation.ok || validation.kind !== 'image') {
+                    return NextResponse.json({ error: validation.ok ? 'La sorgente deve essere un’immagine' : validation.error }, { status: 400 });
+                }
+                const uploaded = await uploadOriginalEventImageToSupabase(originalImageFile);
+                uploadedOriginalPath = uploaded.storagePath;
+                data.originalImageUrl = uploaded.url;
+            }
         } else {
             return NextResponse.json({ error: 'Unsupported Content-Type' }, { status: 400 });
         }
+
+        const cropProvided = Object.hasOwn(data, 'originalImageCrop');
+        const crop = data.originalImageCrop;
+        if (cropProvided && crop !== null && !isCoverImageCrop(crop)) {
+            return NextResponse.json({ error: 'Coordinate di ritaglio non valide' }, { status: 400 });
+        }
+        const existingCrop = event.originalImageCropX !== null && event.originalImageCropY !== null
+            && event.originalImageCropWidth !== null && event.originalImageCropHeight !== null
+            ? {
+                x: event.originalImageCropX,
+                y: event.originalImageCropY,
+                width: event.originalImageCropWidth,
+                height: event.originalImageCropHeight,
+            }
+            : null;
+        const imageCrop = cropProvided
+            ? (isCoverImageCrop(crop) ? crop : null)
+            : imageFile || originalImageFile ? null : existingCrop;
+        const originalImageUrl = originalImageFile
+            ? data.originalImageUrl
+            : imageFile && !event.originalImageUrl
+                ? (isCoverImageCrop(crop) && event.imageUrl ? event.imageUrl : imageUrl)
+                : event.originalImageUrl;
 
         if (typeof data.rawText !== 'string') {
             data.rawText = event.rawText;
@@ -106,9 +158,15 @@ export async function PUT(
                 price: data.price,
                 rawText: data.rawText,
                 imageUrl: imageUrl,
+                originalImageUrl,
+                originalImageCropX: imageCrop?.x ?? null,
+                originalImageCropY: imageCrop?.y ?? null,
+                originalImageCropWidth: imageCrop?.width ?? null,
+                originalImageCropHeight: imageCrop?.height ?? null,
             },
         });
         uploadedCoverPath = null;
+        uploadedOriginalPath = null;
 
         try {
             await recordSavedEventCorrections(data.scanFeedbackToken, event, updated, userId);
@@ -122,11 +180,10 @@ export async function PUT(
 
         return NextResponse.json(updated);
     } catch (error) {
-        if (uploadedCoverPath) {
-            await deleteEventMediaFromSupabase(uploadedCoverPath).catch(() => {
-                console.error('[API /events/[id] PUT] Cleanup cover fallito');
-            });
-        }
+        const paths = [uploadedCoverPath, uploadedOriginalPath].filter((path): path is string => !!path);
+        await Promise.all(paths.map(path => deleteEventMediaFromSupabase(path).catch(cleanupError => {
+            console.error('[API /events/[id] PUT] Cleanup immagine fallito:', cleanupError);
+        })));
         console.error('Error updating event:', error);
         return NextResponse.json({ error: 'Failed to update event' }, { status: 500 });
     }
@@ -153,6 +210,19 @@ export async function GET(
             return NextResponse.json({ error: 'Event not found' }, { status: 404 });
         }
 
+        const session: any = await getServerSession(authOptions as any);
+        const userId = parseInt((session?.user as any)?.id as string, 10);
+        const canViewOriginal = isAdminSession(session) || (!Number.isNaN(userId) && event.createdById === userId);
+        if (!canViewOriginal) {
+            return NextResponse.json({
+                ...event,
+                originalImageUrl: null,
+                originalImageCropX: null,
+                originalImageCropY: null,
+                originalImageCropWidth: null,
+                originalImageCropHeight: null,
+            });
+        }
         return NextResponse.json(event);
     } catch (error) {
         console.error('Error fetching event:', error);

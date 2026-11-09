@@ -1,5 +1,4 @@
 import EventList from "./components/EventList";
-import Image from "next/image";
 import Link from "next/link";
 import { getPublicEventList } from "../lib/public-event-list";
 import { publicPageMetadata } from "../lib/seo-metadata";
@@ -16,20 +15,9 @@ export const revalidate = 60;
 export default async function Home() {
   const initialToday = calendarToday();
   const initialEvents = await getPublicEventList("today", initialToday);
-  const heroImageUrl = initialEvents?.[0]?.imageUrl;
   return (
     <main className="min-h-screen">
       <section className="home-hero">
-        {heroImageUrl && (
-          <Image
-            src={heroImageUrl}
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="home-hero-image"
-          />
-        )}
         <div className="editorial-container">
           <div className="home-hero-top">
             <span className="section-kicker">EventScanner / Alto Vicentino</span>

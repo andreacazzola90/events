@@ -21,6 +21,11 @@ model Event {
   price       String
   rawText     String
   imageUrl    String?
+  originalImageUrl String?
+  originalImageCropX Float?
+  originalImageCropY Float?
+  originalImageCropWidth Float?
+  originalImageCropHeight Float?
   sourceUrl   String?
   externalId  String?
   origin      String     @default("user")

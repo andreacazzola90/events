@@ -2,7 +2,7 @@
 title: 'Admin Event Moderation'
 type: 'feature'
 created: '2026-11-09'
-status: 'in-review'
+status: 'done'
 baseline_commit: '67dfcef361aba1405bcffdcefed1285cac1d3cfc'
 context:
   - '{project-root}/docs/API_REFERENCE.md'
@@ -82,11 +82,14 @@ context:
 
 **Authorization and deletion**
 
-- Le azioni admin concentrano autenticazione, transazione, pulizia storage e invalidazione cache.
-  [`route.ts:237`](../../app/api/events/%5Bid%5D/route.ts#L237)
+- La PATCH admin è il punto d’ingresso per validazione, cambio stato e invalidazione cache.
+  [`route.ts:255`](../../app/api/events/%5Bid%5D/route.ts#L255)
 
-- La cancellazione rimuove prima i riferimenti e segnala esplicitamente le pulizie parziali.
-  [`route.ts:282`](../../app/api/events/%5Bid%5D/route.ts#L282)
+- I creatori mantengono accesso alle proprie bozze senza renderle pubbliche.
+  [`route.ts:232`](../../app/api/events/%5Bid%5D/route.ts#L232)
+
+- La cancellazione serializza gli upload, rimuove i riferimenti e segnala pulizie parziali.
+  [`route.ts:317`](../../app/api/events/%5Bid%5D/route.ts#L317)
 
 **Publication and public visibility**
 
@@ -103,7 +106,7 @@ context:
   [`route.ts:374`](../../app/api/events/route.ts#L374)
 
 - Calendario, preferiti, rassegne e sitemap interrogano soltanto eventi pubblicati.
-  [`public-event-list.ts:27`](../../lib/public-event-list.ts#L27)
+  [`public-event-list.ts:28`](../../lib/public-event-list.ts#L28)
 
 - Preferiti e indice sitemap applicano la stessa condizione di pubblicazione.
   [`route.ts:10`](../../app/api/favorites/route.ts#L10)
@@ -133,13 +136,13 @@ context:
 **Contracts and verification**
 
 - La reference descrive autorizzazioni, risposte e pulizia dei file.
-  [`API_REFERENCE.md:324`](../../docs/API_REFERENCE.md#L324)
+  [`API_REFERENCE.md:325`](../../docs/API_REFERENCE.md#L325)
 
-- I test coprono autorizzazione, stato, cancellazione e fallimenti storage/database.
-  [`event-moderation-api.test.mjs:108`](../../lib/event-moderation-api.test.mjs#L108)
+- I test coprono autorizzazione, stati, cancellazione e fallimenti storage/database.
+  [`event-moderation-api.test.mjs:98`](../../lib/event-moderation-api.test.mjs#L98)
 
 - I test della lista verificano che solo l’admin possa includere le bozze.
-  [`event-list-api.test.mjs:72`](../../lib/event-list-api.test.mjs#L72)
+  [`event-list-api.test.mjs:69`](../../lib/event-list-api.test.mjs#L69)
 
 - La pulizia storage riconosce URL del bucket e mantiene al sicuro oggetti condivisi.
   [`supabase.ts:173`](../../app/lib/supabase.ts#L173)

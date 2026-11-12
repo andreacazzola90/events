@@ -16,7 +16,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 import { calendarToday } from '../../../lib/calendar-view';
 
-export const revalidate = 60; // ISR: Revalidate every 60 seconds
+export const dynamic = 'force-dynamic';
 
 function isAdminEventSession(session: any): boolean {
     const user = session?.user as any;
@@ -43,29 +43,6 @@ export async function generateMetadata(
     }
 
     return getEventMetadata(event);
-}
-
-export async function generateStaticParams() {
-    try {
-        const events = await prisma.event.findMany({
-            where: { isPublished: true },
-            select: {
-                id: true,
-                title: true,
-            },
-            take: 10, // Limit to latest 10 events to avoid DB connection limits during build
-            orderBy: {
-                date: 'desc',
-            },
-        });
-
-        return events.map((event) => ({
-            slug: generateUniqueSlug(event.title, event.id),
-        }));
-    } catch (error) {
-        console.error('[events/[slug]] generateStaticParams failed, falling back to runtime rendering:', error);
-        return [];
-    }
 }
 
 const getEvent = cache(async (slug: string, includeDrafts: boolean) => {

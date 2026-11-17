@@ -842,6 +842,21 @@ describe('Event creation autopilot', () => {
       cy.get('[data-testid="autopilot-panel"] [data-event-animation="2d"]').should('be.visible')
         .and('have.attr', 'data-rocket-stage', 'position')
         .and('contain', 'copertina sia pronta');
+      cy.get('[data-testid="autopilot-review"]').should('be.visible').and('contain', 'Rivedi prima di pubblicare');
+      cy.get('[data-testid="autopilot-panel"]').then(panel => {
+        expect(getComputedStyle(panel[0]).backgroundColor).to.eq('rgba(0, 0, 0, 0)');
+        expect(getComputedStyle(panel[0]).borderTopWidth).to.eq('0px');
+      });
+      cy.get('[data-testid="autopilot-panel"] .rocket-scene').then(scene => {
+        expect(getComputedStyle(scene[0]).backgroundColor).to.eq('rgba(0, 0, 0, 0)');
+      });
+      cy.get('[data-testid="autopilot-panel"] .rocket-particle').should('have.length', 6).first().then(particle => {
+        expect(getComputedStyle(particle[0]).animationName).to.eq(reduced ? 'none' : 'rocket-particle-drift');
+      });
+      cy.get('[data-testid="autopilot-panel"] .rocket-particles path.rocket-particle').first().then(particle => {
+        expect(getComputedStyle(particle[0]).fill).to.eq('none');
+        expect(getComputedStyle(particle[0]).stroke).not.to.eq('none');
+      });
       cy.get('[data-optimistic-status="ready"]').should('contain', event.title).find('img').should('exist');
       cy.get('[data-optimistic-status="ready"] .animate-spin').should('not.exist');
       cy.get('[data-testid="publish-all-events-top"]').should('not.exist');

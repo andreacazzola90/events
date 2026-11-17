@@ -415,6 +415,23 @@ describeByTitle('Unified 2D scanning', () => {
     cy.get(`${scene} svg.rocket-scene-art`).should('be.visible');
     cy.get(`${scene} canvas`).should('not.exist');
     cy.get(`${scene} [role="status"]`).should('contain', 'Scansione pagina web in corso');
+    cy.get(`${scene} [data-event-animation="2d"]`).then(status => {
+      expect(getComputedStyle(status[0]).backgroundColor).to.eq('rgba(0, 0, 0, 0)');
+    });
+    cy.get(`${scene} [data-event-animation="2d"]`).then(status => {
+      const reduced = status.attr('data-reduced-motion') === 'true';
+      cy.get(`${scene} .rocket-particle`).first().then(particle => {
+        expect(getComputedStyle(particle[0]).animationName).to.eq(reduced ? 'none' : 'rocket-particle-twinkle');
+      });
+    });
+    cy.get(scene).then(overlay => {
+      expect(getComputedStyle(overlay[0]).backgroundColor).not.to.eq('rgba(0, 0, 0, 0)');
+    });
+    cy.get(`${scene} .rocket-particle`).should('have.length', 6);
+    cy.get(`${scene} .rocket-particles path.rocket-particle`).first().then(particle => {
+      expect(getComputedStyle(particle[0]).fill).to.eq('none');
+      expect(getComputedStyle(particle[0]).stroke).not.to.eq('none');
+    });
     expectUnderHeader();
   });
 

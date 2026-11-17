@@ -139,6 +139,14 @@ export default function RocketLaunchAnimation({
                     <path data-scene-detail="1" d="M58 25v8m-4-4h8" />
                     <circle data-scene-detail="2" cx="225" cy="42" r="4" />
                 </g>
+                <g className="rocket-particles">
+                    <circle className="rocket-particle" cx="34" cy="84" r="2" />
+                    <path className="rocket-particle" d="M119 34v8m-4-4h8" />
+                    <circle className="rocket-particle" cx="233" cy="76" r="2.5" />
+                    <path className="rocket-particle" d="M146 56v6m-3-3h6" />
+                    <circle className="rocket-particle" cx="135" cy="119" r="1.8" />
+                    <path className="rocket-particle" d="M48 119v6m-3-3h6" />
+                </g>
                 <line className="rocket-ground" x1="10" y1="150" x2="250" y2="150" />
                 <path className="rocket-fuse" d="M104 128 C 124 150, 146 150, 166 146" />
                 <g className="rocket-pad">

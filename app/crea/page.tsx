@@ -939,7 +939,7 @@ export default function CreaEvento() {
                         )}
 
                         {autopilot && autopilotActive && (
-                            <section className="surface-panel create-autopilot-panel p-6 md:p-8 animate-fadeInUp" data-testid="autopilot-panel" aria-label="Pubblicazione automatica">
+                            <section className="create-autopilot-panel p-6 md:p-8 animate-fadeInUp" data-testid="autopilot-panel" aria-label="Pubblicazione automatica">
                                 <RocketLaunchAnimation stage={autopilot.stage} messageSequence={autopilotMessages} onLaunchEnd={() => launchDone.current?.()} />
                                 {autopilot.stage === 'position' && (
                                     <div className="mt-4 flex justify-center">

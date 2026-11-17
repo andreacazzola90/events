@@ -9,6 +9,18 @@ import { scanTelegramQueue } from '../../../../lib/telegram-event-scanning';
 import { scanPersonalTelegramSources } from '../../../../lib/personal-telegram-scanning';
 import { findDuplicateEvent, lockEventDates } from '../../../../lib/event-duplicates';
 import { getGroqRetryAt, GroqRateLimitError } from '../../../../lib/groq-rate-limit';
+import { randomUUID } from 'node:crypto';
+import {
+  claimSourceRun,
+  deferSourceRun,
+  finishSourceRun,
+  isRateLimitCoolingDown,
+  mergeSourceResult,
+  orderSourceRuns,
+  rotateSourceRun,
+  SOURCE_LEASE_MS,
+  type SourceRunSnapshot,
+} from '../../../../lib/cron-source-scheduler';
 
 export const maxDuration = 300; // 5 minuti per il cron job
 
@@ -127,6 +139,11 @@ type CronSourceConfig = {
   rateLimitRetryAt: number | null;
 };
 
+type ScheduledCronSource = {
+  config: CronSourceConfig;
+  run: SourceRunSnapshot;
+};
+
 const DEFAULT_SOURCE_CONFIG: CronSourceConfig = {
   id: null,
   name: 'default',
@@ -176,7 +193,7 @@ function toSourceConfig(row: any): CronSourceConfig {
 /** Returns every active CronSource row, mapped to a scraper config.
  * Falls back to a single hardcoded default when the table is empty/unavailable,
  * so the job still runs even with no CronSource rows configured. */
-async function resolveActiveSources(): Promise<CronSourceConfig[]> {
+async function resolveActiveSources(now: Date): Promise<ScheduledCronSource[]> {
   const cronSourceModel = (prisma as any).cronSource;
   let sourceConfigs = [DEFAULT_SOURCE_CONFIG];
   if (cronSourceModel) {
@@ -193,34 +210,61 @@ async function resolveActiveSources(): Promise<CronSourceConfig[]> {
     }
   }
 
-  let lastStarted = new Map<string, number>();
-  const previousResults = new Map<string, Record<string, unknown>>();
+  const sourceRunModel = (prisma as any).cronJobRun;
+  const jobKeys = sourceConfigs.map(source => `scrape-source:${source.id ?? 'default'}`);
   try {
-    const runs = await prisma.cronJobRun.findMany({
+    await Promise.all(jobKeys.map(jobKey => sourceRunModel.upsert({
+      where: { jobKey },
+      update: {},
+      create: { jobKey, status: 'queued', stateVersion: 0 },
+    })));
+    const persistedRuns = await sourceRunModel.findMany({
       where: { jobKey: { startsWith: 'scrape-source:' } },
-      select: { jobKey: true, startedAt: true, resultJson: true },
+      select: {
+        jobKey: true,
+        status: true,
+        startedAt: true,
+        finishedAt: true,
+        resultJson: true,
+        queuePositionAt: true,
+        leaseOwner: true,
+        leaseExpiresAt: true,
+        stateVersion: true,
+      },
     });
-    lastStarted = new Map(runs.map(run => [run.jobKey, run.startedAt.getTime()]));
-    for (const run of runs) {
+    const runsByKey = new Map<string, SourceRunSnapshot>(
+      persistedRuns.map((run: any) => [run.jobKey, {
+        jobKey: run.jobKey,
+        status: run.status,
+        startedAt: run.startedAt ?? now,
+        finishedAt: run.finishedAt ?? null,
+        resultJson: run.resultJson ?? null,
+        queuePositionAt: run.queuePositionAt ?? null,
+        leaseOwner: run.leaseOwner ?? null,
+        leaseExpiresAt: run.leaseExpiresAt ?? null,
+        stateVersion: Number.isInteger(run.stateVersion) ? run.stateVersion : 0,
+      }]),
+    );
+    const ordered = orderSourceRuns(sourceConfigs, runsByKey);
+    return ordered.map(({ source, run }) => {
+      let previousResult: Record<string, unknown> = {};
       try {
-        if (run.resultJson) previousResults.set(run.jobKey, JSON.parse(run.resultJson));
+        const parsed: unknown = run.resultJson ? JSON.parse(run.resultJson) : {};
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          previousResult = parsed as Record<string, unknown>;
+        }
       } catch {
-        previousResults.delete(run.jobKey);
+        // Keep the stored JSON untouched; malformed data cannot supply a checkpoint.
       }
-    }
+      return {
+        config: toSourceConfig({ ...source, ...previousResult }),
+        run,
+      };
+    });
   } catch (error) {
-    console.warn('[VisitPedemontana] Failed loading source run order:', error);
+    console.error('[VisitPedemontana] Failed loading source run state; refusing to scrape:', error);
+    throw new Error('Source run state unavailable', { cause: error });
   }
-
-  return sourceConfigs.map(source => toSourceConfig({
-    ...source,
-    nextApiPage: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.nextApiPage,
-    pendingEventLinks: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.pendingEventLinks,
-    rateLimitRetryAt: previousResults.get(`scrape-source:${source.id ?? 'default'}`)?.rateLimitRetryAt,
-  })).sort((first, second) =>
-    (lastStarted.get(`scrape-source:${first.id ?? 'default'}`) ?? 0) -
-    (lastStarted.get(`scrape-source:${second.id ?? 'default'}`) ?? 0),
-  );
 }
 
 function slugifyOrigin(name: string): string {
@@ -951,6 +995,15 @@ export async function GET(request: NextRequest) {
   const MIN_SOURCE_BUDGET_MS = 120_000;
   const runDeadline = runStartedAt + TIME_BUDGET_MS;
   const webDeadline = runDeadline - 15_000;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let sources: ScheduledCronSource[];
+  try {
+    sources = await resolveActiveSources(new Date(runStartedAt));
+  } catch {
+    return NextResponse.json({ error: 'Source run state unavailable' }, { status: 503 });
+  }
+
   const telegramWork = scanTelegramQueue({ dryRun, deadline: Math.min(runStartedAt + 90_000, runDeadline - 5_000) })
     .catch(() => ({ status: 'partial-error', dryRun, error: 'telegram_processing_unavailable', published: 0 }));
   const personalTelegramWork = scanPersonalTelegramSources({
@@ -963,29 +1016,49 @@ export async function GET(request: NextRequest) {
   try {
     await prisma.cronJobRun.upsert({
       where: { jobKey: 'visitpedemontana' },
-      update: { status: 'running', startedAt: aggregateStartedAt, finishedAt: null, resultJson: null },
+      update: { status: 'running', startedAt: aggregateStartedAt, finishedAt: null },
       create: { jobKey: 'visitpedemontana', status: 'running', startedAt: aggregateStartedAt },
     });
   } catch (error) {
     console.warn('[VisitPedemontana] Failed recording aggregate start:', error);
   }
 
-  // Considera "oggi" senza orario per filtrare gli eventi passati
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const sources = await resolveActiveSources();
-  console.log(`[VisitPedemontana] Resolved ${sources.length} active source(s): ${sources.map(s => s.name).join(', ')}`);
+  console.log(`[VisitPedemontana] Resolved ${sources.length} active source(s): ${sources.map(s => s.config.name).join(', ')}`);
 
   const results: Record<string, any>[] = [];
   let sourcesProcessed = 0;
+  const sourceRunModel = (prisma as any).cronJobRun;
+  const allSourceRuns = sources.map(item => item.run);
+  const processedSourceRuns: SourceRunSnapshot[] = [];
 
-  for (const [sourceIndex, source] of sources.entries()) {
+  for (const [sourceIndex, scheduledSource] of sources.entries()) {
+    const source = scheduledSource.config;
+    const sourceRun = scheduledSource.run;
     const checkpoint = {
       nextApiPage: source.nextApiPage,
       pendingEventLinks: source.pendingEventLinks,
       rateLimitRetryAt: source.rateLimitRetryAt,
     };
+    const jobKey = sourceRun.jobKey;
+    const cooldown = isRateLimitCoolingDown(sourceRun.resultJson, new Date());
+    if (cooldown || (source.rateLimitRetryAt && source.rateLimitRetryAt > Date.now())) {
+      const partialResult = {
+        sourceId: source.id,
+        sourceName: source.name,
+        status: 'partial',
+        message: 'Quota Groq temporaneamente esaurita: sorgente rinviata al prossimo cron utile.',
+        ...checkpoint,
+        deferred: source.pendingEventLinks.length,
+      };
+      results.push(partialResult);
+      const rotatedAt = await rotateSourceRun(sourceRunModel, sourceRun, allSourceRuns, new Date());
+      if (rotatedAt) {
+        sourceRun.queuePositionAt = rotatedAt;
+        sourceRun.stateVersion += 1;
+      }
+      continue;
+    }
+
     const availableTime = webDeadline - Date.now();
     if (availableTime < MIN_SOURCE_BUDGET_MS) {
       console.warn(`[VisitPedemontana] Time budget exceeded, skipping remaining source: ${source.name}`);
@@ -998,26 +1071,13 @@ export async function GET(request: NextRequest) {
         ...checkpoint,
       };
       results.push(skippedResult);
-      const jobKey = `scrape-source:${source.id ?? 'default'}`;
-      try {
-        await (prisma as any).cronJobRun.upsert({
-          where: { jobKey },
-          update: {
-            status: 'skipped',
-            startedAt: skippedAt,
-            finishedAt: skippedAt,
-            resultJson: JSON.stringify(skippedResult),
-          },
-          create: {
-            jobKey,
-            status: 'skipped',
-            startedAt: skippedAt,
-            finishedAt: skippedAt,
-            resultJson: JSON.stringify(skippedResult),
-          },
-        });
-      } catch (error) {
-        console.error(`[VisitPedemontana] Failed recording skipped source "${source.name}":`, error);
+      const rotatedAt = await deferSourceRun(sourceRunModel, sourceRun, skippedResult, allSourceRuns, skippedAt);
+      if (rotatedAt) {
+        sourceRun.status = 'skipped';
+        sourceRun.finishedAt = skippedAt;
+        sourceRun.queuePositionAt = rotatedAt;
+        sourceRun.resultJson = mergeSourceResult(sourceRun.resultJson, skippedResult);
+        sourceRun.stateVersion += 1;
       }
       continue;
     }
@@ -1027,48 +1087,75 @@ export async function GET(request: NextRequest) {
       Math.floor(availableTime / MIN_SOURCE_BUDGET_MS),
     );
     const sourceDeadline = Date.now() + Math.floor(availableTime / sourcesWithinBudget);
-    const jobKey = `scrape-source:${source.id ?? 'default'}`;
     const sourceStartedAt = new Date();
-    const checkpointJson = source.pendingEventLinks.length > 0 || source.nextApiPage > 0 || source.rateLimitRetryAt
-      ? JSON.stringify({ status: 'running', ...checkpoint }) : null;
-    try {
-      await (prisma as any).cronJobRun.upsert({
-        where: { jobKey },
-        update: { status: 'running', startedAt: sourceStartedAt, finishedAt: null, resultJson: checkpointJson },
-        create: { jobKey, status: 'running', startedAt: sourceStartedAt, resultJson: checkpointJson },
+    const leaseOwner = randomUUID();
+    const claimedVersion = await claimSourceRun(sourceRunModel, sourceRun, leaseOwner, sourceStartedAt);
+    if (claimedVersion === null) {
+      results.push({
+        sourceId: source.id,
+        sourceName: source.name,
+        status: 'skipped',
+        message: 'Source lease is active or its state changed; retry on the next daily cron.',
+        ...checkpoint,
       });
-    } catch (error) {
-      console.error(`[VisitPedemontana] Failed recording start for source "${source.name}":`, error);
+      continue;
     }
+    sourceRun.status = 'running';
+    sourceRun.startedAt = sourceStartedAt;
+    sourceRun.finishedAt = null;
+    sourceRun.leaseOwner = leaseOwner;
+    sourceRun.leaseExpiresAt = new Date(sourceStartedAt.getTime() + SOURCE_LEASE_MS);
+    sourceRun.stateVersion = claimedVersion;
+    processedSourceRuns.push(sourceRun);
 
     try {
       sourcesProcessed += 1;
       const result = await scrapeOneSource(source, today, dryRun, sourceDeadline);
       results.push({ sourceId: source.id, sourceName: source.name, ...result });
-      try {
-        await prisma.cronJobRun.updateMany({
-          where: { jobKey, startedAt: sourceStartedAt },
-          data: {
-            status: ['error', 'partial-error'].includes(result.status) ? 'failed' : 'completed',
-            finishedAt: new Date(),
-            resultJson: JSON.stringify(result),
-          },
-        });
-      } catch (error) {
-        console.error(`[VisitPedemontana] Failed recording result for source "${source.name}":`, error);
+      const finishedAt = new Date();
+      const saved = await finishSourceRun(
+        sourceRunModel, sourceRun, leaseOwner, claimedVersion, result, finishedAt,
+      );
+      if (saved.count === 1) {
+        sourceRun.status = ['error', 'partial-error'].includes(result.status) ? 'failed' : 'completed';
+        sourceRun.finishedAt = finishedAt;
+        sourceRun.resultJson = mergeSourceResult(sourceRun.resultJson, result);
+        sourceRun.queuePositionAt = saved.queuePositionAt;
+        sourceRun.leaseOwner = null;
+        sourceRun.leaseExpiresAt = null;
+        sourceRun.stateVersion += 1;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`[VisitPedemontana] Source "${source.name}" failed:`, error);
-      results.push({ sourceId: source.id, sourceName: source.name, status: 'error', message });
+      const failedResult = { status: 'error', message, ...checkpoint };
+      results.push({ sourceId: source.id, sourceName: source.name, ...failedResult });
       try {
-        await prisma.cronJobRun.updateMany({
-          where: { jobKey, startedAt: sourceStartedAt },
-          data: { status: 'failed', finishedAt: new Date(), resultJson: JSON.stringify({ error: message, ...checkpoint }) },
-        });
+        const finishedAt = new Date();
+        const saved = await finishSourceRun(
+          sourceRunModel, sourceRun, leaseOwner, claimedVersion, failedResult, finishedAt,
+        );
+        if (saved.count === 1) {
+          sourceRun.status = 'failed';
+          sourceRun.finishedAt = finishedAt;
+          sourceRun.resultJson = mergeSourceResult(sourceRun.resultJson, failedResult);
+          sourceRun.queuePositionAt = saved.queuePositionAt;
+          sourceRun.leaseOwner = null;
+          sourceRun.leaseExpiresAt = null;
+          sourceRun.stateVersion += 1;
+        }
       } catch (recordError) {
         console.error(`[VisitPedemontana] Failed recording error for source "${source.name}":`, recordError);
       }
+    }
+  }
+
+  for (const sourceRun of processedSourceRuns) {
+    if (!sourceRun.queuePositionAt) continue;
+    const rotatedAt = await rotateSourceRun(sourceRunModel, sourceRun, allSourceRuns, new Date());
+    if (rotatedAt) {
+      sourceRun.queuePositionAt = rotatedAt;
+      sourceRun.stateVersion += 1;
     }
   }
 

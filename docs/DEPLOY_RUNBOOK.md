@@ -301,6 +301,8 @@ All cron endpoints require `Authorization: Bearer <CRON_SECRET_KEY>`. Applicatio
 
 Vercel Hobby only allows daily cron jobs, so [vercel.json](../vercel.json) defines a single cron, `GET /api/cron/daily` at 18:00 UTC (Vercel may start it any time within that hour). It calls all jobs below in parallel with the same bearer token. For native Vercel scheduling, set both `CRON_SECRET_KEY` and `CRON_SECRET` to the exact same value in Production and redeploy. Vercel reads `CRON_SECRET` to send the bearer; the application validates it only against `CRON_SECRET_KEY`. KEY alone supports authenticated manual/external calls but does not configure Vercel's automatic bearer. The story only generates/publishes on the weekdays set in the admin tab (Europe/Rome, default Wednesday), once per day.
 
+VisitPedemontana source-queue changes require applying the additive Prisma migration `20261117164500_add_visitpedemontana_source_queue` before deploying the updated route. It adds queue position, lease, and monotone state-version fields; running legacy source rows receive a six-minute lease grace during migration so an in-flight pre-migration worker is not immediately reclaimed. Budget- and cooldown-deferred sources are retried by the next existing daily cron only; no additional scheduler or more frequent cron is configured.
+
 Endpoints:
 - GET /api/cron/daily (Vercel scheduled entry point)
 - GET /api/cron/sync-google-calendar

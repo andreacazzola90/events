@@ -438,6 +438,8 @@ model CronJobRun {
   leaseOwner      String?
   leaseExpiresAt  DateTime?
   stateVersion    Int       @default(0)
+
+  @@index([queuePositionAt])
 }
 
 /// Field corrected by a user between AI extraction and publication; reused as few-shot lessons.

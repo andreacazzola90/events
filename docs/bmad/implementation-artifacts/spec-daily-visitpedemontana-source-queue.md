@@ -2,7 +2,7 @@
 title: 'Coda equa per le sorgenti VisitPedemontana'
 type: 'feature'
 created: '2026-11-17'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '92481627eff1870937e5337e6c3f6797b1e7a00b'
 context: []
 ---
@@ -47,10 +47,10 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `prisma/schema.prisma` e `prisma/migrations/` -- aggiungere scheduling, lease e versione monotona per i run sorgente; migrare le vecchie righe `running` senza lease evitando claim durante la finestra massima del worker legacy.
-- [ ] `app/api/cron/scrape-visitpedemontana/route.ts` -- fail closed se non si carica lo stato; usare claim compare-and-set sulla versione letta; preservare/mergiare tutto lo stato utile invece di scrivere `null`; ruotare gli incompleti.
-- [ ] `lib/cron-source-scheduler.ts` e test dedicati -- verificare cooldown, claim concorrente e stantio, lease legacy, checkpoint/metadati, esiti incompleti, rinvio budget e round-robin quando una sola sorgente arretrata entra nel budget.
-- [ ] `docs/DEPLOY_RUNBOOK.md` -- documentare la migrazione e che i retry automatici avvengono al cron giornaliero successivo.
+- [x] `prisma/schema.prisma` e `prisma/migrations/` -- aggiungere scheduling, lease e versione monotona per i run sorgente; migrare le vecchie righe `running` senza lease evitando claim durante la finestra massima del worker legacy.
+- [x] `app/api/cron/scrape-visitpedemontana/route.ts` -- fail closed se non si carica lo stato; usare claim compare-and-set sulla versione letta; preservare/mergiare tutto lo stato utile invece di scrivere `null`; ruotare gli incompleti.
+- [x] `lib/cron-source-scheduler.ts` e test dedicati -- verificare cooldown, claim concorrente e stantio, lease legacy, checkpoint/metadati, esiti incompleti, rinvio budget e round-robin quando una sola sorgente arretrata entra nel budget.
+- [x] `docs/DEPLOY_RUNBOOK.md` -- documentare la migrazione e che i retry automatici avvengono al cron giornaliero successivo.
 
 **Acceptance Criteria:**
 - Given una sorgente rinviata per budget, when parte il cron successivo, then viene considerata prima delle sorgenti già completate e il suo checkpoint viene ripreso.
@@ -91,35 +91,36 @@ Un'unica pianificazione Vercel giornaliera non può riprendere una sorgente appe
 
 ## Suggested Review Order
 
-**Selezione e ripresa delle sorgenti**
+**Orchestrazione e priorità**
 
-- Il cron giornaliero ordina l'arretrato e salta cooldown e lease attivi.
-  [`route.ts:1011`](../../../app/api/cron/scrape-visitpedemontana/route.ts#L1011)
+- La route carica tutta la coda prima di avviare scraping o scansioni ausiliarie.
+  [`route.ts:1002`](../../../app/api/cron/scrape-visitpedemontana/route.ts#L1002)
 
-- La priorità dell'arretrato ruota a ogni tentativo incompleto, usando lo stato durevole della sorgente.
-  [`cron-source-scheduler.ts:16`](../../../lib/cron-source-scheduler.ts#L16)
+- L'ordinamento dà precedenza durevole alle sorgenti incomplete e ne ruota i turni.
+  [`cron-source-scheduler.ts:72`](../../../lib/cron-source-scheduler.ts#L72)
 
-- Il retry mantiene `rateLimitRetryAt` come limite minimo per entrambi gli stati persistiti.
-  [`route.ts:250`](../../../app/api/cron/scrape-visitpedemontana/route.ts#L250)
+- Cooldown e budget rinviano le sorgenti senza superare `rateLimitRetryAt`.
+  [`route.ts:1043`](../../../app/api/cron/scrape-visitpedemontana/route.ts#L1043)
 
-**Lease e persistenza**
+**Claim e persistenza**
 
-- Il compare-and-set concede un lease a un solo worker e il rilascio verifica proprietario e scadenza.
-  [`cron-source-scheduler.ts:66`](../../../lib/cron-source-scheduler.ts#L66)
+- Il claim confronta la versione e assegna un lease esclusivo con scadenza.
+  [`cron-source-scheduler.ts:107`](../../../lib/cron-source-scheduler.ts#L107)
 
-- I campi nullable e l'indice aggiungono scheduling senza cambiare gli altri run cron.
-  [`schema.prisma:430`](../../../prisma/schema.prisma#L430)
+- Il completamento verifica versione e proprietario prima di salvare checkpoint e risultato.
+  [`cron-source-scheduler.ts:176`](../../../lib/cron-source-scheduler.ts#L176)
 
-- La migrazione SQL aggiunge soltanto colonne nullable e indice.
+- Schema e migrazione aggiungono coda, lease, versione e protezione temporanea dei run legacy.
+  [`schema.prisma:437`](../../../prisma/schema.prisma#L437)
   [`migration.sql:1`](../../../prisma/migrations/20261117164500_add_visitpedemontana_source_queue/migration.sql#L1)
 
-**Copertura e operatività**
+**Regressioni e operatività**
 
-- I test isolano fair queue, cooldown, claim concorrente e recupero dei checkpoint.
-  [`cron-source-scheduler.test.mjs:46`](../../../lib/cron-source-scheduler.test.mjs#L46)
+- I test coprono claim concorrenti, snapshot obsoleti, cooldown e lease legacy.
+  [`cron-source-scheduler.test.mjs:69`](../../../lib/cron-source-scheduler.test.mjs#L69)
 
-- Le regressioni assicurano che checkpoint e cooldown esistenti sopravvivano ai rinvii.
-  [`cron-execution.test.mjs:244`](../../../lib/cron-execution.test.mjs#L244)
+- Il test di coda verifica la rotazione dell'arretrato con budget giornaliero limitato.
+  [`cron-source-scheduler.test.mjs:143`](../../../lib/cron-source-scheduler.test.mjs#L143)
 
-- Il runbook descrive applicazione della migrazione e retry al cron giornaliero.
+- Il runbook richiede la migrazione prima del deploy e documenta il retry giornaliero.
   [`DEPLOY_RUNBOOK.md:304`](../../../docs/DEPLOY_RUNBOOK.md#L304)

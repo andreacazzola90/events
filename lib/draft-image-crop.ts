@@ -11,10 +11,11 @@ export type DraftImageCropFailure = keyof typeof DRAFT_CROP_FAILURE_MESSAGES;
 export type DraftImageCropBox = { x: number; y: number; width: number; height: number };
 export type DraftImageCrop = {
   result: Promise<Blob | undefined>; cancel: () => void; readonly failureReason?: DraftImageCropFailure;
+  readonly noCropNeeded?: boolean;
   /** Automatic crop rectangle, normalized 0..1 to the original image. */
   readonly box?: DraftImageCropBox;
 };
-export type DraftImageCropStatus = 'idle' | 'processing' | 'completed' | 'failed';
+export type DraftImageCropStatus = 'idle' | 'processing' | 'completed' | 'unchanged' | 'failed';
 export type DraftImageScan = { isCurrent: () => boolean; registerCrop: (crop: DraftImageCrop) => void };
 export type DraftPosterSection = { imageUrl: string; crop: DraftImageCropBox };
 
@@ -120,11 +121,16 @@ export function startDraftImageCrop(file: File): DraftImageCrop {
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]);
   let failureReason: DraftImageCropFailure | undefined;
   let box: DraftImageCropBox | undefined;
+  let noCropNeeded = false;
   const result = (async () => {
     try {
       const form = new FormData();
       form.append('image', file);
       const response = await fetch('/api/crop-image', { method: 'POST', body: form, signal });
+      if (response.status === 204 && response.headers?.get('x-image-crop-status') === 'unchanged' && !signal.aborted) {
+        noCropNeeded = true;
+        return undefined;
+      }
       const reason = response.headers?.get('x-image-crop-reason');
       if (reason && Object.hasOwn(DRAFT_CROP_FAILURE_MESSAGES, reason)) failureReason = reason as DraftImageCropFailure;
       if (!response.ok || response.status === 204 || signal.aborted) {
@@ -143,7 +149,12 @@ export function startDraftImageCrop(file: File): DraftImageCrop {
       return undefined;
     }
   })();
-  return { result, cancel: () => controller.abort(), get failureReason() { return failureReason; }, get box() { return box; } };
+  return {
+    result, cancel: () => controller.abort(),
+    get failureReason() { return failureReason; },
+    get noCropNeeded() { return noCropNeeded; },
+    get box() { return box; },
+  };
 }
 
 export function parseDraftCropBox(header: string | null | undefined): DraftImageCropBox | undefined {

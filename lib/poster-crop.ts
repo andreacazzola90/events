@@ -23,6 +23,7 @@ export async function createVerifiedPosterCrop(
   options: {
     onFailure?: (reason: PosterCropFailure) => void;
     onSuccess?: (result: PosterCropResult) => void;
+    onUnchanged?: () => void;
     /** Manual crops previously made on screenshots of the same pixel size. */
     learned?: LearnedCropProfile | null;
     learningExamples?: CropLearningPair[];
@@ -127,14 +128,25 @@ Preserve people, artist photos, text and logos that are part of the poster itsel
 Coordinates refer to the entire square image, including white padding, normalized independently to 0..1.
     First locate any top social story header (progress bar, avatar, account name, playback buttons) or phone screenshot header. Report its bottom edge, including any margin before the poster, as socialHeaderBottom, normalized to the entire square image height; use null when absent. This is the bottom of the social UI, NOT the bottom of the poster.
     Locate any bottom screenshot footer, reply field, reactions or navigation bar. Report its top edge, including any margin after the poster, as socialFooterTop, normalized to the entire square image height; use null when absent. Never include a dark section belonging to the poster itself in these margins.
-    Then locate the poster rectangle. Return only a JSON object with fields x, y, width, height, confidence, socialHeaderBottom and socialFooterTop. Coordinates must be normalized to 0..1, not pixels or 0..1000.
-    If there is no safe rectangular crop preserving essential poster content, return {"found":false}.${learnedHint}`,
+    Assess the full original image. If it already shows the complete, cleanly framed event poster with no screenshot or social UI and no removable outer margin, return {"alreadyCorrect":true,"confidence":0.95}. Use this only when certain that no crop is needed; uncertainty is not an already-correct result.
+    If a crop is needed, locate the poster rectangle and return only a JSON object with fields x, y, width, height, confidence, socialHeaderBottom and socialFooterTop. Coordinates must be normalized to 0..1, not pixels or 0..1000.
+    If you cannot confidently decide that the original is already correct or identify a safe crop preserving essential poster content, return {"found":false}.${learnedHint}`,
       options.learningExamples?.slice(0, 3));
     } catch (error) {
       boundsError = error;
     }
 
     const bounds = boundsError ? null : parsePosterBounds(boundsAnalysis);
+    if (!bounds && isPosterAlreadyCorrect(boundsAnalysis)) {
+      const verdict = await verify(source.data);
+      if (verdict === 'safe') {
+        options.onUnchanged?.();
+        return source.data;
+      }
+      if (verdict === 'unavailable') return fail(serviceReason(verificationError));
+      console.warn('[poster-crop] Original rejected after already-correct assessment');
+      return fail('verification-rejected');
+    }
     if (bounds) {
       const headerBottom = bounds.socialHeaderBottom;
       const footerTop = bounds.socialFooterTop;
@@ -290,6 +302,18 @@ export function parsePosterBounds(analysis: string): PosterBounds | null {
     return bounds;
   } catch {
     return null;
+  }
+}
+
+function isPosterAlreadyCorrect(analysis: string): boolean {
+  const lines = analysis.split("\n").filter(value => value.trim().startsWith("POSTER_BOUNDS:"));
+  if (lines.length > 1) return false;
+  try {
+    const result = JSON.parse(lines[0] ? lines[0].slice(lines[0].indexOf(":") + 1) : analysis);
+    return result?.alreadyCorrect === true && Number.isFinite(result.confidence)
+      && result.confidence >= 0.9 && result.confidence <= 1;
+  } catch {
+    return false;
   }
 }
 

@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
     const userId = Number.parseInt(String(session?.user?.id ?? ''), 10);
     const accountId = Number.isSafeInteger(userId) && userId > 0 ? userId : undefined;
     let providerStatus = '';
+    let unchanged = false;
     // No Retry-After wait: a busy provider falls through to the next one or to the local bar detection.
     const learned = await Promise.resolve()
       .then(async () => sharp(Buffer.from(await file.arrayBuffer())).metadata())
@@ -52,9 +53,13 @@ export async function POST(request: NextRequest) {
       learningExamples: learned.examples,
       onFailure: failure => { reason = failure; },
       onSuccess: success => { result = success; },
+      onUnchanged: () => { unchanged = true; },
     });
-    if (!crop || signal.aborted) return new NextResponse(null, {
-      status: 204, headers: { ...headers, 'X-Image-Crop-Reason': signal.aborted ? 'timeout' : reason,
+    if (signal.aborted || unchanged || !crop) return new NextResponse(null, {
+      status: 204, headers: { ...headers,
+        ...(signal.aborted ? { 'X-Image-Crop-Reason': 'timeout' }
+          : unchanged ? { 'X-Image-Crop-Status': 'unchanged' }
+            : { 'X-Image-Crop-Reason': reason }),
         ...(providerStatus ? { 'X-Image-Crop-Service-Status': providerStatus } : {}) },
     });
     const box = result?.box;

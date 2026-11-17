@@ -498,7 +498,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                 aria-live="polite"
                                 aria-atomic="true"
                                 data-image-crop-status={manualImageOverride ? webImageOverride ? 'web' : 'manual' : imageCropStatus}
-                                className={`flex items-start gap-2 border-b border-black/10 px-4 py-3 text-sm ${manualImageOverride ? 'bg-white text-[#5f5b56]' : imageCropStatus === 'failed' ? 'bg-[#fff7f4] text-[#8f3823]' : imageCropStatus === 'completed' ? 'bg-green-50 text-green-800' : 'bg-white text-[#5f5b56]'}`}
+                                className={`flex items-start gap-2 border-b border-black/10 px-4 py-3 text-sm ${manualImageOverride ? 'bg-white text-[#5f5b56]' : imageCropStatus === 'failed' ? 'bg-[#fff7f4] text-[#8f3823]' : imageCropStatus === 'completed' || imageCropStatus === 'unchanged' ? 'bg-green-50 text-green-800' : 'bg-white text-[#5f5b56]'}`}
                             >
                                 {!manualImageOverride && imageCropStatus === 'processing'
                                     ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
@@ -509,7 +509,11 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                     <span className="block font-semibold">{manualImageOverride
                                         ? webImageOverride ? 'Immagine scelta dal web' : 'Immagine modificata manualmente'
                                         : imageCropStatus === 'processing' ? 'Immagine in elaborazione'
-                                            : imageCropStatus === 'completed' ? 'Ritaglio completato' : 'Ritaglio non riuscito'}</span>
+                                            : imageCropStatus === 'completed' ? 'Ritaglio completato'
+                                                : imageCropStatus === 'unchanged' ? 'Copertina già corretta' : 'Ritaglio non riuscito'}</span>
+                                    {!manualImageOverride && imageCropStatus === 'unchanged' && (
+                                        <span className="mt-1 block">Nessun ritaglio necessario; useremo l’immagine originale.</span>
+                                    )}
                                     {!manualImageOverride && imageCropStatus === 'failed' && (
                                         <span className="mt-1 block">{imageCropFailure && DRAFT_CROP_FAILURE_MESSAGES[imageCropFailure]}{imageCropFailure ? ' ' : ''}Puoi ritagliare l’immagine o cercare una copertina dal web.</span>
                                     )}
@@ -539,6 +543,7 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                     setManualImageOverride(true);
                                     setWebImageOverride(true);
                                     originalCropSource.current = previewUrl;
+                                    draftImageSource.current = previewUrl;
                                     setImageUrl(previewUrl);
                                     currentImageUrl.current = previewUrl;
                                     const fullImage = { x: 0, y: 0, width: 1, height: 1 };

@@ -181,9 +181,69 @@ describe('Parallel event cover', () => {
     cy.contains('Early crop fallback').should('be.visible');
     cy.get('[data-image-crop-status="failed"]').should('be.visible').and('contain', 'Ritaglio non riuscito').and('contain', 'Puoi ritagliare l’immagine o cercare una copertina dal web.');
     cy.get('[data-image-crop-status="failed"]').should('contain', 'Quota gratuita AI temporaneamente esaurita.');
-    cy.get('img.event-image').should('not.exist');
+    cy.get('img.event-image').should('be.visible');
     cy.get('[data-cover-picker]').should('not.exist');
     cy.contains('button', /^Pubblica$/).should('be.enabled');
+  });
+
+  it('recognizes a clean poster that needs no crop and publishes the original', () => {
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      cy.intercept('POST', '/api/process-image', {
+        statusCode: 200,
+        body: {
+          events: [{ title: 'Already correct poster', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' }],
+          previewImageDataUrl: `data:image/png;base64,${image}`,
+        },
+      }).as('alreadyCorrectExtraction');
+    });
+    cy.intercept('POST', '/api/crop-image', {
+      statusCode: 204,
+      headers: { 'X-Image-Crop-Status': 'unchanged' },
+    }).as('alreadyCorrectCrop');
+    cy.intercept('POST', '/api/events', request => {
+      const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+      expect(request.headers['content-type']).to.include('multipart/form-data');
+      expect(body).to.include('filename="event-image.png"');
+      request.reply({ statusCode: 201, body: { id: 1001, title: 'Already correct poster' } });
+    }).as('alreadyCorrectSave');
+
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait(['@alreadyCorrectExtraction', '@alreadyCorrectCrop']);
+    cy.get('[data-image-crop-status="unchanged"]')
+      .should('contain', 'Copertina già corretta')
+      .and('contain', 'Nessun ritaglio necessario');
+    cy.get('img.event-image').should('exist');
+    cy.contains('button', /^Pubblica$/).click();
+    cy.wait('@alreadyCorrectSave');
+    cy.contains('Evento creato').should('be.visible');
+  });
+
+  it('still finds event sections when a multi-event poster needs no crop', () => {
+    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates: [] } });
+    cy.intercept('POST', '/api/crop-image', {
+      statusCode: 204,
+      headers: { 'X-Image-Crop-Status': 'unchanged' },
+    });
+    cy.intercept('POST', '/api/poster-sections', { statusCode: 200, body: { sections: [] } }).as('unchangedPosterSections');
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      cy.intercept('POST', '/api/process-image', {
+        statusCode: 200,
+        body: {
+          events: [
+            { title: 'First already-correct event', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music' },
+            { title: 'Second already-correct event', date: '2026-12-01', time: '21:00', location: 'Schio', category: 'music' },
+          ],
+          previewImageDataUrl: `data:image/png;base64,${image}`,
+        },
+      }).as('multipleAlreadyCorrectExtraction');
+    });
+
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait('@multipleAlreadyCorrectExtraction');
+    cy.wait('@unchangedPosterSections');
+    cy.contains('First already-correct event').should('be.visible');
+    cy.contains('Second already-correct event').should('be.visible');
   });
 
   for (const outcome of ['cropped', 'original', 'manual', 'multiple', 'reprocess']) {
@@ -221,9 +281,10 @@ describe('Parallel event cover', () => {
       cy.intercept('POST', '/api/events', request => {
         saves++;
         if (outcome === 'original') {
-          expect(request.headers['content-type']).to.include('application/json');
-          expect(request.body.imageUrl).to.be.undefined;
-          expect(request.body.originalImageUrl).to.be.undefined;
+          const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+          expect(request.headers['content-type']).to.include('multipart/form-data');
+          expect(body).to.include(`"imageUrl":"${selectedCover}"`);
+          expect(body).to.include('filename="event-image.png"');
         } else {
           const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
           expect(request.headers['content-type']).to.include('multipart/form-data');
@@ -273,7 +334,7 @@ describe('Parallel event cover', () => {
         } else {
           cy.get('[data-image-crop-status="completed"]').first().should('contain', 'Ritaglio completato');
         }
-        if (outcome === 'original') cy.get('img.event-image').should('not.exist');
+        if (outcome === 'original') cy.get('img.event-image').should('have.attr', 'src', original);
         else cy.get('img.event-image').first().should(outcome === 'manual' ? 'have.attr' : 'not.have.attr', 'src', original);
         if (outcome === 'multiple') {
           cy.get('img.event-image').should('have.length', 2).each(image => expect(image.attr('src')).not.to.eq(original));
@@ -292,7 +353,7 @@ describe('Parallel event cover', () => {
         cy.screenshot('draft-image-fallback-mobile', { overwrite: true, capture: 'viewport' });
       }
       if (outcome === 'manual') cy.contains('button', 'Salva modifiche').click();
-      if (outcome !== 'original') cy.get('img.event-image').first().invoke('attr', 'src').then(source => { selectedCover = source; });
+      cy.get('img.event-image').first().invoke('attr', 'src').then(source => { selectedCover = source; });
       cy.contains('button', /^Pubblica$|Pubblica tutti/i).first().should('be.enabled').click();
       cy.wait('@parallelSave').its('response.statusCode').should('eq', 201);
       cy.contains(outcome === 'multiple' ? '2 eventi creati' : 'Evento creato').should('be.visible');
@@ -593,7 +654,7 @@ describe('Parallel event cover', () => {
         cy.get('input[type="radio"]').should('not.be.checked');
         cy.contains('button', 'Usa immagine').should('be.disabled');
       });
-      cy.get('img.event-image').should('not.exist');
+      cy.get('img.event-image').should('be.visible');
       cy.get('[data-cover-picker] input[type="radio"]').check();
       cy.get('[data-cover-picker]').contains('button', 'Usa immagine').click();
       cy.get('[data-image-crop-status="web"]').should('contain', 'Immagine scelta dal web');
@@ -619,7 +680,7 @@ describe('Parallel event cover', () => {
         cy.contains('button', 'Usa immagine').should('be.disabled');
         cy.get('input[type="radio"]').eq(1).check();
       });
-      cy.get('img.event-image').should('not.exist');
+      cy.get('img.event-image').should('be.visible');
       cy.get('[data-cover-picker]').first().contains('button', 'Usa immagine').click();
       cy.get('[data-image-crop-status="web"]').should('contain', 'Immagine scelta dal web');
       cy.get('img.event-image').should('have.length', 1).scrollIntoView().should('be.visible');
@@ -705,20 +766,21 @@ describe('Parallel event cover', () => {
     cy.get('[data-cover-picker]').should('not.exist');
   });
 
-  it('allows publication without an image when web search fails', () => {
+  it('publishes the retained original cover when web search fails', () => {
     cy.intercept('POST', '/api/event-cover-search', { statusCode: 503, body: { status: 'failed', candidates: [] } });
     failedScan();
     cy.get('[data-cover-picker]').should('not.exist');
-    cy.contains('button', 'Ritaglia originale').scrollIntoView().should('be.visible');
+    cy.contains('button', 'Ritaglia immagine').scrollIntoView().should('be.visible');
     cy.intercept('POST', '/api/events', request => {
-      expect(request.headers['content-type']).to.include('application/json');
-      expect(request.body.imageUrl).to.be.undefined;
-      expect(request.body.originalImageUrl).to.be.undefined;
+      const body = typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body);
+      expect(request.headers['content-type']).to.include('multipart/form-data');
+      expect(body).to.include('"imageUrl":"blob:');
+      expect(body).to.include('filename="event-image.png"');
       request.reply({ statusCode: 201, body: { id: 999 } });
-    }).as('noCoverSave');
-    cy.get('img.event-image').should('not.exist');
+    }).as('originalCoverSave');
+    cy.get('img.event-image').should('be.visible');
     cy.contains('button', /^Pubblica$/).click();
-    cy.wait('@noCoverSave');
+    cy.wait('@originalCoverSave');
   });
 });
 
@@ -828,6 +890,26 @@ describe('Event creation autopilot', () => {
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
     cy.get('[data-testid="autopilot-stopped"]').should('contain', 'copertina non è pronta');
     cy.then(() => expect(saves).to.eq(0));
+  });
+
+  it('continues automatic publication when the cover needs no crop', () => {
+    let saves = 0;
+    cy.intercept('POST', '/api/crop-image', {
+      statusCode: 204,
+      headers: { 'X-Image-Crop-Status': 'unchanged' },
+    }).as('unchangedCrop');
+    cy.intercept('POST', '/api/events', request => {
+      saves++;
+      request.reply({ statusCode: 201, body: { id: 4243, title: event.title, slug: 'autopilot-unchanged-4243' } });
+    }).as('unchangedSave');
+    scanPoster();
+
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.wait(['@autopilotScan', '@autopilotDuplicates', '@unchangedCrop']);
+    cy.wait('@unchangedSave');
+    cy.contains('Evento creato').should('be.visible');
+    cy.location('pathname', { timeout: 15000 }).should('eq', '/events/autopilot-unchanged-4243');
+    cy.then(() => expect(saves).to.eq(1));
   });
 
   it('keeps the draft after a failed automatic save and lets the user retry', () => {

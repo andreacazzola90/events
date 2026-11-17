@@ -36,7 +36,7 @@ export type AutopilotInput = {
   events: { title?: string | null; date?: string | null }[];
   duplicates: unknown[];
   duplicatesChecked: boolean;
-  cropStatus: 'idle' | 'processing' | 'completed' | 'failed';
+  cropStatus: 'idle' | 'processing' | 'completed' | 'unchanged' | 'failed';
   sectionsPending: boolean;
   coverMissing?: boolean;
   needsReview?: boolean;

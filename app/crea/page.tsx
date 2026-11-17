@@ -379,14 +379,16 @@ export default function CreaEvento() {
             void crop.result.then(blob => {
                 if (cropId !== imageCropId.current) return;
                 const croppedUrl = blob ? URL.createObjectURL(blob) : undefined;
+                const coverUrl = croppedUrl || newImageUrl;
                 setEvents(current => current.map(event => event.imageUrl === newImageUrl
-                    ? { ...event, imageUrl: croppedUrl, originalImageUrl: event.originalImageUrl || newImageUrl, originalImageCrop: blob ? crop.box : undefined }
+                    ? { ...event, imageUrl: coverUrl, originalImageUrl: event.originalImageUrl || newImageUrl, originalImageCrop: blob ? crop.box : undefined }
                     : event));
-                setImageUrl(croppedUrl || null);
+                setImageUrl(coverUrl || null);
                 pendingImageCrop.current = undefined;
-                setImageCropStatus(blob ? 'completed' : 'failed');
-                setImageCropFailure(blob ? undefined : crop.failureReason);
+                setImageCropStatus(blob ? 'completed' : crop.noCropNeeded ? 'unchanged' : 'failed');
+                setImageCropFailure(blob || crop.noCropNeeded ? undefined : crop.failureReason);
                 if (croppedUrl && crop.box) startPosterSections(croppedUrl, crop.box);
+                else if (crop.noCropNeeded) startPosterSections(newImageUrl, { x: 0, y: 0, width: 1, height: 1 });
             });
         } else {
             crop?.cancel();

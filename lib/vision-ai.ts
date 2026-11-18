@@ -31,7 +31,7 @@ export class VisionServiceUnavailableError extends Error {
   }
 }
 
-function getVisionProviders(providerOrder?: string) {
+function getVisionProviders(providerOrder?: string, logFailures = true) {
   const order = [...new Set((providerOrder ?? process.env.AI_VISION_PROVIDERS ?? 'nvidia,groq')
     .split(',').map(value => value.trim()).filter(Boolean))];
   const settings = {
@@ -59,13 +59,13 @@ function getVisionProviders(providerOrder?: string) {
 
   return order.flatMap(name => {
     if (!Object.hasOwn(settings, name)) {
-      console.warn('[vision-ai] Unsupported provider in AI_VISION_PROVIDERS');
+      if (logFailures) console.warn('[vision-ai] Unsupported provider in AI_VISION_PROVIDERS');
       return [];
     }
     const config = settings[name as VisionProvider];
     if (!config.apiKey?.trim()) return [];
     if (name === 'openrouter' && !config.model.endsWith(':free')) {
-      console.warn('[vision-ai] OpenRouter requires a multimodal OPENROUTER_VISION_MODEL ending in :free');
+      if (logFailures) console.warn('[vision-ai] OpenRouter requires a multimodal OPENROUTER_VISION_MODEL ending in :free');
       return [];
     }
     return [{ name, ...config, apiKey: config.apiKey.trim() }];
@@ -90,8 +90,10 @@ export function createEventImageAnalyzer(providerOrder?: string, options: {
   jsonMode?: boolean;
   retryRateLimit?: boolean;
   onProviderFailure?: (provider: string, status?: number) => void;
+  logFailures?: boolean;
 } = {}) {
-  const providers = getVisionProviders(providerOrder);
+  const logFailures = options.logFailures !== false;
+  const providers = getVisionProviders(providerOrder, logFailures);
   const unavailable = new Set<string>();
   let failureReason: VisionServiceUnavailableError['reason'] = providers.length ? 'unavailable' : 'not-configured';
   let rateLimitRetried = false;
@@ -151,7 +153,7 @@ export function createEventImageAnalyzer(providerOrder?: string, options: {
           if (!options.retryRateLimit || provider.name !== 'groq' || rateLimitRetried || detail?.status !== 429 ||
             !Number.isFinite(delay) || delay < 150 || delay > 20_000 || deadline - Date.now() < delay + 2_000) throw error;
           rateLimitRetried = true;
-          console.warn('[vision-ai] Free quota temporarily busy; retrying Groq once after Retry-After');
+          if (logFailures) console.warn('[vision-ai] Free quota temporarily busy; retrying Groq once after Retry-After');
           await new Promise<void>((resolve, reject) => {
             const abort = () => {
               clearTimeout(timer);
@@ -173,7 +175,7 @@ export function createEventImageAnalyzer(providerOrder?: string, options: {
         if (deadline <= Date.now()) throw new VisionServiceUnavailableError('timeout');
         if (choice?.finish_reason === 'length') {
           unavailable.add(provider.name);
-          console.warn('[vision-ai] Provider response was truncated:', provider.name);
+          if (logFailures) console.warn('[vision-ai] Provider response was truncated:', provider.name);
           continue;
         }
         if (choice?.finish_reason !== 'stop' || choice.message?.refusal) return '';
@@ -185,13 +187,15 @@ export function createEventImageAnalyzer(providerOrder?: string, options: {
         const detail = error && typeof error === 'object' ? error as { status?: unknown; code?: unknown } : {};
         failureReason = detail.status === 429 ? 'rate-limited' : options.signal?.aborted ? 'timeout' : 'unavailable';
         options.onProviderFailure?.(provider.name, typeof detail.status === 'number' ? detail.status : undefined);
-        console.warn('[vision-ai] Provider unavailable:', provider.name, {
-          elapsedMs: Date.now() - startedAt,
-          timeoutMs: timeout,
-          status: detail.status ?? null,
-          code: detail.code ?? null,
-          message: (error instanceof Error ? error.message : String(error)).slice(0, 200),
-        });
+        if (logFailures) {
+          console.warn('[vision-ai] Provider unavailable:', provider.name, {
+            elapsedMs: Date.now() - startedAt,
+            timeoutMs: timeout,
+            status: detail.status ?? null,
+            code: detail.code ?? null,
+            message: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+          });
+        }
       }
     }
 

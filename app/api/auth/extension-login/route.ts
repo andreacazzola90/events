@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
         user: {
           id: user.userId,
           email: user.email,
+          isAdmin: user.isAdmin,
         },
       }),
       request

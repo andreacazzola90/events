@@ -1,8 +1,13 @@
 (() => {
+  if (globalThis.__eventCreatorContentScriptInstalled) return;
+  globalThis.__eventCreatorContentScriptInstalled = true;
+
   let overlay = null;
   let selection = null;
   let startX = 0;
   let startY = 0;
+  let selectionPurpose = 'general';
+  let keydownHandler = null;
 
   const cleanup = () => {
     if (overlay) {
@@ -11,6 +16,10 @@
     }
     selection = null;
     document.body.style.userSelect = '';
+    if (keydownHandler) {
+      window.removeEventListener('keydown', keydownHandler);
+      keydownHandler = null;
+    }
   };
 
   const createOverlay = () => {
@@ -40,17 +49,19 @@
     selection.style.height = `${height}px`;
   };
 
-  const startSelection = () => {
+  const startSelection = (purpose, expectedUrl) => {
     if (overlay) {
       cleanup();
     }
 
+    selectionPurpose = purpose === 'social-story' ? 'social-story' : 'general';
     document.body.style.userSelect = 'none';
     createOverlay();
 
     let selecting = false;
 
     overlay.addEventListener('mousedown', (event) => {
+      if (!event.isTrusted && purpose === 'social-story') return;
       selecting = true;
       startX = event.clientX;
       startY = event.clientY;
@@ -74,6 +85,7 @@
     });
 
     overlay.addEventListener('mouseup', (event) => {
+      if (!event.isTrusted && purpose === 'social-story') return;
       if (!selecting) {
         cleanup();
         return;
@@ -93,6 +105,7 @@
       if (width < 8 || height < 8) {
         chrome.runtime.sendMessage({
           type: 'AREA_SELECTION_CANCELLED',
+          purpose: selectionPurpose,
           reason: 'Area troppo piccola. Riprova selezionando una zona più ampia.'
         });
         return;
@@ -102,8 +115,19 @@
         requestAnimationFrame(() => {
           chrome.runtime.sendMessage({
             type: 'AREA_SELECTED',
+            purpose,
+            expectedUrl,
             rect: { x: left, y: top, width, height },
-            devicePixelRatio: window.devicePixelRatio || 1
+            devicePixelRatio: window.devicePixelRatio || 1,
+            viewport: { width: window.innerWidth, height: window.innerHeight }
+          }, (response) => {
+            if (!response?.ok) {
+              chrome.runtime.sendMessage({
+                type: 'AREA_SELECTION_CANCELLED',
+                purpose: selectionPurpose,
+                reason: response?.error || 'Impossibile acquisire il ritaglio.'
+              });
+            }
           });
         });
       });
@@ -112,21 +136,33 @@
     overlay.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       cleanup();
-      chrome.runtime.sendMessage({ type: 'AREA_SELECTION_CANCELLED', reason: 'Selezione annullata.' });
+      chrome.runtime.sendMessage({
+        type: 'AREA_SELECTION_CANCELLED',
+        purpose: selectionPurpose,
+        reason: 'Selezione annullata.'
+      });
     });
 
-    window.addEventListener('keydown', function onKeydown(event) {
+    keydownHandler = (event) => {
       if (event.key === 'Escape') {
         cleanup();
-        chrome.runtime.sendMessage({ type: 'AREA_SELECTION_CANCELLED', reason: 'Selezione annullata.' });
-        window.removeEventListener('keydown', onKeydown);
+        chrome.runtime.sendMessage({
+          type: 'AREA_SELECTION_CANCELLED',
+          purpose: selectionPurpose,
+          reason: 'Selezione annullata.'
+        });
       }
-    });
+    };
+    window.addEventListener('keydown', keydownHandler);
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === 'START_AREA_SELECTION') {
-      startSelection();
+      if (message.purpose === 'social-story' && message.expectedUrl !== window.location.href) {
+        sendResponse({ ok: false });
+        return false;
+      }
+      startSelection(message.purpose || 'general', message.expectedUrl);
       sendResponse({ ok: true });
       return true;
     }

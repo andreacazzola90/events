@@ -3,6 +3,7 @@
   "name": "Event Creator Assistant",
   "description": "Carica immagini o cattura una parte del sito per creare eventi nel tuo portale.",
   "version": "1.0.0",
+  "minimum_chrome_version": "102",
   "permissions": [
     "activeTab",
     "scripting",
@@ -14,7 +15,8 @@
     "https://*/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_title": "Crea evento",

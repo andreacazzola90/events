@@ -23,6 +23,26 @@
         <p id="userStatus" class="status muted">Non autenticato</p>
       </section>
 
+      <section class="card" id="socialImportSection" hidden>
+        <h2>Importa da Facebook o Instagram</h2>
+        <p class="status muted">Accedi solo sul sito ufficiale. L’estensione non legge credenziali o cookie social.</p>
+        <div class="row">
+          <button id="openFacebookBtn" class="secondary">Apri Facebook</button>
+          <button id="openInstagramBtn" class="secondary">Apri Instagram</button>
+        </div>
+        <button id="selectFacebookTextBtn" class="secondary">Usa il testo selezionato dell’evento</button>
+        <button id="captureStoryBtn" class="secondary">Ritaglia la locandina di una story</button>
+        <label for="socialTextPreview">Anteprima locale del testo selezionato</label>
+        <textarea id="socialTextPreview" rows="4" readonly hidden></textarea>
+        <img id="socialImagePreview" alt="Anteprima locale del ritaglio della story" hidden />
+        <label class="consent">
+          <input id="socialConsent" type="checkbox" />
+          Ho il diritto di inviare questa selezione al portale e ai servizi AI configurati per l’analisi.
+        </label>
+        <button id="analyzeSocialBtn">Conferma anteprima e analizza</button>
+        <p id="socialStatus" class="status muted"></p>
+      </section>
+
       <section class="card">
         <h2>Immagine o screenshot</h2>
         <input id="imageInput" type="file" accept="image/*" />
@@ -85,7 +105,7 @@
       </section>
     </main>
 
-    <script src="popup.js"></script>
+    <script type="module" src="popup.js"></script>
   </body>
 
 </html>

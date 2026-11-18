@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 export type ExtensionAuthenticatedUser = {
   userId: number;
   email: string;
+  isAdmin: boolean;
 };
 
 export async function validateUserCredentials(email: string, password: string): Promise<ExtensionAuthenticatedUser | null> {
@@ -30,6 +31,7 @@ export async function validateUserCredentials(email: string, password: string): 
   return {
     userId: user.id,
     email: user.email,
+    isAdmin: user.role === 'admin' || user.type === 'admin',
   };
 }
 

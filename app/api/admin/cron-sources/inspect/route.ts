@@ -313,10 +313,42 @@ export async function POST(request: NextRequest) {
 
       // ---------- INJECT VISUAL OVERLAYS ----------
       await page.evaluate(
-        ({ eventSelector, nextSelector }: { eventSelector: string; nextSelector: string | null }) => {
+        ({ eventSelector, listingContainer, nextSelector }: { eventSelector: string; listingContainer: string | null; nextSelector: string | null }) => {
           const safeQuery = (sel: string): Element[] => {
-            try { return Array.from(document.querySelectorAll(sel)); } catch { return []; }
+            return shadowQueryAll(sel);
           };
+
+          function shadowQueryAll(selector: string, root: Document | Element | ShadowRoot = document): Element[] {
+            let results: Element[] = [];
+            try { results = Array.from(root.querySelectorAll(selector)); } catch { /* invalid selector */ }
+            const hosts = Array.from(root.querySelectorAll("*"));
+            for (const host of hosts) {
+              if (host.shadowRoot) {
+                results = results.concat(shadowQueryAll(selector, host.shadowRoot));
+              }
+            }
+            return results;
+          }
+
+          function shadowQuery(selector: string, root: Document | Element | ShadowRoot = document): Element | null {
+            try {
+              const direct = root.querySelector(selector);
+              if (direct) return direct;
+            } catch { /* ignore */ }
+            const hosts = Array.from(root.querySelectorAll("*"));
+            for (const host of hosts) {
+              if (host.shadowRoot) {
+                const found = shadowQuery(selector, host.shadowRoot);
+                if (found) return found;
+              }
+            }
+            return null;
+          }
+
+          const listingRoot = listingContainer ? shadowQuery(listingContainer) ?? undefined : undefined;
+          const eventNodes = listingRoot
+            ? shadowQueryAll(eventSelector, listingRoot)
+            : shadowQueryAll(eventSelector);
 
           // Remove any previous overlay container
           document.getElementById("__cron_overlay__")?.remove();
@@ -367,7 +399,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Event cards
-          safeQuery(eventSelector).forEach((el) => addBox(el, "#22c55e", "EVENTO"));
+          eventNodes.forEach((el) => addBox(el, "#22c55e", "EVENTO"));
 
           // Pagination block + auto-discovered containers
           const pgSelectors: string[] = [
@@ -385,7 +417,7 @@ export async function POST(request: NextRequest) {
           }
           pgSeen.forEach((el) => addBox(el, "#f59e0b", "PAGINAZIONE"));
         },
-        { eventSelector: eventLinkSelector, nextSelector: nextPageSelector },
+        { eventSelector: eventLinkSelector, listingContainer: listingContainerSelector, nextSelector: nextPageSelector },
       );
 
       // ---------- SCREENSHOT ----------

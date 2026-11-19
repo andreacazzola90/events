@@ -39,3 +39,7 @@
 ## Admin role refresh (review 2026-11-09)
 
 - Preexisting: NextAuth JWT captures `role`/`type` at sign-in and the update callback refreshes only the user's name. An administrator demoted in the database retains claim-based admin access until the token expires across routes that trust those claims; evaluate current-role authorization and session revocation across admin surfaces as a separate security change.
+
+## Selector inspection, 2026-11-19
+
+- Preexisting: `shadowQueryAll` searches a listing element's descendants and their open shadow roots, but not the listing element's own shadow root. If the configured listing selector matches a custom-element host containing event cards in its shadow root, both inspection counts and overlays miss those cards; consider fixing discovery and rendering together because this also changes reported counts.

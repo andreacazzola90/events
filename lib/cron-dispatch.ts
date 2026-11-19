@@ -22,7 +22,22 @@ export async function runCronJob(
     try {
       data = JSON.parse(text);
     } catch {
-      data = { raw: text.slice(0, 500) };
+      return {
+        key: job.key,
+        ok: false,
+        httpStatus: response.status,
+        data: { raw: text.slice(0, 500) },
+        error: `Expected JSON response but received ${response.headers.get("content-type") ?? "unknown content type"}`,
+      };
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return {
+        key: job.key,
+        ok: false,
+        httpStatus: response.status,
+        data,
+        error: "Expected a JSON object response",
+      };
     }
     const status = (data as { status?: unknown } | null)?.status;
     const ok = response.ok && !["error", "partial", "partial-error", "failed"].includes(String(status));

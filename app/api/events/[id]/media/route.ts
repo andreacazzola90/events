@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { authOptions } from "../../../../../pages/api/auth/[...nextauth]";
 import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase } from "../../../../lib/supabase";
 import { MAX_EVENT_ATTACHMENTS, MAX_EVENT_MEDIA_REQUEST_BYTES, validateEventMediaFile } from "../../../../../lib/event-media";
+import { invalidatePublicEvents } from "../../../../../lib/public-event-cache";
 
 function isAdminSession(session: any): boolean {
   const user = session?.user as any;
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       if (kind === "cover") {
         const event = await prisma.event.update({ where: { id: eventId }, data: { imageUrl: uploaded.url } });
+        invalidatePublicEvents();
         return NextResponse.json({ imageUrl: event.imageUrl });
       }
       const media = await prisma.$transaction(async transaction => {
@@ -115,6 +117,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           },
         });
       });
+      invalidatePublicEvents();
       return NextResponse.json(media, { status: 201 });
     } catch (error) {
       await deleteEventMediaFromSupabase(uploaded.storagePath).catch(() => {
@@ -146,6 +149,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!media) return NextResponse.json({ error: "Allegato non trovato" }, { status: 404 });
     await deleteEventMediaFromSupabase(media.storagePath);
     await prisma.eventMedia.delete({ where: { id: mediaId } });
+    invalidatePublicEvents();
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[API /events/[id]/media DELETE] Error:", error);

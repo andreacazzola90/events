@@ -17,7 +17,7 @@ import {
   generateUniqueSlug,
 } from "../../../../lib/slug-utils";
 import { getCropOutputSize, MAX_EVENT_MEDIA_BYTES } from "../../../../lib/event-media";
-import type { DbEvent } from "../../../types/event";
+import { EVENT_STATUSES, OFFER_AVAILABILITIES, PERFORMER_TYPES, type DbEvent } from "../../../types/event";
 import type { DraftImageCropBox } from "../../../../lib/draft-image-crop";
 
 type Event = DbEvent;
@@ -154,7 +154,7 @@ export default function EditEventPage() {
   }, [params?.slug]);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     if (!event) return;
     let value = e.target.value;
@@ -549,6 +549,52 @@ export default function EditEventPage() {
               className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black"
             />
           </div>
+          <section aria-labelledby="event-seo-fields-title" className="space-y-4 border-t border-black/10 pt-5">
+            <div>
+              <h2 id="event-seo-fields-title" className="text-lg font-bold mb-1">Dati strutturati facoltativi</h2>
+              <p className="text-sm text-gray-500 mb-0">Inserisci solo informazioni verificate. I campi vuoti non saranno aggiunti ai dati pubblici.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="block font-semibold">Data di fine
+                <input type="date" name="endDate" value={event.endDate || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Ora di fine
+                <input type="time" name="endTime" value={event.endTime || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Indirizzo completo
+                <input type="text" name="address" value={event.address || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Performer
+                <input type="text" name="performerName" value={event.performerName || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Tipo di performer
+                <select name="performerType" value={event.performerType || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black">
+                  <option value="">Non specificato</option>
+                  {PERFORMER_TYPES.map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
+              <label className="block font-semibold">Sito dell’organizzatore
+                <input type="url" name="organizerUrl" value={event.organizerUrl || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Link ai biglietti
+                <input type="url" name="offerUrl" value={event.offerUrl || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Disponibilità biglietti
+                <select name="offerAvailability" value={event.offerAvailability || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black">
+                  <option value="">Non specificata</option>
+                  {OFFER_AVAILABILITIES.map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
+              <label className="block font-semibold">Validità dell’offerta da
+                <input type="datetime-local" name="offerValidFrom" value={event.offerValidFrom || ""} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black" />
+              </label>
+              <label className="block font-semibold">Stato evento
+                <select name="eventStatus" value={event.eventStatus || "Scheduled"} onChange={handleChange} className="mt-1 w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-black">
+                  {EVENT_STATUSES.map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
+            </div>
+          </section>
           <div>
             <label className="block font-semibold mb-1">Testo Originale</label>
             <textarea

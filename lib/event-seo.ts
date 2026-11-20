@@ -3,6 +3,8 @@ import { parseEventDate } from './calendar-ics';
 import { generateUniqueSlug } from './slug-utils';
 import { publicPageMetadata, resolveSeoImage } from './seo-metadata';
 import { siteUrl } from './site-url';
+import { EVENT_STATUSES, OFFER_AVAILABILITIES, PERFORMER_TYPES } from '../app/types/event';
+import { isValidHttpUrl, isValidOfferValidFrom } from './event-seo-fields';
 
 export type EventSeoInput = {
   id: number;
@@ -11,10 +13,20 @@ export type EventSeoInput = {
   time?: string | null;
   description?: string | null;
   location?: string | null;
+  endDate?: string | null;
+  endTime?: string | null;
+  address?: string | null;
+  performerName?: string | null;
+  performerType?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   organizer?: string | null;
+  organizerUrl?: string | null;
   price?: string | null;
+  offerUrl?: string | null;
+  offerAvailability?: string | null;
+  offerValidFrom?: string | null;
+  eventStatus?: string | null;
   imageUrl?: string | null;
   updatedAt?: Date | string | null;
 };
@@ -66,6 +78,11 @@ export function parseEventOffer(price?: string | null) {
   return { '@type': 'Offer' as const, price: amount, priceCurrency: 'EUR' };
 }
 
+export function getEventEndDate(date?: string | null, time?: string | null): string | null {
+  if (!date) return null;
+  return getEventStartDate(date, time);
+}
+
 export function getEventMetadata(event: EventSeoInput) {
   const description = meaningfulText(event.description)
     ?? [event.title, event.date, meaningfulText(event.location)].filter(Boolean).join(' - ');
@@ -85,7 +102,38 @@ export function getEventJsonLd(event: EventSeoInput) {
   const description = meaningfulText(event.description);
   const image = resolveSeoImage(event.imageUrl);
   const organizer = meaningfulText(event.organizer);
-  const offers = parseEventOffer(event.price);
+  const organizerUrl = event.organizerUrl?.trim();
+  const offerUrl = event.offerUrl?.trim();
+  const availability = event.offerAvailability?.trim();
+  const validFrom = event.offerValidFrom?.trim();
+  const priceOffer = parseEventOffer(event.price);
+  const hasOfferDetails = (offerUrl && isValidHttpUrl(offerUrl))
+    || (availability && (OFFER_AVAILABILITIES as readonly string[]).includes(availability))
+    || (validFrom && isValidOfferValidFrom(validFrom));
+  const offers = priceOffer || hasOfferDetails
+    ? {
+      '@type': 'Offer' as const,
+      ...(priceOffer ? { price: priceOffer.price, priceCurrency: priceOffer.priceCurrency } : {}),
+      ...(offerUrl && isValidHttpUrl(offerUrl) ? { url: offerUrl } : {}),
+      ...(availability && (OFFER_AVAILABILITIES as readonly string[]).includes(availability)
+        ? { availability: `https://schema.org/${availability}` }
+        : {}),
+      ...(validFrom && isValidOfferValidFrom(validFrom) ? { validFrom } : {}),
+    }
+    : undefined;
+  const performerName = meaningfulText(event.performerName);
+  const performerType = event.performerType?.trim();
+  const performer = performerName && performerType
+    && (PERFORMER_TYPES as readonly string[]).includes(performerType)
+    ? { '@type': performerType, name: performerName }
+    : undefined;
+  const status = event.eventStatus == null
+    ? 'Scheduled'
+    : (EVENT_STATUSES as readonly string[]).includes(event.eventStatus)
+      ? event.eventStatus
+      : undefined;
+  const endDate = event.endDate ? getEventEndDate(event.endDate, event.endTime) : null;
+  const address = meaningfulText(event.address);
   const hasCoordinates = typeof event.latitude === 'number' && Number.isFinite(event.latitude)
     && event.latitude >= -90 && event.latitude <= 90
     && typeof event.longitude === 'number' && Number.isFinite(event.longitude)
@@ -97,18 +145,21 @@ export function getEventJsonLd(event: EventSeoInput) {
     name,
     url: siteUrl(getEventPath(event)),
     startDate,
-    // Google's documented default; the model has no cancellation/postponement state.
-    eventStatus: 'https://schema.org/EventScheduled',
+    ...(status ? { eventStatus: `https://schema.org/Event${status}` } : {}),
+    ...(endDate ? { endDate } : {}),
     ...(description ? { description } : {}),
     ...(image ? { image: [image] } : {}),
+    ...(performer ? { performer } : {}),
     location: {
       '@type': 'Place',
       name: location,
-      address: location,
+      ...(address ? { address } : {}),
       ...(hasCoordinates ? { geo: { '@type': 'GeoCoordinates', latitude: event.latitude, longitude: event.longitude } } : {}),
     },
-    ...(organizer ? { organizer: { '@type': 'Organization', name: organizer } } : {}),
-    ...(offers ? { offers, ...(offers.price === 0 ? { isAccessibleForFree: true } : {}) } : {}),
+    ...(organizer || (organizerUrl && isValidHttpUrl(organizerUrl))
+      ? { organizer: { '@type': 'Organization', ...(organizer ? { name: organizer } : {}), ...(organizerUrl && isValidHttpUrl(organizerUrl) ? { url: organizerUrl } : {}) } }
+      : {}),
+    ...(offers ? { offers, ...(priceOffer?.price === 0 ? { isAccessibleForFree: true } : {}) } : {}),
     ...(modified && Number.isFinite(modified.getTime()) ? { dateModified: modified.toISOString() } : {}),
   };
 }

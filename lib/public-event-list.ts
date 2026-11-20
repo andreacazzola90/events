@@ -5,6 +5,7 @@ import { calendarToday } from "./calendar-view";
 import { parseEventDate } from "./calendar-ics";
 import { DateTime } from "luxon";
 import type { DbEvent } from "../app/types/event";
+import { PUBLIC_EVENTS_TAG } from "./public-event-cache";
 
 export type PublicCalendarEvent = Pick<DbEvent, "id" | "title" | "date" | "time" | "location" | "imageUrl" | "category">;
 export type PublicListEvent = PublicCalendarEvent & Pick<DbEvent, "description" | "organizer" | "category" | "price"> & { imageUrls: string[] };
@@ -47,7 +48,7 @@ const cachedList = unstable_cache(async (today: string, range: "today" | "upcomi
     imageUrls: [...new Set([event.imageUrl, ...(media ?? []).map(image => image.url)].filter((url): url is string => Boolean(url)))].slice(0, 5),
   }));
   return normalizePublicEvents(previewEvents, today, range);
-}, ["public-event-list"], { tags: ["events-list"], revalidate: 60 });
+}, ["public-event-list"], { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 });
 
 const cachedCalendar = unstable_cache(async (today: string) => {
   const events = await prisma.event.findMany({
@@ -57,7 +58,7 @@ const cachedCalendar = unstable_cache(async (today: string) => {
     take: 2000,
   });
   return normalizePublicEvents(events, today);
-}, ["public-event-calendar"], { tags: ["events-list"], revalidate: 60 });
+}, ["public-event-calendar"], { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 });
 
 export async function getPublicEventList(range: "today" | "upcoming" = "upcoming", today = calendarToday()): Promise<PublicListEvent[] | undefined> {
   try {

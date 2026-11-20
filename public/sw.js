@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eventscanner-v8'; // Incrementa versione per forzare update
+const CACHE_NAME = 'eventscanner-v9';
 const SHARE_CACHE_NAME = 'eventscanner-shared-files-v1';
 const SHARE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STATIC_CACHE = [
@@ -9,6 +9,7 @@ const STATIC_CACHE = [
     '/icons/pwa-192.png',
     '/icons/pwa-512.png'
 ];
+const OFFLINE_PAGES = new Set(['/', '/crea', '/mappa', '/eventi', '/tutti-gli-eventi', '/rassegne', '/estensione', '/versioni', '/ui-ux']);
 
 function getShareRequest(shareId) {
     const url = new URL('/api/share-target', self.location.origin);
@@ -121,11 +122,10 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Skip cross-origin requests
-    if (!event.request.url.startsWith(self.location.origin)) {
+    const requestUrl = new URL(event.request.url);
+    if (requestUrl.origin !== self.location.origin) {
         return;
     }
-
-    const requestUrl = new URL(event.request.url);
 
     // Store shared screenshots locally before redirecting into the app.
     if (
@@ -145,23 +145,24 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Avoid stale Next.js runtime/assets that can trigger "server action not found"
+    // Next.js serves versioned assets and handles their HTTP cache.
     if (requestUrl.pathname.startsWith('/_next/')) {
         event.respondWith(fetch(event.request));
         return;
     }
 
     // Navigation requests should prefer network to avoid stale app shell after deploy
-    if (event.request.mode === 'navigate') {
+    if (event.request.mode === 'navigate' && OFFLINE_PAGES.has(requestUrl.pathname) && !requestUrl.search) {
         event.respondWith(
             fetch(event.request)
                 .then((fetchResponse) => {
-                    if (fetchResponse.ok && isCacheableResponse(fetchResponse) && !requestUrl.pathname.startsWith('/events/')) {
+                    if (fetchResponse.ok && isCacheableResponse(fetchResponse)) {
                         const responseToCache = fetchResponse.clone();
                         caches.open(CACHE_NAME).then((cache) => {
                             cache.put(event.request, responseToCache);
                         });
                     }
+                    if (event.request.mode === 'navigate') return;
                     return fetchResponse;
                 })
                 .catch(() => caches.match(event.request).then((cachedResponse) => cachedResponse || caches.match('/')))
@@ -170,7 +171,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Network-First strategy for events API (fresh data first, cache fallback offline)
-    if (event.request.url.includes('/api/events') && event.request.method === 'GET') {
+    if (requestUrl.pathname === '/api/events' && event.request.method === 'GET' &&
+        !requestUrl.searchParams.has('userId') && !requestUrl.searchParams.has('includeDrafts')) {
         console.log('[SW] Handling API request with Network-First:', event.request.url);
         event.respondWith(
             fetch(event.request)
@@ -212,7 +214,8 @@ self.addEventListener('fetch', (event) => {
             // Return cached version or fetch from network
             return response || fetch(event.request).then((fetchResponse) => {
                 // Cache successful GET requests (but not API calls - already handled above)
-                if (event.request.method === 'GET' && fetchResponse.ok && !event.request.url.includes('/api/')) {
+                if (event.request.method === 'GET' && fetchResponse.ok && isCacheableResponse(fetchResponse) &&
+                    ['image', 'style', 'script', 'font', 'manifest'].includes(event.request.destination)) {
                     const responseToCache = fetchResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(event.request, responseToCache);

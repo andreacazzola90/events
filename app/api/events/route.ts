@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { scheduleCalendarDeliveries } from "../../lib/google-calendar";
 import { deleteEventMediaFromSupabase, uploadEventMediaToSupabase, uploadImageToSupabase, uploadOriginalEventImageToSupabase } from "../../lib/supabase";
 import { geocodeLocation } from "@/lib/geocoding";
-import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
+import { unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../pages/api/auth/[...nextauth]";
 import { generateUniqueSlug } from "../../../lib/slug-utils";
@@ -14,11 +14,14 @@ import {
   extensionCorsPreflight,
   withExtensionCors,
 } from "../../../lib/extension-cors";
-import type { DbEvent } from "../../types/event";
 import { recordScanCorrections } from "../../../lib/scan-learning-store";
 import { createEventWithSeries } from "../../../lib/event-series-create";
 import { redactOriginalEventImageMetadata, validateEventMediaFile, validateOriginalEventImageFile } from "../../../lib/event-media";
 import { isCoverImageCrop } from "../../../lib/cover-image-crop";
+import { invalidatePublicEvents, PUBLIC_EVENTS_TAG } from "../../../lib/public-event-cache";
+import { calendarToday } from "../../../lib/calendar-view";
+import type { Prisma } from "@prisma/client";
+import { parseEventSeoFields, type EventSeoFieldValues } from "../../../lib/event-seo-fields";
 
 function isAdminSession(session: any): boolean {
   const user = session?.user as any;
@@ -60,14 +63,15 @@ async function attachPosterImage(eventId: number, poster: File) {
   }
 }
 
-function refreshEventCache(eventSlug: string) {
-  revalidatePath("/", "page");
-  revalidatePath("/eventi", "page");
-  revalidatePath("/tutti-gli-eventi", "page");
-  revalidatePath("/mappa", "page");
-  revalidateTag("events-list", { expire: 0 });
-  revalidatePath(`/events/${eventSlug}`, "page");
-}
+const getEvents = (where: Prisma.EventWhereInput, take: number) =>
+  prisma.event.findMany({ where, orderBy: { createdAt: "desc" }, take });
+
+const getCachedEvents = unstable_cache(
+  async (where: Prisma.EventWhereInput, take: number) =>
+    (await getEvents({ ...where, isPublished: true }, take)).map(redactOriginalEventImageMetadata),
+  ["events-list-public-v2"],
+  { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 },
+);
 
 export async function OPTIONS(request: NextRequest) {
   return extensionCorsPreflight(request);
@@ -83,6 +87,7 @@ export async function POST(request: NextRequest) {
     let imageUrl: string | undefined = undefined;
     let originalImageUrl: string | undefined = undefined;
     let originalImageCrop: { x: number; y: number; width: number; height: number } | null = null;
+    let seoFields: EventSeoFieldValues = {};
 
     const contentType = request.headers.get("content-type") || "";
     console.log(
@@ -95,6 +100,11 @@ export async function POST(request: NextRequest) {
     if (contentType.includes("application/json")) {
       // Handle JSON body
       eventData = await request.json();
+      const seoValidation = parseEventSeoFields(eventData);
+      if (!seoValidation.ok) {
+        return withExtensionCors(NextResponse.json({ error: seoValidation.error }, { status: 400 }), request);
+      }
+      seoFields = seoValidation.fields;
       if (eventData.originalImageCrop != null && !isCoverImageCrop(eventData.originalImageCrop)) {
         return withExtensionCors(NextResponse.json({ error: "Coordinate di ritaglio non valide" }, { status: 400 }), request);
       }
@@ -138,6 +148,11 @@ export async function POST(request: NextRequest) {
       // Handle multipart/form-data
       const formData = await request.formData();
       eventData = JSON.parse(formData.get("eventData") as string);
+      const seoValidation = parseEventSeoFields(eventData);
+      if (!seoValidation.ok) {
+        return withExtensionCors(NextResponse.json({ error: seoValidation.error }, { status: 400 }), request);
+      }
+      seoFields = seoValidation.fields;
       if (eventData.originalImageCrop != null && !isCoverImageCrop(eventData.originalImageCrop)) {
         return withExtensionCors(NextResponse.json({ error: "Coordinate di ritaglio non valide" }, { status: 400 }), request);
       }
@@ -203,6 +218,8 @@ export async function POST(request: NextRequest) {
       organizer: eventData.organizer || "",
       category: (eventData.category || "other").toLowerCase().trim(),
       price: eventData.price || "",
+      ...seoFields,
+      eventStatus: seoFields.eventStatus ?? "Scheduled",
       rawText: typeof eventData.rawText === "string" ? eventData.rawText : "",
       imageUrl: imageUrl || null,
       originalImageUrl: originalImageUrl || imageUrl || null,
@@ -265,16 +282,7 @@ export async function POST(request: NextRequest) {
     console.log("[API /events POST] Event saved successfully, ID:", event.id);
 
     const eventSlug = generateUniqueSlug(event.title, event.id);
-    const eventDetailPath = `/events/${eventSlug}`;
-    try {
-      refreshEventCache(eventSlug);
-      if (seriesSlug) {
-        revalidatePath("/rassegne", "page");
-        revalidatePath(`/rassegne/${seriesSlug}`, "page");
-      }
-    } catch {
-      console.warn("[API /events POST] Event saved; cache refresh unavailable");
-    }
+    if (event.isPublished) invalidatePublicEvents({ slug: eventSlug, seriesSlug: seriesSlug ?? undefined });
 
     after(async () => {
       const tasks = [async () => {
@@ -288,11 +296,11 @@ export async function POST(request: NextRequest) {
           },
           data: coords,
         });
-        if (updated.count) refreshEventCache(eventSlug);
+        if (updated.count && event.isPublished) invalidatePublicEvents({ slug: eventSlug, seriesSlug: seriesSlug ?? undefined });
       }, async () => {
         if (posterFile && imageUrl) {
           await attachPosterImage(event.id, posterFile);
-          refreshEventCache(eventSlug);
+          if (event.isPublished) invalidatePublicEvents({ slug: eventSlug, seriesSlug: seriesSlug ?? undefined });
         }
       }, async () => {
         if (typeof eventData.scanFeedbackToken === "string") {
@@ -303,19 +311,6 @@ export async function POST(request: NextRequest) {
           );
           if (learned) console.log(`[API /events POST] Learned ${learned} scan correction(s)`);
         }
-      }, async () => {
-        await Promise.all([
-          `/api/events?limit=200&_rebuild=${Date.now()}`,
-          eventDetailPath,
-        ].map(async path => {
-          try {
-            await fetch(new URL(path, request.nextUrl.origin), {
-              cache: "no-store", signal: AbortSignal.timeout(3_000),
-            });
-          } catch {
-            console.warn("[API /events POST] Event saved; page pre-warm unavailable");
-          }
-        }));
       }];
       await Promise.all(tasks.map(async task => {
         try {
@@ -384,7 +379,7 @@ export async function GET(request: NextRequest) {
       includeDraftEvents = true;
     }
 
-    const where: any = {};
+    const where: Prisma.EventWhereInput = {};
     if (!includeDraftEvents) where.isPublished = true;
 
     if (search) {
@@ -399,7 +394,7 @@ export async function GET(request: NextRequest) {
     }
 
     const includePast = searchParams.get("includePast") === "true";
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = calendarToday();
 
     // By default, never return past events unless includePast=true is explicitly passed.
     // When includePast is false, the effective dateFrom is at least today.
@@ -420,38 +415,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Use unstable_cache to cache the database query
-    const getCachedEvents = unstable_cache(
-      async (queryWhere, queryLimit) => {
-        return prisma.event.findMany({
-          where: queryWhere,
-          orderBy: { createdAt: "desc" },
-          take: queryLimit,
-        });
-      },
-      ["events-list-query"], // Key parts (will be combined with args automatically in newer Next.js, but explicit keys are safer)
-      {
-        tags: ["events-list"],
-        revalidate: 60, // Revalidate every 60 seconds as fallback
-      },
-    );
-
-    // We need to pass the arguments to the cached function.
-    // Note: unstable_cache memoizes based on the arguments passed to the returned function.
-    // However, the second argument to unstable_cache (keyParts) is static.
-    // To make it dynamic based on args, we rely on the args being part of the cache key internally.
-    // But to be safe and explicit with tags, we use the tag 'events-list'.
-
-    const events = includeDraftEvents
-      ? await prisma.event.findMany({ where, orderBy: { createdAt: "desc" }, take: limit })
+    const events = includeDraftEvents || userIdParam
+      ? await getEvents(where, limit)
       : await getCachedEvents(where, limit);
 
     // If this is a global listing (no specific userId), de-duplicate
     // events by (title, date, location), keeping only the first
-    let responseEvents: DbEvent[] = events;
+    let responseEvents = events;
     if (!userIdParam && !includeDraftEvents) {
       const seenKeys = new Set<string>();
-      responseEvents = events.filter((event: DbEvent) => {
+      responseEvents = events.filter((event) => {
         const key = `${(event.title || "").trim()}|||${(event.date || "").trim()}|||${(event.location || "").trim()}`;
         if (!key.trim()) return true; // if key is empty, don't dedupe aggressively
         if (seenKeys.has(key)) {
@@ -468,7 +441,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Cache-Control": userIdParam || includeDraftEvents
           ? "private, no-store"
-          : "public, s-maxage=60, stale-while-revalidate=300",
+          : "public, max-age=0, must-revalidate",
       },
     });
   } catch (error) {

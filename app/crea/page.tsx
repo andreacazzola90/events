@@ -9,6 +9,7 @@ import RocketLaunchAnimation from '../components/RocketLaunchAnimation';
 import PageHeading from '../components/PageHeading';
 import { useRouter } from 'next/navigation';
 import ImageUploader from '../components/ImageUploader';
+import CreationJobs, { uploadCreationJob } from './CreationJobs';
 import { DuplicateMatch, EventData } from '../types/event';
 import EventDisplay from '../components/EventDisplay';
 import MultipleEventsEditor from '../components/MultipleEventsEditor';
@@ -101,6 +102,8 @@ export default function CreaEvento() {
     const imageProcessing = imageCropStatus === 'processing' || posterSectionsPending;
     const draftScanId = useRef(0);
     const [autoPublish, setAutoPublish] = useState(true);
+    const [jobsUpdate, setJobsUpdate] = useState(0);
+    const [reviewFile, setReviewFile] = useState<File | null>(null);
     const autoPublishRef = useRef(true);
     const [autopilot, setAutopilot] = useState<AutopilotState | null>(null);
     const autopilotRun = useRef(0);
@@ -882,9 +885,21 @@ export default function CreaEvento() {
                                     <ImageUploader
                                         onStart={beginDraftScan}
                                         onProcessed={handleNewEvents}
+                                        onBackgroundUpload={autoPublish ? async file => {
+                                            setError(null);
+                                            try {
+                                                const receipt = await uploadCreationJob(file);
+                                                if (mounted.current && ['queued', 'processing'].includes(receipt.status)) {
+                                                    toast.success('File ricevuto, evento in elaborazione. Puoi lasciare questa pagina.');
+                                                }
+                                            } finally {
+                                                if (mounted.current) setJobsUpdate(value => value + 1);
+                                            }
+                                        } : undefined}
+                                        reviewFile={reviewFile}
                                         onError={(message: string) => {
-                                            setError(message);
                                             resetEvents();
+                                            setError(message);
                                         }}
                                     />
                                 </div>
@@ -937,6 +952,12 @@ export default function CreaEvento() {
                                 </div>
                             </div>
                         )}
+
+                        <CreationJobs update={jobsUpdate} onReview={file => {
+                            resetEvents();
+                            handleAutoPublishChange(false);
+                            setReviewFile(file);
+                        }} />
 
                         {autopilot && autopilotActive && (
                             <section className="create-autopilot-panel p-6 md:p-8 animate-fadeInUp" data-testid="autopilot-panel" aria-label="Pubblicazione automatica">

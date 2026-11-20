@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { createEventWithCalendar, scheduleCalendarDeliveries } from '../../../lib/google-calendar';
 import { processEventLink } from '../../../../lib/event-processor';
 import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
-import { revalidatePath, revalidateTag } from 'next/cache';
+import { invalidatePublicEvents } from '../../../../lib/public-event-cache';
 import { geocodeLocation } from '@/lib/geocoding';
 import { scanTelegramQueue } from '../../../../lib/telegram-event-scanning';
 import { scanPersonalTelegramSources } from '../../../../lib/personal-telegram-scanning';
@@ -930,9 +930,7 @@ async function scrapeOneSource(
     // 5. Revalidate cache se abbiamo nuovi eventi
     if (!dryRun && processedEvents.length > 0) {
       scheduleCalendarDeliveries();
-      revalidatePath('/', 'layout');
-      revalidatePath('/api/events', 'page');
-      revalidateTag('events-list', { expire: 0 });
+      invalidatePublicEvents();
     }
 
     console.log(`[VisitPedemontana] Scraping summary for "${sourceConfig.name}" (per link):`);
@@ -1163,9 +1161,7 @@ export async function GET(request: NextRequest) {
   const personalTelegram = await personalTelegramWork;
   if (!dryRun && (telegram.published > 0 || personalTelegram.published > 0)) {
     scheduleCalendarDeliveries();
-    revalidatePath('/', 'layout');
-    revalidatePath('/api/events', 'page');
-    revalidateTag('events-list', { expire: 0 });
+    invalidatePublicEvents();
   }
   const allResults = [...results, telegram, personalTelegram];
   const overallStatus = allResults.some(r => ['error', 'partial-error'].includes(r.status))

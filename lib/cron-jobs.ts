@@ -5,6 +5,7 @@ export const CRON_JOBS = [
   { key: "instagram-scan", label: "Scansione Instagram", path: "/api/cron/scan-instagram" },
   { key: "crop-learning-cleanup", label: "Pulizia dati crop", path: "/api/cron/cleanup-crop-learning" },
   { key: "personal-telegram-cleanup", label: "Pulizia coda Telegram personale", path: "/api/cron/cleanup-personal-telegram" },
+  { key: "event-creation", label: "Recupero creazione eventi", path: "/api/cron/event-creation-jobs" },
 ] as const;
 
 export type CronJobKey = (typeof CRON_JOBS)[number]["key"];

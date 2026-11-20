@@ -2,10 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Settings2 } from "lucide-react";
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/admin-auth";
 import { publicPageMetadata } from "../../lib/seo-metadata";
 import PageHeading from "../components/PageHeading";
+import { PUBLIC_EVENTS_TAG } from "../../lib/public-event-cache";
 
 export const metadata: Metadata = publicPageMetadata({
   path: '/rassegne',
@@ -15,9 +17,8 @@ export const metadata: Metadata = publicPageMetadata({
 
 export const revalidate = 60;
 
-export default async function EventSeriesIndexPage() {
-  const [series, adminSession] = await Promise.all([
-    prisma.eventSeries.findMany({
+const getPublicSeries = unstable_cache(
+  () => prisma.eventSeries.findMany({
       where: { isPublished: true },
       include: {
         _count: { select: { events: { where: { isPublished: true } } } },
@@ -48,18 +49,25 @@ export default async function EventSeriesIndexPage() {
       },
       orderBy: { updatedAt: "desc" },
     }),
+  ["public-series-index"],
+  { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 },
+);
+
+export default async function EventSeriesIndexPage() {
+  const [series, adminSession] = await Promise.all([
+    getPublicSeries(),
     getAdminSession(),
   ]);
 
   return (
-    <main className="rassegne-page min-h-screen page-shell text-[#1d1d1b]">
+    <main className="rassegne-page min-h-screen page-shell">
       <div className="editorial-container">
         <PageHeading
           kicker="Alto Vicentino"
           title="Rassegne"
           description="Festival e programmi raccolti in un unico calendario."
           action={adminSession?.user ? (
-            <Link href="/admin/rassegne" className="inline-flex items-center gap-2 border border-black/20 px-4 py-2.5 text-sm font-bold text-[#1d1d1b] transition-colors hover:border-[#d65a38] hover:text-[#a33f24]">
+            <Link href="/admin/rassegne" className="btn btn-outline gap-2">
               <Settings2 className="h-4 w-4" aria-hidden="true" />
               Gestisci rassegne
             </Link>
@@ -96,7 +104,7 @@ export default async function EventSeriesIndexPage() {
             })}
           </ul>
         ) : (
-          <p className="mt-9 border-y border-white/10 bg-[#181818] px-4 py-8 text-sm text-white/60">Non ci sono rassegne pubblicate.</p>
+          <p className="surface-panel mt-9 px-4 py-8 text-sm text-[var(--foreground-muted)]">Non ci sono rassegne pubblicate.</p>
         )}
       </div>
     </main>

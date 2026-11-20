@@ -1,4 +1,25 @@
 /** Full event record as stored in the database (mirrors the Prisma Event model). */
+export const EVENT_STATUSES = ['Scheduled', 'Cancelled', 'Postponed', 'Rescheduled'] as const;
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+
+export const PERFORMER_TYPES = ['Person', 'PerformingGroup'] as const;
+export type PerformerType = (typeof PERFORMER_TYPES)[number];
+
+export const OFFER_AVAILABILITIES = [
+  'InStock',
+  'SoldOut',
+  'PreOrder',
+  'PreSale',
+  'LimitedAvailability',
+  'OutOfStock',
+  'Discontinued',
+  'BackOrder',
+  'MadeToOrder',
+  'OnlineOnly',
+  'InStoreOnly',
+] as const;
+export type OfferAvailability = (typeof OFFER_AVAILABILITIES)[number];
+
 export interface DbEvent {
   id: number;
   title: string;
@@ -6,11 +27,21 @@ export interface DbEvent {
   date: string;
   time: string;
   location: string;
+  endDate: string | null;
+  endTime: string | null;
+  address: string | null;
+  performerName: string | null;
+  performerType: PerformerType | null;
   latitude: number | null;
   longitude: number | null;
   organizer: string;
+  organizerUrl: string | null;
   category: string;
   price: string;
+  offerUrl: string | null;
+  offerAvailability: OfferAvailability | null;
+  offerValidFrom: string | null;
+  eventStatus: EventStatus;
   rawText: string;
   imageUrl: string | null;
   originalImageUrl: string | null;
@@ -34,9 +65,19 @@ export interface EventData {
   date: string;
   time: string;
   location: string;
+  endDate?: string | null;
+  endTime?: string | null;
+  address?: string | null;
+  performerName?: string | null;
+  performerType?: PerformerType | null;
   organizer: string;
+  organizerUrl?: string | null;
   category: string;
   price: string;
+  offerUrl?: string | null;
+  offerAvailability?: OfferAvailability | null;
+  offerValidFrom?: string | null;
+  eventStatus?: EventStatus | null;
   rawText: string;
   imageUrl?: string;
   originalImageUrl?: string;

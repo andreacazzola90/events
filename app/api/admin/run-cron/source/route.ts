@@ -4,7 +4,7 @@ import { createEventWithCalendar, scheduleCalendarDeliveries } from "../../../..
 import { processEventLink } from "../../../../../lib/event-processor";
 import { getBrowser, closeBrowser } from "../../../../../lib/browser-vercel";
 import { geocodeLocation } from "@/lib/geocoding";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { invalidatePublicEvents } from "../../../../../lib/public-event-cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../../../pages/api/auth/[...nextauth]";
 
@@ -598,9 +598,7 @@ export async function POST(request: NextRequest) {
       // ─── 5. Revalidate cache ─────────────────────────────────────────────────
       if (!dryRun && savedEvents.length > 0) {
         scheduleCalendarDeliveries();
-        revalidatePath("/", "layout");
-        revalidatePath("/api/events", "page");
-        revalidateTag("events-list", { expire: 0 });
+        invalidatePublicEvents();
       }
 
       // Final summary event

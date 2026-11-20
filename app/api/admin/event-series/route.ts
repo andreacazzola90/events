@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
+import { invalidatePublicEvents } from "../../../../lib/public-event-cache";
 import { getAdminSession } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 
@@ -117,11 +117,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!series) throw new Error("Rassegna salvata ma non riletta");
-    revalidatePath("/rassegne");
-    revalidatePath(`/rassegne/${series.slug}`);
-    for (const eventId of eventIds) {
-      revalidatePath(`/events/${eventId}`);
-    }
+    invalidatePublicEvents({ seriesSlug: series.slug });
 
     return NextResponse.json(series, { status: id === null ? 201 : 200 });
   } catch (error) {
@@ -145,7 +141,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Rassegna non trovata" }, { status: 404 });
   }
   await prisma.eventSeries.delete({ where: { id } });
-  revalidatePath("/rassegne");
-  revalidatePath(`/rassegne/${existing.slug}`);
+  invalidatePublicEvents({ seriesSlug: existing.slug });
   return NextResponse.json({ ok: true });
 }

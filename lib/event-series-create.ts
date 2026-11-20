@@ -14,9 +14,9 @@ function comparable(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-export async function createEventWithSeries(data: Prisma.EventUncheckedCreateInput, explicitTitle: unknown) {
+export async function createEventWithSeries(data: Prisma.EventUncheckedCreateInput, explicitTitle: unknown, tx?: Prisma.TransactionClient) {
   const title = normalizeSeriesTitle(explicitTitle);
-  if (!title) return { event: await createEventWithCalendar({ data }), seriesSlug: null };
+  if (!title) return { event: await createEventWithCalendar({ data }, tx), seriesSlug: null };
 
   const year = /^\d{4}-\d{2}-\d{2}$/.test(data.date) ? data.date.slice(0, 4) : '';
   const owner = data.createdById;
@@ -26,27 +26,29 @@ export async function createEventWithSeries(data: Prisma.EventUncheckedCreateInp
   const prefix = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 110) || 'rassegna';
   const slug = `${prefix}-${suffix}`;
 
+  const save = async (transaction: Prisma.TransactionClient) => {
+    for (let candidate = 0; candidate < 32; candidate++) {
+      const candidateSlug = candidate === 0 ? slug : `${slug}-${candidate + 1}`;
+      const existing = await transaction.eventSeries.findUnique({
+        where: { slug: candidateSlug },
+        include: { events: { select: { createdById: true, location: true, date: true } } },
+      });
+      const reusable = canReuse && existing?.isPublished && comparable(existing.title) === comparable(title) &&
+        existing.events.length > 0 && existing.events.every(event => event.createdById === owner &&
+          comparable(event.location) === comparable(data.location) && event.date.startsWith(`${year}-`));
+      if (existing && !reusable) continue;
+      const series = existing ?? await transaction.eventSeries.create({
+        data: { title, slug: candidateSlug, isPublished: true },
+      });
+      const event = await createEventWithCalendar({ data: { ...data, eventSeriesId: series.id } }, transaction);
+      return { event, seriesSlug: series.slug };
+    }
+    throw new Error('No available series slug in this scope');
+  };
+  if (tx) return save(tx);
   for (let attempt = 0; ; attempt++) {
     try {
-      return await prisma.$transaction(async transaction => {
-        for (let candidate = 0; candidate < 32; candidate++) {
-          const candidateSlug = candidate === 0 ? slug : `${slug}-${candidate + 1}`;
-          const existing = await transaction.eventSeries.findUnique({
-            where: { slug: candidateSlug },
-            include: { events: { select: { createdById: true, location: true, date: true } } },
-          });
-          const reusable = canReuse && existing?.isPublished && comparable(existing.title) === comparable(title) &&
-            existing.events.length > 0 && existing.events.every(event => event.createdById === owner &&
-              comparable(event.location) === comparable(data.location) && event.date.startsWith(`${year}-`));
-          if (existing && !reusable) continue;
-          const series = existing ?? await transaction.eventSeries.create({
-            data: { title, slug: candidateSlug, isPublished: true },
-          });
-          const event = await createEventWithCalendar({ data: { ...data, eventSeriesId: series.id } }, transaction);
-          return { event, seriesSlug: series.slug };
-        }
-        throw new Error('No available series slug in this scope');
-      });
+      return await prisma.$transaction(save);
     } catch (error) {
       const conflict = error as { code?: string; meta?: { target?: unknown } };
       if (attempt === 0 && conflict.code === 'P2002' && Array.isArray(conflict.meta?.target) && conflict.meta.target.includes('slug')) continue;

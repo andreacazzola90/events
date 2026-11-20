@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 import PageHeading from "../../components/PageHeading";
 import LoadingAnimation from "../../components/LoadingAnimation";
 
-const inputClassName = "w-full rounded-2xl bg-white/95 border border-white/70 px-4 py-3 text-gray-900 placeholder:text-gray-500 caret-gray-900 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-sm focus:outline-none focus:bg-white focus:border-transparent focus:ring-2 focus:ring-pink-500 focus:shadow-[0_16px_40px_rgba(15,23,42,0.14)] transition-all";
+const inputClassName = "w-full border border-[var(--line)] bg-[var(--background-soft)] px-4 py-3 text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]";
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
@@ -67,9 +67,9 @@ function ResetPasswordContent() {
     <main className="min-h-screen flex items-center justify-center">
       <div className="hero-section w-full">
         <div className="max-w-4xl mx-auto px-6 py-16">
-          <div className="max-w-md mx-auto glass-effect rounded-3xl p-8 md:p-12 space-y-6">
+          <div className="surface-panel max-w-md mx-auto p-6 md:p-10 space-y-6">
             <div className="text-center">
-              <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <div aria-hidden="true" className="w-16 h-16 bg-[var(--accent-soft)] flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🔐</span>
               </div>
               <PageHeading
@@ -81,12 +81,13 @@ function ResetPasswordContent() {
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit}>
-              {error && <div className="rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-3 text-red-200 text-sm">{error}</div>}
-              {success && <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-emerald-200 text-sm">{success}</div>}
+              {error && <div role="alert" className="border border-red-500/40 bg-red-500/15 px-4 py-3 text-red-200 text-sm">{error}</div>}
+              {success && <div role="status" className="border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-emerald-200 text-sm">{success}</div>}
 
               <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Nuova password</label>
+                <label htmlFor="reset-password" className="block text-sm font-semibold mb-2">Nuova password</label>
                 <input
+                  id="reset-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -97,8 +98,9 @@ function ResetPasswordContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Conferma password</label>
+                <label htmlFor="reset-password-confirm" className="block text-sm font-semibold mb-2">Conferma password</label>
                 <input
+                  id="reset-password-confirm"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -114,7 +116,7 @@ function ResetPasswordContent() {
             </form>
 
             <div className="text-center text-sm text-gray-400">
-              <Link href="/auth" className="text-pink-400 hover:text-pink-300 font-semibold transition-colors">
+              <Link href="/auth" className="text-[var(--accent-ink)] font-semibold underline underline-offset-4">
                 Torna al login
               </Link>
             </div>

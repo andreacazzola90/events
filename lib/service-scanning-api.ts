@@ -3,12 +3,13 @@ import { withAuth } from '../app/lib/auth-helpers';
 import { prisma } from '../app/lib/prisma';
 import { boundedJson, MessagingError, parseServiceScan, requireMessagingOrigin } from './personal-messaging';
 import type { Platform } from './personal-messaging';
+import { invalidatePublicEvents } from './public-event-cache';
 
 const headers = { 'Cache-Control': 'no-store, private', Vary: 'Cookie' };
 const running = new Set<string>();
 export async function runServiceScan(
   request: Request, service: string,
-  scan: (options: { dryRun: boolean; deadline: number; ownerId: number; platform?: Platform }) => Promise<unknown>,
+  scan: (options: { dryRun: boolean; deadline: number; ownerId: number; platform?: Platform }) => Promise<{ published: number }>,
   personal = false,
 ) {
   const response = await withAuth(async ownerId => {
@@ -23,7 +24,9 @@ export async function runServiceScan(
       const candidate = `${ownerId}:${service}:${payload.platform || ''}`;
       if (running.has(candidate)) throw new MessagingError('rate_limited', 429);
       key = candidate; running.add(key);
-      return NextResponse.json(await scan({ ...payload, ownerId, deadline: Date.now() + 260_000 }), { headers });
+      const result = await scan({ ...payload, ownerId, deadline: Date.now() + 260_000 });
+      if (!payload.dryRun && result.published > 0) invalidatePublicEvents();
+      return NextResponse.json(result, { headers });
     } catch (error) {
       return NextResponse.json({ error: error instanceof MessagingError ? error.code : 'service_scan_failed' }, { status: error instanceof MessagingError ? error.status : 503, headers });
     } finally { if (key) running.delete(key); }

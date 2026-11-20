@@ -22,26 +22,26 @@ export default function VersioniPage() {
           description={
             <>
             Aggiornamenti del prodotto e miglioramenti visibili, ordinati per
-            versione. La versione corrente è <strong className="break-all text-[#1d1d1b]">{appBuildInfo.version}</strong>.
+            versione. La versione corrente è <strong className="break-all text-[var(--foreground)]">{appBuildInfo.version}</strong>.
             </>
           }
         />
-        <p className="mb-6 text-sm text-[#5f5b56]">
+        <p className="mb-6 text-sm text-[var(--foreground-muted)]">
             {appBuildInfo.builtAt ? (
               <>Build del deploy: <time dateTime={appBuildInfo.builtAt}>{appBuildInfo.builtAtLabel}</time></>
             ) : process.env.NODE_ENV === "development" ? "Sviluppo locale" : "Data build non disponibile"}
         </p>
         <TransitionLink href="/ui-ux" className="industrial-link industrial-link-outline mb-12">
-          Regole UI/UX <span aria-hidden="true">↗</span>
+          Design system <span aria-hidden="true">↗</span>
         </TransitionLink>
 
         <div>
           {releaseNotes.map((release) => (
-            <article key={release.version} className="grid gap-5 border-t border-black/15 py-8 md:grid-cols-[minmax(12rem,0.7fr)_1.3fr] md:gap-12 md:py-10">
+            <article key={release.version} className="grid gap-5 border-t border-[var(--line)] py-8 md:grid-cols-[minmax(12rem,0.7fr)_1.3fr] md:gap-12 md:py-10">
               <div>
                 <p className="section-kicker mb-2">{release.date}</p>
-                <h2 className="m-0 text-3xl font-black text-[#1d1d1b]">v{release.version}</h2>
-                <p className="mt-2 text-sm text-[#5f5b56]">{release.title}</p>
+                <h2 className="m-0 text-3xl font-black">v{release.version}</h2>
+                <p className="mt-2 text-sm text-[var(--foreground-muted)]">{release.title}</p>
               </div>
               <div className="space-y-8">
                 {release.groups.map((group) => (
@@ -49,9 +49,9 @@ export default function VersioniPage() {
                     <h3 className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-[#d65a38]">
                       {group.label}
                     </h3>
-                    <ul className="m-0 list-none space-y-3 border-t border-black/10 p-0">
+                    <ul className="m-0 list-none space-y-3 border-t border-[var(--line)] p-0">
                       {group.items.map((item) => (
-                        <li key={item} className="border-b border-black/10 py-3 text-sm leading-relaxed text-[#5f5b56]">
+                        <li key={item} className="border-b border-[var(--line)] py-3 text-sm leading-relaxed text-[var(--foreground-muted)]">
                           {item}
                         </li>
                       ))}

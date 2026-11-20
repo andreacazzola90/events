@@ -7,6 +7,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model EventCreationJob {
+  id            String   @id @db.Uuid
+  ownerId       Int?
+  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  secretHash    String?
+  inputHash     String
+  quotaKey      String
+  input         Bytes?
+  mimeType      String
+  status        String   @default("queued")
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseUntil    DateTime?
+  leaseToken    String?
+  outcome       Json?
+  cachePending  Boolean  @default(false)
+  inputExpiresAt DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseUntil])
+  @@index([ownerId, createdAt])
+  @@index([quotaKey, createdAt])
+  @@index([inputExpiresAt])
+  @@index([createdAt])
+}
+
 model Event {
   id          Int        @id @default(autoincrement())
   title       String
@@ -14,11 +41,21 @@ model Event {
   date        String
   time        String
   location    String
+  endDate     String?
+  endTime     String?
+  address     String?
+  performerName String?
+  performerType String?
   latitude    Float?
   longitude   Float?
   organizer   String
+  organizerUrl String?
   category    String     @default("other")
   price       String
+  offerUrl    String?
+  offerAvailability String?
+  offerValidFrom String?
+  eventStatus String     @default("Scheduled")
   rawText     String
   imageUrl    String?
   originalImageUrl String?
@@ -99,6 +136,7 @@ model EventMedia {
 
 model User {
   id              Int        @id @default(autoincrement())
+  eventCreationJobs EventCreationJob[]
   email           String     @unique
   password        String
   name            String?

@@ -47,7 +47,7 @@ export function normalizeCategory(category: string): string {
 export function normalizePrice(price: string): string {
     const lowerPrice = (price || '').toLowerCase().trim();
     
-    if (!lowerPrice) return 'Gratuito';
+    if (!lowerPrice) return '';
 
     for (const [key, value] of Object.entries(PRICE_NORMALIZATION_MAP)) {
         if (lowerPrice.includes(key)) {

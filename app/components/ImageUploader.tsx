@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { EventData } from '@/types/event';
 import LoadingAnimation from './LoadingAnimation';
+import RocketLaunchAnimation from './RocketLaunchAnimation';
 import { toast } from 'react-toastify';
 import { logClientError } from '../lib/error-tool';
 import { startDraftImageCrop, type DraftImageCrop, type DraftImageScan } from '../../lib/draft-image-crop';
@@ -12,10 +13,14 @@ interface ImageUploaderProps {
     onProcessed: (data: EventData | EventData[], imageUrl: string, debugInfo?: any, crop?: DraftImageCrop) => void;
     onError: (error: string) => void;
     onStart?: () => DraftImageScan;
+    onBackgroundUpload?: (file: File) => Promise<void>;
+    reviewFile?: File | null;
 }
 
-export default function ImageUploader({ onProcessed, onError, onStart }: ImageUploaderProps) {
+export default function ImageUploader({ onProcessed, onError, onStart, onBackgroundUpload, reviewFile }: ImageUploaderProps) {
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isSending, setIsSending] = useState(false);
+    const sending = useRef(false);
     const [processingMessage, setProcessingMessage] = useState('Scansione immagine in corso');
     const [processingPhase, setProcessingPhase] = useState<'scan-image' | 'scan-pdf'>('scan-image');
     const [showSourcePicker, setShowSourcePicker] = useState(false);
@@ -24,13 +29,27 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
     const cancelRequest = useRef<(() => void) | undefined>(undefined);
     useEffect(() => () => cancelRequest.current?.(), []);
 
-    const processFile = async (file: File) => {
+    const processFile = async (file: File, manual = false) => {
+        if (sending.current) return;
         setShowSourcePicker(false);
         if (file.size > 10 * 1024 * 1024) { // 10MB limit
             onError('La locandina deve pesare meno di 10 MB.');
             return;
         }
         const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+        if (onBackgroundUpload && !isPdf && !manual) {
+            sending.current = true;
+            setIsSending(true);
+            try {
+                await onBackgroundUpload(file);
+            } catch (error) {
+                onError(error instanceof Error ? error.message : 'Invio non riuscito.');
+            } finally {
+                sending.current = false;
+                setIsSending(false);
+            }
+            return;
+        }
         cancelRequest.current?.();
         const scan = onStart?.();
         const crop = isPdf ? undefined : startDraftImageCrop(file);
@@ -156,7 +175,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
         if (acceptedFiles.length === 0) return;
         const file = acceptedFiles[0];
         await processFile(file);
-    }, [onProcessed, onError, onStart]);
+    }, [onProcessed, onError, onStart, onBackgroundUpload]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
@@ -205,8 +224,15 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
         processFileRef.current = processFile;
     });
 
+    const openedReview = useRef<File | null>(null);
     useEffect(() => {
-        if (isProcessing) return;
+        if (!reviewFile || openedReview.current === reviewFile || isSending || isProcessing) return;
+        openedReview.current = reviewFile;
+        void processFileRef.current(reviewFile, true);
+    }, [reviewFile, isSending, isProcessing]);
+
+    useEffect(() => {
+        if (isProcessing || isSending) return;
 
         const handlePaste = (event: ClipboardEvent) => {
             const target = event.target as HTMLElement | null;
@@ -224,7 +250,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
 
         document.addEventListener('paste', handlePaste);
         return () => document.removeEventListener('paste', handlePaste);
-    }, [isProcessing]);
+    }, [isProcessing, isSending]);
 
     const handleClipboardClick = async () => {
         setShowSourcePicker(false);
@@ -252,7 +278,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
                 onClick={handleAreaClick}
                 className={`image-upload-zone p-10 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors
             ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
-            ${isProcessing ? 'pointer-events-none' : ''}`}
+            ${isProcessing || isSending ? 'pointer-events-none' : ''}`}
             >
                 <input {...getInputProps({ onClick: event => event.stopPropagation() })} />
 
@@ -276,7 +302,9 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
                 />
 
                 <div className="space-y-4">
-                    {isProcessing ? (
+                    {isSending ? (
+                        <RocketLaunchAnimation compact stage="build" message="Sto inviando la locandina…" />
+                    ) : isProcessing ? (
                         <LoadingAnimation message={processingMessage} phase={processingPhase} />
                     ) : (
                         <>
@@ -287,7 +315,7 @@ export default function ImageUploader({ onProcessed, onError, onStart }: ImageUp
                                     : "Aggiungi una locandina"}
                             </p>
                             <p className="image-upload-hint text-sm text-gray-500">
-                                Scatta una foto o scegli un’immagine o PDF · max 10 MB
+                                Scatta una foto o scegli un’immagine o PDF · {onBackgroundUpload ? 'immagini in automatico: max 4 MB' : 'max 10 MB'}
                             </p>
                             <p className="image-upload-hint text-sm text-gray-500 hidden md:block">
                                 Oppure incolla un’immagine con Ctrl/⌘ + V

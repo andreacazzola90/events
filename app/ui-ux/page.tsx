@@ -5,30 +5,27 @@ import { publicPageMetadata } from "../../lib/seo-metadata";
 
 export const metadata: Metadata = publicPageMetadata({
   path: '/ui-ux',
-  title: "Regole UI/UX",
+  title: "Design system",
   description: "Palette, tipografia, spaziatura e principi d'interazione di EventScanner.",
 });
 
 const palette = [
-  { name: "Sfondo", value: "#121212", variable: "--background" },
-  { name: "Sfondo secondario", value: "#1c1c1c", variable: "--background-secondary" },
-  { name: "Superficie soft", value: "#252525", variable: "--background-soft" },
-  { name: "Testo", value: "#f5f2ec", variable: "--foreground" },
-  { name: "Testo secondario", value: "#b2afa9", variable: "--foreground-muted" },
-  { name: "Inchiostro soft", value: "#dedbd5", variable: "--ink-soft" },
-  { name: "Accento", value: "#d65a38", variable: "--accent" },
-  { name: "Accento forte", value: "#b9432b", variable: "--accent-strong" },
-  { name: "Accento soft", value: "rgba(214, 90, 56, 0.14)", variable: "--accent-soft" },
-  { name: "Superficie", value: "rgba(34, 34, 34, 0.94)", variable: "--surface" },
-  { name: "Superficie piena", value: "#292929", variable: "--surface-strong" },
-  { name: "Bordo", value: "rgba(255, 255, 255, 0.16)", variable: "--line" },
+  ["Sfondo", "--background"],
+  ["Sfondo secondario", "--background-secondary"],
+  ["Sfondo morbido", "--background-soft"],
+  ["Testo", "--foreground"],
+  ["Testo secondario", "--foreground-muted"],
+  ["Inchiostro morbido", "--ink-soft"],
+  ["Accento", "--accent"],
+  ["Accento forte", "--accent-strong"],
+  ["Accento per testo su fondo scuro", "--accent-ink"],
+  ["Accento morbido", "--accent-soft"],
+  ["Superficie", "--surface"],
+  ["Superficie piena", "--surface-strong"],
+  ["Bordo", "--line"],
 ];
 
-const spacing = [
-  ["1", "4 px"], ["2", "8 px"], ["3", "12 px"], ["4", "16 px"],
-  ["5", "20 px"], ["6", "24 px"], ["8", "32 px"], ["10", "40 px"],
-  ["12", "48 px"], ["16", "64 px"], ["20", "80 px"],
-];
+const spacing = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20];
 
 function RuleSection({
   number,
@@ -40,12 +37,12 @@ function RuleSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid gap-5 border-t border-black/15 py-8 md:grid-cols-[minmax(12rem,0.7fr)_1.3fr] md:gap-12 md:py-10">
+    <section className="grid gap-5 border-t border-[var(--line)] py-8 md:grid-cols-[minmax(12rem,0.7fr)_1.3fr] md:gap-12 md:py-10">
       <div>
         <p className="section-kicker mb-2">{number} / Sistema</p>
-        <h2 className="m-0 text-2xl font-black text-[#1d1d1b]">{title}</h2>
+        <h2 className="m-0 text-2xl font-black">{title}</h2>
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 text-sm leading-relaxed text-[var(--foreground-muted)]">{children}</div>
     </section>
   );
 }
@@ -57,12 +54,12 @@ export default function UiUxPage() {
         <PageHeading
           className="max-w-4xl"
           kicker="EventScanner / Design system"
-          title="Regole UI/UX"
+          title="Design system"
           description={
             <>
             La guida pratica per mantenere coerenti le pagine: colori, gerarchie,
             spazi, componenti e comportamento. I token principali sono definiti in
-            <code className="mx-1 bg-black/5 px-1.5 py-0.5 text-sm">app/globals.css</code>.
+            <code className="mx-1 bg-[var(--background-soft)] px-1.5 py-0.5 text-sm">app/globals.css</code>.
             </>
           }
           action={
@@ -73,25 +70,23 @@ export default function UiUxPage() {
         />
 
         <RuleSection number="01" title="Palette">
-            <p className="mb-5 text-sm leading-relaxed text-[#5f5b56]">
+          <p className="mb-5">
             Il sistema effettivo è scuro: superfici carbone leggermente differenziate,
             testo avorio e terracotta per azioni, focus e dettagli in evidenza.
             Il testo secondario non sostituisce quello principale per i contenuti
             essenziali; errori e conferme mantengono colori semantici distinti.
           </p>
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-            {palette.map((color) => (
-              <div key={color.variable} className="flex items-center gap-3 border-t border-black/10 py-3">
+            {palette.map(([name, token]) => (
+              <div key={token} className="flex items-center gap-3 border-t border-[var(--line)] py-3">
                 <span
-                  aria-label={`${color.name}: ${color.value}`}
-                  className="h-9 w-9 shrink-0 border border-black/15"
-                  style={{ backgroundColor: color.value }}
+                  aria-hidden="true"
+                  className="h-9 w-9 shrink-0 border border-[var(--line)]"
+                  style={{ backgroundColor: `var(${token})` }}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold text-[#1d1d1b]">{color.name}</span>
-                  <span className="block truncate font-mono text-xs text-[#5f5b56]">
-                    {color.value} · {color.variable}
-                  </span>
+                  <span className="block font-bold text-[var(--foreground)]">{name}</span>
+                  <code className="block break-all text-xs">{token}</code>
                 </span>
               </div>
             ))}
@@ -99,48 +94,55 @@ export default function UiUxPage() {
         </RuleSection>
 
         <RuleSection number="02" title="Tipografia">
-          <div className="space-y-4 text-sm leading-relaxed text-[#5f5b56]">
-            <p><strong className="text-[#1d1d1b]">Famiglia:</strong> Inter, caricata con <code>next/font</code>.</p>
-            <p><strong className="text-[#1d1d1b]">Corpo:</strong> 16 px con interlinea 1.6; testo di supporto in grigio caldo.</p>
-            <p><strong className="text-[#1d1d1b]">Titoli:</strong> peso deciso e gerarchia netta; usare dimensioni fluide per le intestazioni principali e dimensioni compatte nei pannelli.</p>
-            <p className="mb-0"><strong className="text-[#1d1d1b]">Etichette:</strong> maiuscole, peso bold e tracking ampio per kicker e comandi brevi.</p>
+          <div className="space-y-4">
+            <p><strong className="text-[var(--foreground)]">Famiglia:</strong> Inter, caricata con <code>next/font</code>.</p>
+            <p><strong className="text-[var(--foreground)]">Corpo:</strong> 16 px con interlinea 1.6; testo di supporto in grigio caldo.</p>
+            <p><strong className="text-[var(--foreground)]">Titoli:</strong> usa <code>PageHeading</code> per il titolo principale, con gerarchia fluida.</p>
+            <p className="mb-0"><strong className="text-[var(--foreground)]">Etichette:</strong> usa <code>section-kicker</code> per le sovraintestazioni.</p>
           </div>
         </RuleSection>
 
         <RuleSection number="03" title="Spaziatura e layout">
-          <p className="mb-5 text-sm leading-relaxed text-[#5f5b56]">
+          <p className="mb-5">
             Usa la scala <code>--space-*</code> per distanze ripetute. Il contenuto editoriale
             usa la larghezza disponibile con gutter fluidi; intestazioni e spazi
             verticali si adattano al viewport.
           </p>
           <div className="grid grid-cols-2 gap-x-6 sm:grid-cols-3 lg:grid-cols-4">
-            {spacing.map(([token, size]) => (
-              <div key={token} className="flex items-center justify-between gap-2 border-t border-black/10 py-2 text-sm">
-                <code className="text-[#1d1d1b]">--space-{token}</code>
-                <span className="text-[#5f5b56]">{size}</span>
+            {spacing.map((step) => (
+              <div key={step} className="border-t border-[var(--line)] py-2">
+                <code className="text-[var(--foreground)]">--space-{step}</code>
+                <span aria-hidden="true" className="mt-1 block h-1 max-w-full bg-[var(--accent)]" style={{ width: `var(--space-${step})` }} />
               </div>
             ))}
           </div>
         </RuleSection>
 
         <RuleSection number="04" title="Superfici e controlli">
-          <ul className="m-0 list-none space-y-3 p-0 text-sm leading-relaxed text-[#5f5b56]">
-            <li><strong className="text-[#1d1d1b]">Pannelli:</strong> superfici carbone, bordo sottile e ombra contenuta; evita pannelli annidati e sezioni trasformate in card.</li>
-            <li><strong className="text-[#1d1d1b]">Ombre:</strong> <code>--shadow-card</code> per superfici ripetute, <code>--shadow-soft</code> per elevazioni più ampie; usarle con moderazione.</li>
-            <li><strong className="text-[#1d1d1b]">Angoli:</strong> tema squadrato, raggio zero; le forme circolari sono riservate a indicatori e spinner.</li>
-            <li><strong className="text-[#1d1d1b]">Azioni:</strong> comandi primari ad alto contrasto; CTA editoriali in terracotta. Mantieni almeno 44 px di altezza per i pulsanti principali.</li>
-            <li><strong className="text-[#1d1d1b]">Immagini:</strong> usa ritagli stabili e dimensioni definite per evitare salti nel layout.</li>
-          </ul>
+          <div className="surface-panel space-y-4 p-5">
+            <p className="m-0"><code>surface-panel</code> raggruppa contenuti correlati. Usa <code>btn</code> per i comandi e <code>industrial-link</code> per i collegamenti editoriali. Mantieni almeno 44 px per le azioni principali.</p>
+            <div className="flex flex-wrap gap-3">
+              <TransitionLink href="/eventi" className="btn btn-primary">Sfoglia gli eventi</TransitionLink>
+              <TransitionLink href="/mappa" className="btn btn-outline">Apri la mappa</TransitionLink>
+            </div>
+            <p className="m-0">Usa ritagli stabili e dimensioni esplicite per le immagini. La mappa e i dialoghi operativi possono avere superfici dedicate, ma conservano focus, etichette e feedback coerenti.</p>
+          </div>
         </RuleSection>
 
         <RuleSection number="05" title="Motion e accessibilità">
-          <ul className="m-0 list-none space-y-3 p-0 text-sm leading-relaxed text-[#5f5b56]">
+          <ul className="m-0 list-none space-y-3 p-0">
             <li>Preferisci transizioni brevi e feedback leggibile; gli hover possono sollevare leggermente le card, senza spostare il layout.</li>
             <li>Per le attese usa <code>LoadingAnimation</code> con un messaggio contestuale e un annuncio <code>role="status"</code>; le scansioni mantengono animazione e messaggi dedicati.</li>
             <li>Rispetta <code>prefers-reduced-motion</code>: gli indicatori diventano statici e le animazioni decorative si fermano.</li>
             <li>Ogni link e controllo da tastiera mostra un focus visibile terracotta di 2 px con offset.</li>
             <li>Su mobile, impila le colonne, lascia respirare i controlli e verifica che nessun testo causi overflow orizzontale.</li>
+            <li>Un file ricevuto non è un evento pubblicato: durante l’elaborazione l’utente può navigare, e l’esito deve distinguere pubblicazione, revisione ed errore.</li>
           </ul>
+          <div className="surface-panel mt-4 space-y-2 p-4">
+            <p className="m-0"><strong className="text-[var(--foreground)]">Attesa:</strong> Caricamento del calendario…</p>
+            <p className="m-0"><strong className="text-[var(--foreground)]">Vuoto:</strong> Nessun evento per questa data.</p>
+            <p className="m-0"><strong className="text-[var(--foreground)]">Errore:</strong> Non è stato possibile caricare il calendario. Riprova.</p>
+          </div>
         </RuleSection>
       </div>
     </main>

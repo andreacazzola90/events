@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import type { Metadata } from 'next';
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { CalendarIcon, ClockIcon, MapPinIcon } from '../../components/EventIcons';
 import { generateUniqueSlug, getPrimaryLocationToken } from '../../../lib/slug-utils';
 import { getEventBreadcrumbJsonLd, getEventIdFromSlug, getEventJsonLd, getEventMetadata, getEventPath, getEventStartDate } from '../../../lib/event-seo';
@@ -15,6 +16,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../pages/api/auth/[...nextauth]';
 import { calendarToday } from '../../../lib/calendar-view';
+import { PUBLIC_EVENTS_TAG } from '../../../lib/public-event-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +30,7 @@ export async function generateMetadata(
     { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
     const { slug } = await params;
-    const session = await getServerSession(authOptions as any);
-    const event = await getEvent(slug, isAdminEventSession(session));
+    const event = await getEvent(slug, false);
 
     if (!event) {
         return {
@@ -45,27 +46,41 @@ export async function generateMetadata(
     return getEventMetadata(event);
 }
 
+const getEventData = (id: number, publicOnly: boolean) => prisma.event.findUnique({
+    where: publicOnly ? { id, isPublished: true } : { id },
+    select: {
+        id: true, title: true, date: true, time: true, description: true,
+        location: true, latitude: true, longitude: true, organizer: true,
+        endDate: true, endTime: true, address: true, performerName: true,
+        performerType: true, organizerUrl: true, price: true, offerUrl: true,
+        offerAvailability: true, offerValidFrom: true, eventStatus: true,
+        imageUrl: true, updatedAt: true, category: true,
+        isPublished: true, sourceUrl: true, createdById: true,
+        media: {
+            orderBy: { position: 'asc' },
+            select: { id: true, kind: true, url: true, fileName: true, sizeBytes: true },
+        },
+        eventSeries: { select: { title: true, slug: true, isPublished: true } },
+    },
+});
+
+const getPublicEvent = unstable_cache(
+    (id: number) => getEventData(id, true),
+    ['public-event-detail'],
+    { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 },
+);
+
 const getEvent = cache(async (slug: string, includeDrafts: boolean) => {
-    const eventId = getEventIdFromSlug(slug);
-    if (!eventId) return null;
-
-    const event = await prisma.event.findUnique({
-        where: { id: eventId },
-           include: {
-               media: { orderBy: { position: 'asc' } },
-               eventSeries: { select: { title: true, slug: true, isPublished: true } },
-           },
-    });
-
-    if (!includeDrafts && !event?.isPublished) return null;
-    return event;
+    const id = getEventIdFromSlug(slug);
+    if (!id) return null;
+    return includeDrafts ? getEventData(id, false) : getPublicEvent(id);
 });
 
 function getPreviewImageUrls(event: { imageUrl: string | null; media?: { url: string }[] }) {
     return [...new Set([event.imageUrl, ...(event.media ?? []).map((image) => image.url)].filter((url): url is string => Boolean(url)))].slice(0, 5);
 }
 
-async function getSameDayEvents(date: string, currentEventId: number) {
+const getSameDayEvents = unstable_cache(async (date: string, currentEventId: number) => {
     const events = await prisma.event.findMany({
         where: {
             isPublished: true,
@@ -92,22 +107,21 @@ async function getSameDayEvents(date: string, currentEventId: number) {
         },
     });
     return events;
-}
+}, ['public-same-day-events'], { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 });
 
-async function getSimilarEvents(currentEvent: any) {
-    const primaryLocationToken = getPrimaryLocationToken(currentEvent.location);
-    const today = calendarToday();
+const getSimilarEvents = unstable_cache(async (id: number, category: string, location: string, today: string) => {
+    const primaryLocationToken = getPrimaryLocationToken(location);
     const nextWeek = new Date(Date.parse(today) + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const similarEvents = await prisma.event.findMany({
         where: {
             AND: [
                 { isPublished: true },
-                { id: { not: currentEvent.id } }, // Exclude current event
+                { id: { not: id } }, // Exclude current event
                 { date: { gte: today } },
                 {
                     OR: [
-                        ...(currentEvent.category ? [{ category: currentEvent.category }] : []), // Same category
+                        ...(category ? [{ category }] : []), // Same category
                         ...(primaryLocationToken ? [{ location: { contains: primaryLocationToken } }] : []), // Same city/area
                         { date: { lte: nextWeek } },
                     ]
@@ -139,7 +153,7 @@ async function getSimilarEvents(currentEvent: any) {
         },
     });
     return similarEvents;
-}
+}, ['public-similar-events'], { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 });
 
 export default async function EventDetailPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
@@ -160,7 +174,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
 
     const [sameDayEvents, similarEvents] = await Promise.all([
         getSameDayEvents(event.date, event.id),
-        getSimilarEvents(event),
+        getSimilarEvents(event.id, event.category, event.location, calendarToday()),
     ]);
     const sessionUser = (session as any)?.user as any;
     const sessionUserId = parseInt((sessionUser?.id || '').toString(), 10);
@@ -187,14 +201,14 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         height={600}
                                         quality={75}
                                         className="w-full h-64 sm:h-80 lg:h-[30rem] object-cover transition-all duration-700"
-                                        sizes="100vw"
+                                        sizes="(min-width: 1024px) 50vw, 100vw"
                                         preload
                                         fetchPriority="high"
                                     />
                                 </div>
                             )}
                             {!event.imageUrl && (
-                                <div className="relative group event-image-container bg-[#f4f1eb]" />
+                                <div className="relative group event-image-container" />
                             )}
                         </div>
 
@@ -208,7 +222,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         description={event.eventSeries?.isPublished ? (
                                             <TransitionLink
                                                 href={`/rassegne/${event.eventSeries.slug}`}
-                                                className="font-semibold text-[#a33f24] underline underline-offset-4"
+                                                className="font-semibold underline underline-offset-4"
                                             >
                                                 Programma completo: {event.eventSeries.title}
                                             </TransitionLink>
@@ -224,15 +238,15 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                     />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-base">
                                         <div className="space-y-4">
-                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><CalendarIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> {startDate ? <time dateTime={startDate.slice(0, 10)}>{event.date}</time> : <span>{event.date}</span>}</p>
-                                            <p className="flex items-center gap-3 text-[#1d1d1b]"><ClockIcon className="w-5 h-5 text-[#d65a38] shrink-0" /> {startDate?.includes('T') ? <time dateTime={startDate}>{event.time}</time> : <span>{event.time}</span>}</p>
-                                            <p className="flex items-center gap-3 text-[#1d1d1b]">
-                                                <MapPinIcon className="w-5 h-5 text-[#d65a38] shrink-0" />
+                                            <p className="flex items-center gap-3"><CalendarIcon className="w-5 h-5 text-[var(--accent)] shrink-0" /> {startDate ? <time dateTime={startDate.slice(0, 10)}>{event.date}</time> : <span>{event.date}</span>}</p>
+                                            <p className="flex items-center gap-3"><ClockIcon className="w-5 h-5 text-[var(--accent)] shrink-0" /> {startDate?.includes('T') ? <time dateTime={startDate}>{event.time}</time> : <span>{event.time}</span>}</p>
+                                            <p className="flex items-center gap-3">
+                                                <MapPinIcon className="w-5 h-5 text-[var(--accent)] shrink-0" />
                                                 <a
                                                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-[#1d1d1b] hover:text-[#d65a38] underline underline-offset-4 transition-colors"
+                                                    className="underline underline-offset-4 transition-colors"
                                                 >
                                                     {event.location}
                                                 </a>
@@ -240,22 +254,22 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                         </div>
                                         <div className="space-y-4">
                                             {event.category && <EventCategoryBadge category={event.category} variant="dark" />}
-                                            {event.organizer && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">👤</span> <span>{event.organizer}</span></p>}
-                                            {event.price && <p className="flex items-center gap-3 text-[#1d1d1b]"><span className="text-xl shrink-0">💰</span> <span>{event.price}</span></p>}
+                                            {event.organizer && <p className="flex items-center gap-3"><span className="text-xl shrink-0">👤</span> <span>{event.organizer}</span></p>}
+                                            {event.price && <p className="flex items-center gap-3"><span className="text-xl shrink-0">💰</span> <span>{event.price}</span></p>}
                                         </div>
                                     </div>
 
-                                    <div className="border-t border-black/10 pt-6">
+                                    <div className="border-t border-[var(--line)] pt-6">
                                         <div className="flex items-start gap-3">
                                             <svg className="w-7 h-7 text-[#d65a38] shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                             </svg>
-                                            <p className="text-[#5f5b56] whitespace-pre-wrap text-base leading-relaxed flex-1">{event.description}</p>
+                                            <p className="whitespace-pre-wrap text-base leading-relaxed flex-1">{event.description}</p>
                                         </div>
                                     </div>
 
                                     {event.sourceUrl && (
-                                        <div className="border-t border-black/10 pt-6">
+                                        <div className="border-t border-[var(--line)] pt-6">
                                             <div className="flex items-start gap-3">
                                                 <svg className="w-6 h-6 text-[#d65a38] shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
@@ -264,7 +278,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                     href={event.sourceUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-[#1d1d1b] hover:text-[#d65a38] underline underline-offset-4 text-base break-all flex-1"
+                                                    className="underline underline-offset-4 text-base break-all flex-1"
                                                 >
                                                     {event.sourceUrl}
                                                 </a>
@@ -273,14 +287,14 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                     )}
 
                                     {event.media?.length > 0 && (
-                                        <section className="border-t border-black/10 pt-6 space-y-4" aria-labelledby="event-media-heading">
-                                            <h2 id="event-media-heading" className="text-xl font-bold text-[#1d1d1b]">Immagini e documenti</h2>
+                                        <section className="border-t border-[var(--line)] pt-6 space-y-4" aria-labelledby="event-media-heading">
+                                            <h2 id="event-media-heading" className="text-xl font-bold">Immagini e documenti</h2>
                                             {event.media.some((media: { kind: string }) => media.kind === 'image') && (
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                                     {event.media.filter((media: { kind: string }) => media.kind === 'image').map((media: { id: number; url: string; fileName: string }) => (
-                                                        <a key={media.id} href={media.url} target="_blank" rel="noreferrer" className="block overflow-hidden border border-black/10 bg-white">
+                                                        <a key={media.id} href={media.url} target="_blank" rel="noreferrer" className="block overflow-hidden border border-[var(--line)] bg-[var(--surface-strong)]">
                                                             <Image src={media.url} alt={media.fileName} width={480} height={320} unoptimized className="w-full aspect-[3/2] object-cover" />
-                                                            <span className="block px-2 py-1 text-xs text-[#5f5b56] truncate">{media.fileName}</span>
+                                                            <span className="block px-2 py-1 text-xs truncate">{media.fileName}</span>
                                                         </a>
                                                     ))}
                                                 </div>
@@ -289,10 +303,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
                                                 <ul className="space-y-2">
                                                     {event.media.filter((media: { kind: string }) => media.kind === 'pdf').map((media: { id: number; url: string; fileName: string; sizeBytes: number }) => (
                                                         <li key={media.id}>
-                                                            <a href={media.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-[#1d1d1b] underline underline-offset-4">
-                                                                <span aria-hidden="true" className="text-xs font-bold text-[#d65a38]">PDF</span>
+                                                            <a href={media.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 underline underline-offset-4">
+                                                                <span aria-hidden="true" className="text-xs font-bold text-[var(--accent-ink)]">PDF</span>
                                                                 <span>{media.fileName}</span>
-                                                                <span className="text-xs text-[#686868]">({(media.sizeBytes / (1024 * 1024)).toFixed(1)} MB)</span>
+                                                                <span className="text-xs text-[var(--foreground-muted)]">({(media.sizeBytes / (1024 * 1024)).toFixed(1)} MB)</span>
                                                             </a>
                                                         </li>
                                                     ))}
@@ -307,7 +321,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
 
                     {sameDayEvents.length > 0 && (
                     <div className="event-related-section surface-panel p-5 md:p-8 w-full max-w-full">
-                            <h2 className="text-3xl font-black tracking-[-0.06em] mb-6 text-[#1d1d1b]">Altri Eventi dello Stesso Giorno</h2>
+                            <h2 className="text-3xl font-black tracking-[-0.06em] mb-6">Altri Eventi dello Stesso Giorno</h2>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-8">
                                 {sameDayEvents.map((sameDayEvent) => (
                                     <EventPreview
@@ -334,7 +348,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ sl
 
                     {similarEvents.length > 0 && (
                         <div className="event-related-section surface-panel p-5 md:p-8 w-full max-w-full">
-                            <h2 className="text-3xl font-black tracking-[-0.06em] mb-6 text-[#1d1d1b]">Eventi Simili</h2>
+                            <h2 className="text-3xl font-black tracking-[-0.06em] mb-6">Eventi Simili</h2>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-8">
                                 {similarEvents.map((similarEvent) => (
                                     <EventPreview

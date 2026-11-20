@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { scanInstagram } from '../../../../lib/instagram-event-scanning';
 import { InstagramScanError } from '../../../../lib/instagram-scan-connection';
+import { invalidatePublicEvents } from '../../../../lib/public-event-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
   const dryRun = request.nextUrl.searchParams.get('dryRun') === '1';
   try {
     const result = await scanInstagram({ dryRun, deadline: startedAt + RUN_BUDGET_MS });
+    if (!dryRun && result.published > 0) invalidatePublicEvents();
     return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const code = error instanceof InstagramScanError ? error.code : 'instagram_scan_failed';

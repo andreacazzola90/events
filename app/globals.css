@@ -8,6 +8,7 @@
   --foreground-muted: #b2afa9;
   --accent: #d65a38;
   --accent-strong: #b9432b;
+  --accent-ink: #ff9a7f;
   --accent-soft: rgba(214, 90, 56, 0.14);
   --ink-soft: #dedbd5;
   --surface: rgba(34, 34, 34, 0.94);
@@ -1688,7 +1689,7 @@ body:has(.events-page) .mobile-navigation-dialog [class*="border-black"] {
 }
 
 :where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid #d65a38;
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 

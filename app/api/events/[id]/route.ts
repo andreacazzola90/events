@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath, revalidateTag } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import { generateUniqueSlug } from '../../../../lib/slug-utils';
@@ -9,6 +8,8 @@ import { validateEventMediaFile, validateOriginalEventImageFile } from '../../..
 import { isCoverImageCrop } from '../../../../lib/cover-image-crop';
 import { authOptions } from '../../../../pages/api/auth/[...nextauth]';
 import { recordSavedEventCorrections } from '../../../../lib/scan-learning-store';
+import { invalidatePublicEvents } from '../../../../lib/public-event-cache';
+import { parseEventSeoFields, type EventSeoFieldValues } from '../../../../lib/event-seo-fields';
 
 function isAdminSession(session: any): boolean {
     const user = session?.user as any;
@@ -18,19 +19,6 @@ function isAdminSession(session: any): boolean {
         user?.type === 'admin' ||
         email === 'andreacazzola90@gmail.com'
     );
-}
-
-function revalidateModerationCaches(eventPath: string): boolean {
-    try {
-        revalidatePath('/', 'layout');
-        revalidateTag('events-list', { expire: 0 });
-        revalidatePath(eventPath, 'page');
-        revalidatePath('/sitemap.xml');
-        return true;
-    } catch (error) {
-        console.error('[API /events/[id]] Cache invalidation failed after moderation:', error);
-        return false;
-    }
 }
 
 export async function PUT(
@@ -81,16 +69,27 @@ export async function PUT(
 
         const contentType = request.headers.get('content-type') || '';
         let data: any = null;
+        let seoFields: EventSeoFieldValues = {};
         let imageFile: File | null = null;
         let originalImageFile: File | null = null;
         let imageUrl: string | undefined = undefined;
 
         if (contentType.includes('application/json')) {
             data = await request.json();
+            const seoValidation = parseEventSeoFields(data);
+            if (!seoValidation.ok) {
+                return NextResponse.json({ error: seoValidation.error }, { status: 400 });
+            }
+            seoFields = seoValidation.fields;
             imageUrl = data.imageUrl;
         } else if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
             data = JSON.parse(formData.get('eventData') as string);
+            const seoValidation = parseEventSeoFields(data);
+            if (!seoValidation.ok) {
+                return NextResponse.json({ error: seoValidation.error }, { status: 400 });
+            }
+            seoFields = seoValidation.fields;
             if (data.originalImageCrop != null && !isCoverImageCrop(data.originalImageCrop)) {
                 return NextResponse.json({ error: 'Coordinate di ritaglio non valide' }, { status: 400 });
             }
@@ -172,6 +171,7 @@ export async function PUT(
                 organizer: data.organizer,
                 category: data.category,
                 price: data.price,
+                ...seoFields,
                 rawText: data.rawText,
                 imageUrl: imageUrl,
                 originalImageUrl,
@@ -190,9 +190,7 @@ export async function PUT(
             console.warn('[API /events/[id] PUT] Event saved; corrections unavailable');
         }
 
-        revalidatePath('/', 'layout');
-        revalidateTag('events-list', { expire: 0 });
-        revalidatePath(`/events/${generateUniqueSlug(updated.title, updated.id)}`, 'page');
+        if (updated.isPublished) invalidatePublicEvents({ slug: generateUniqueSlug(updated.title, updated.id) });
 
         return NextResponse.json(updated);
     } catch (error) {
@@ -243,7 +241,7 @@ export async function GET(
                 originalImageCropY: null,
                 originalImageCropWidth: null,
                 originalImageCropHeight: null,
-            });
+            }, { headers: { 'Cache-Control': 'private, no-store' } });
         }
         return NextResponse.json(event, { headers: { 'Cache-Control': 'private, no-store' } });
     } catch (error) {
@@ -283,7 +281,7 @@ export async function PATCH(
             select: { id: true, title: true, isPublished: true },
         });
         const slug = generateUniqueSlug(event.title, event.id);
-        const cacheInvalidated = revalidateModerationCaches(`/events/${slug}`);
+        const cacheInvalidated = invalidatePublicEvents({ slug });
         return NextResponse.json({ ...event, cacheInvalidated }, { headers: { 'Cache-Control': 'private, no-store' } });
     } catch (error) {
         if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
@@ -382,7 +380,7 @@ export async function DELETE(
         }
     }));
 
-    const cacheInvalidated = revalidateModerationCaches(`/events/${generateUniqueSlug(deletion.event.title, deletion.event.id)}`);
+    const cacheInvalidated = invalidatePublicEvents({ slug: generateUniqueSlug(deletion.event.title, deletion.event.id) });
 
     if (cleanupFailures.length || !cacheInvalidated) {
         return NextResponse.json({

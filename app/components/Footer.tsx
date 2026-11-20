@@ -25,7 +25,7 @@ export default function Footer({ version, builtAt, builtAtLabel = "Data build no
   ];
 
   const projectLinks = [
-    { href: "/ui-ux", label: "Regole UI/UX" },
+    { href: "/ui-ux", label: "Design system" },
     { href: "/versioni", label: "Novità e versioni" },
   ];
 

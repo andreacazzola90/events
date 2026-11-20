@@ -2,11 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { publicPageMetadata, serializeJsonLd } from "../../../lib/seo-metadata";
 import { siteUrl } from "../../../lib/site-url";
 import { generateUniqueSlug } from "../../../lib/slug-utils";
 import PageHeading from "../../components/PageHeading";
+import { PUBLIC_EVENTS_TAG } from "../../../lib/public-event-cache";
 
 export const revalidate = 60;
 
@@ -58,9 +61,9 @@ function seriesPoster(events: SeriesEvent[]): string | null {
   return events.length > 1 && covers.size === 1 && shared ? shared : null;
 }
 
-async function getSeries(slug: string) {
+const getSeries = cache(unstable_cache(async (slug: string) => {
   return prisma.eventSeries.findUnique({
-    where: { slug },
+    where: { slug, isPublished: true },
     include: {
       events: {
         where: { isPublished: true },
@@ -71,7 +74,7 @@ async function getSeries(slug: string) {
       },
     },
   });
-}
+}, ["public-series-detail"], { tags: [PUBLIC_EVENTS_TAG], revalidate: 60 }));
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> },
@@ -141,7 +144,7 @@ export default async function EventSeriesPage(
   };
 
   return (
-    <main className="min-h-screen page-shell bg-[#f5f2ec] text-[#1d1d1b]">
+    <main className="min-h-screen page-shell">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <div className="editorial-container">
         <PageHeading
@@ -155,11 +158,11 @@ export default async function EventSeriesPage(
 
         <div className={`grid gap-8 ${posterUrl ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,32vw)]" : ""}`}>
           <div>
-            {series.description && <p className="mb-3 max-w-3xl whitespace-pre-line text-base leading-7 text-black/65">{series.description}</p>}
-            <p className="mb-0 text-sm font-semibold text-black/55">{events.length} appuntamenti</p>
+            {series.description && <p className="mb-3 max-w-3xl whitespace-pre-line text-base leading-7 text-[var(--foreground-muted)]">{series.description}</p>}
+            <p className="mb-0 text-sm font-semibold text-[var(--foreground-muted)]">{events.length} appuntamenti</p>
             {events.length ? (
               [...dayGroups.entries()].map(([key, items]) => (
-                <section key={key} className="grid gap-4 border-b border-black/10 py-7 md:grid-cols-[210px_minmax(0,1fr)] md:gap-8">
+                <section key={key} className="grid gap-4 border-b border-[var(--line)] py-7 md:grid-cols-[210px_minmax(0,1fr)] md:gap-8">
                   <h2 className="text-lg font-black capitalize text-[#f08b6b]">{dateLabel(key, items[0].date)}</h2>
                   <ol className="divide-y divide-black/10 bg-white">
                     {items.map((event) => (
@@ -167,11 +170,11 @@ export default async function EventSeriesPage(
                         <p className="text-sm font-black tabular-nums text-[#f08b6b]">{event.time || "Orario da definire"}</p>
                         <div>
                           <Link href={`/events/${event.id}`} className="font-bold hover:text-[#a33f24]">{event.title}</Link>
-                          {event.location && <p className="mt-1 text-sm text-black/55">{event.location}</p>}
-                          {event.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-black/65">{event.description}</p>}
+                          {event.location && <p className="mt-1 text-sm text-[var(--foreground-muted)]">{event.location}</p>}
+                          {event.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--foreground-muted)]">{event.description}</p>}
                         </div>
                         {event.imageUrl && (
-                          <Link href={`/events/${event.id}`} className="order-first block self-start overflow-hidden border border-black/10 sm:order-none" tabIndex={-1} aria-hidden="true">
+                          <Link href={`/events/${event.id}`} className="order-first block self-start overflow-hidden border border-[var(--line)] sm:order-none" tabIndex={-1} aria-hidden="true">
                             <Image src={event.imageUrl} alt="" width={288} height={162} unoptimized className="aspect-video w-full object-cover" />
                           </Link>
                         )}
@@ -181,11 +184,11 @@ export default async function EventSeriesPage(
                 </section>
               ))
             ) : (
-              <p className="border-b border-black/10 py-10 text-sm text-black/55">Il programma sarà disponibile a breve.</p>
+              <p className="border-b border-[var(--line)] py-10 text-sm text-[var(--foreground-muted)]">Il programma sarà disponibile a breve.</p>
             )}
           </div>
           {posterUrl && (
-            <a href={posterUrl} target="_blank" rel="noreferrer" className="order-first block self-start overflow-hidden border border-black/10 bg-white lg:order-last">
+            <a href={posterUrl} target="_blank" rel="noreferrer" className="order-first block self-start overflow-hidden border border-[var(--line)] bg-[var(--surface)] lg:order-last">
               <Image src={posterUrl} alt={`Locandina di ${series.title}`} width={440} height={620} unoptimized className="h-auto w-full" />
             </a>
           )}

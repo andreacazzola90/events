@@ -4,7 +4,7 @@
 import { type Area } from 'react-easy-crop';
 import EventImageCropper from './EventImageCropper';
 import EventCoverPicker from './EventCoverPicker';
-import { DuplicateMatch, EventData } from '../types/event';
+import { DuplicateMatch, EventData, EVENT_STATUSES, OFFER_AVAILABILITIES, PERFORMER_TYPES } from '../types/event';
 import { AlertIcon, CalendarIcon, ClockIcon, LinkIcon, MapPinIcon, MegaphoneIcon, TagIcon, TextIcon, TicketIcon } from './EventIcons';
 import { STANDARD_CATEGORIES } from '../../lib/constants';
 import EventCategoryBadge from './EventCategoryBadge';
@@ -212,11 +212,33 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
         </div>
     );
 
+    const renderSeoInput = (name: string, label: string, type: string, value?: string | null) => (
+        <label className="block text-sm font-medium text-[#1d1d1b]">
+            {label}
+            <input
+                type={type}
+                name={name}
+                defaultValue={value ?? ''}
+                className={`${inputClass} mt-1`}
+            />
+        </label>
+    );
+
+    const renderSeoSelect = (name: string, label: string, options: readonly string[], value?: string | null) => (
+        <label className="block text-sm font-medium text-[#1d1d1b]">
+            {label}
+            <select name={name} defaultValue={value ?? ''} className={`${inputClass} mt-1`}>
+                <option value="">Non specificato</option>
+                {options.map(option => <option key={option} value={option}>{option}</option>)}
+            </select>
+        </label>
+    );
+
     const getEditedEvent = (): EventData | null => {
         if (!formRef.current) return null;
         const form = formRef.current;
         const readValue = (name: string) =>
-            (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | null)?.value || '';
+            (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value || '';
 
         return {
             ...eventData,
@@ -224,9 +246,19 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
             date: readValue('date'),
             time: readValue('time'),
             location: readValue('location'),
+            endDate: readValue('endDate') || null,
+            endTime: readValue('endTime') || null,
+            address: readValue('address') || null,
+            performerName: readValue('performerName') || null,
+            performerType: (readValue('performerType') || null) as EventData['performerType'],
             category: readValue('category'),
             organizer: readValue('organizer'),
+            organizerUrl: readValue('organizerUrl') || null,
             price: readValue('price'),
+            offerUrl: readValue('offerUrl') || null,
+            offerAvailability: (readValue('offerAvailability') || null) as EventData['offerAvailability'],
+            offerValidFrom: readValue('offerValidFrom') || null,
+            eventStatus: (readValue('eventStatus') || 'Scheduled') as EventData['eventStatus'],
             description: readValue('description'),
             imageUrl: currentImageUrl.current,
             originalImageUrl: originalCropSource.current,
@@ -367,9 +399,19 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                     date: (form.elements.namedItem('date') as HTMLInputElement)?.value || eventData.date,
                     time: (form.elements.namedItem('time') as HTMLInputElement)?.value || eventData.time,
                     location: (form.elements.namedItem('location') as HTMLInputElement)?.value || eventData.location,
+                    endDate: (form.elements.namedItem('endDate') as HTMLInputElement)?.value || null,
+                    endTime: (form.elements.namedItem('endTime') as HTMLInputElement)?.value || null,
+                    address: (form.elements.namedItem('address') as HTMLInputElement)?.value || null,
+                    performerName: (form.elements.namedItem('performerName') as HTMLInputElement)?.value || null,
+                    performerType: ((form.elements.namedItem('performerType') as HTMLSelectElement)?.value || null) as EventData['performerType'],
                     category: (form.elements.namedItem('category') as HTMLInputElement)?.value || eventData.category,
                     organizer: (form.elements.namedItem('organizer') as HTMLInputElement)?.value || eventData.organizer,
+                    organizerUrl: (form.elements.namedItem('organizerUrl') as HTMLInputElement)?.value || null,
                     price: (form.elements.namedItem('price') as HTMLInputElement)?.value || eventData.price,
+                    offerUrl: (form.elements.namedItem('offerUrl') as HTMLInputElement)?.value || null,
+                    offerAvailability: ((form.elements.namedItem('offerAvailability') as HTMLSelectElement)?.value || null) as EventData['offerAvailability'],
+                    offerValidFrom: (form.elements.namedItem('offerValidFrom') as HTMLInputElement)?.value || null,
+                    eventStatus: ((form.elements.namedItem('eventStatus') as HTMLSelectElement)?.value || 'Scheduled') as EventData['eventStatus'],
                     description: (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || eventData.description,
                     imageUrl: imageUrl,
                     sourceUrl: (form.elements.namedItem('sourceUrl') as HTMLInputElement)?.value || eventData.sourceUrl,
@@ -657,6 +699,27 @@ export default function EventDisplay({ eventData, onSave, onPublish, duplicate, 
                                 <p className="event-description-text whitespace-pre-line leading-relaxed text-[#2b2a28] mb-0">{eventData.description}</p>
                             )}
                         </div>
+
+                        {isEditing && (
+                            <section aria-labelledby="event-seo-fields-title" className="space-y-4 border-t border-black/10 pt-5">
+                                <div>
+                                    <h3 id="event-seo-fields-title" className="mb-1 text-lg font-bold">Dati strutturati facoltativi</h3>
+                                    <p className="mb-0 text-sm text-[#5f5b56]">Inserisci solo informazioni verificate. I campi vuoti non saranno aggiunti ai dati pubblici.</p>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {renderSeoInput('endDate', 'Data di fine', 'date', eventData.endDate)}
+                                    {renderSeoInput('endTime', 'Ora di fine', 'time', eventData.endTime)}
+                                    {renderSeoInput('address', 'Indirizzo completo', 'text', eventData.address)}
+                                    {renderSeoInput('performerName', 'Performer', 'text', eventData.performerName)}
+                                    {renderSeoSelect('performerType', 'Tipo di performer', PERFORMER_TYPES, eventData.performerType)}
+                                    {renderSeoInput('organizerUrl', 'Sito dell’organizzatore', 'url', eventData.organizerUrl)}
+                                    {renderSeoInput('offerUrl', 'Link ai biglietti', 'url', eventData.offerUrl)}
+                                    {renderSeoSelect('offerAvailability', 'Disponibilità biglietti', OFFER_AVAILABILITIES, eventData.offerAvailability)}
+                                    {renderSeoInput('offerValidFrom', 'Validità dell’offerta da', 'datetime-local', eventData.offerValidFrom)}
+                                    {renderSeoSelect('eventStatus', 'Stato evento', EVENT_STATUSES, eventData.eventStatus || 'Scheduled')}
+                                </div>
+                            </section>
+                        )}
 
                         {isEditing && onSave && (
                             <section className="space-y-3 border-t border-black/10 pt-5">

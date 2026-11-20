@@ -788,177 +788,102 @@ describe('Parallel event cover', () => {
 
 describe('Event creation autopilot', () => {
   const event = { title: 'Autopilot concerto', date: '2026-12-01', time: '20:00', location: 'Schio', category: 'music', rawText: 'Concerto' };
-
-  const setReducedMotion = (reduced: boolean | null) => cy.then(() => Cypress.automation('remote:debugger:protocol', {
-    command: 'Emulation.setEmulatedMedia',
-    params: { features: reduced === null ? [] : [{ name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference' }] },
-  }));
-
-  const scanPoster = (duplicates: unknown[] = [null]) => {
-    cy.fixture('event-poster.png', 'base64').then(image => {
-      cy.intercept('POST', '/api/process-image', {
-        statusCode: 200,
-        body: { events: [event], previewImageDataUrl: `data:image/png;base64,${image}` },
-      }).as('autopilotScan');
-    });
-    cy.intercept('POST', '**/api/events/check-duplicates', { statusCode: 200, body: { duplicates } }).as('autopilotDuplicates');
-  };
-
+  const endpoint = '/api/event-creation-jobs';
   beforeEach(() => {
     autopublishEnabled = true;
     cy.intercept('POST', '**/api/**', { statusCode: 503, body: { error: 'Unconfigured test mock' } });
-    cy.intercept('GET', '/api/auth/session', { statusCode: 200, body: {} }).as('mockSession');
+    cy.intercept('GET', '/api/auth/session', { statusCode: 200, body: {} });
     cy.intercept('GET', '/api/events?*', { statusCode: 200, body: [] });
-    cy.intercept('POST', '/api/event-cover-search', { statusCode: 200, body: { candidates: [], status: 'completed' } });
-    cy.visit('/crea', { failOnStatusCode: false });
-    cy.wait('@mockSession');
-    cy.wait(2000);
+    cy.intercept('GET', endpoint, { body: { jobs: [] } });
+    cy.intercept('GET', `${endpoint}/*`, { statusCode: 404 });
+    cy.visit('/crea');
+    cy.get('[data-testid="autopublish-toggle"]').should('be.checked');
   });
 
   afterEach(() => {
     autopublishEnabled = false;
-    setReducedMotion(null);
   });
 
-  for (const reduced of [false, true]) {
-    it(`builds, positions, ignites and launches a single event without any tap (reduced motion ${reduced})`, () => {
-      cy.viewport(390, 844);
-      setReducedMotion(reduced);
-      let finishCrop: () => void;
-      let finishSave: () => void;
-      let saves = 0;
-      cy.intercept('POST', '/api/crop-image', request => new Promise<void>(resolve => {
-        finishCrop = () => { request.reply({ statusCode: 200, fixture: 'event-poster.jpg,null', headers: { 'Content-Type': 'image/jpeg' } }); resolve(); };
-      })).as('autopilotCrop');
-      cy.intercept('POST', '/api/events', request => new Promise<void>(resolve => {
-        saves++;
-        finishSave = () => { request.reply({ statusCode: 201, body: { id: 4242, title: event.title, slug: 'autopilot-concerto-4242' } }); resolve(); };
-      })).as('autopilotSave');
-      scanPoster();
-      cy.get('[data-testid="autopublish-toggle"]').should('be.checked');
-      cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-      cy.get('[data-loading-scene]').should('be.visible');
-      cy.wait(['@autopilotScan', '@autopilotDuplicates']);
-      cy.get('[data-testid="autopilot-panel"] [data-event-animation="2d"]').should('be.visible')
-        .and('have.attr', 'data-rocket-stage', 'position')
-        .and('contain', 'copertina sia pronta');
-      cy.get('[data-testid="autopilot-review"]').should('be.visible').and('contain', 'Rivedi prima di pubblicare');
-      cy.get('[data-testid="autopilot-panel"]').then(panel => {
-        expect(getComputedStyle(panel[0]).backgroundColor).to.eq('rgba(0, 0, 0, 0)');
-        expect(getComputedStyle(panel[0]).borderTopWidth).to.eq('0px');
-      });
-      cy.get('[data-testid="autopilot-panel"] .rocket-scene').then(scene => {
-        expect(getComputedStyle(scene[0]).backgroundColor).to.eq('rgba(0, 0, 0, 0)');
-      });
-      cy.get('[data-testid="autopilot-panel"] .rocket-particle').should('have.length', 6).first().then(particle => {
-        expect(getComputedStyle(particle[0]).animationName).to.eq(reduced ? 'none' : 'rocket-particle-drift');
-      });
-      cy.get('[data-testid="autopilot-panel"] .rocket-particles path.rocket-particle').first().then(particle => {
-        expect(getComputedStyle(particle[0]).fill).to.eq('none');
-        expect(getComputedStyle(particle[0]).stroke).not.to.eq('none');
-      });
-      cy.get('[data-optimistic-status="ready"]').should('contain', event.title).find('img').should('exist');
-      cy.get('[data-optimistic-status="ready"] .animate-spin').should('not.exist');
-      cy.get('[data-testid="publish-all-events-top"]').should('not.exist');
-      cy.get('.rocket').then(rocket => {
-        const style = rocket[0].ownerDocument.defaultView!.getComputedStyle(rocket[0]);
-        expect(style.animationName).to.eq(reduced ? 'none' : 'rocket-raise');
-      });
-      cy.document().then(document => expect(document.documentElement.scrollWidth).to.be.at.most(390));
-      cy.screenshot(`autopilot-position-390-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
-      cy.then(() => { expect(saves).to.eq(0); finishCrop(); });
-      cy.wait('@autopilotCrop');
-      cy.get('[data-rocket-stage="ignite"]').should('be.visible').and('contain', 'Sto pubblicando l’evento');
-      cy.get('[data-optimistic-status="pending"]').should('contain', event.title);
-      cy.get('[data-optimistic-status="pending"] .animate-spin').should('not.exist');
-      cy.screenshot(`autopilot-ignite-390-${reduced ? 'reduced' : 'animated'}`, { capture: 'viewport', overwrite: true });
-      cy.wrap(null).should(() => expect(saves).to.eq(1));
-      cy.then(() => finishSave());
-      cy.wait('@autopilotSave');
-      if (!reduced) cy.get('[data-rocket-stage="launch"]').should('contain', 'Decollo');
-      cy.contains('Evento creato').should('be.visible');
-      cy.location('pathname', { timeout: 15000 }).should('eq', '/events/autopilot-concerto-4242');
-      cy.location('search').should('eq', '');
-      cy.then(() => expect(saves).to.eq(1));
+  it('confirms receipt while the worker is still processing and recovers after navigation', () => {
+    cy.viewport(390, 844);
+    let id: string;
+    let secret: string;
+    let published = false;
+    let uploads = 0;
+    for (const path of ['/api/process-image', '/api/crop-image', '/api/events']) {
+      cy.intercept('POST', path, () => { throw new Error(`Unexpected browser pipeline request: ${path}`); });
+    }
+    cy.intercept('POST', endpoint, request => {
+      uploads++;
+      id = String(request.headers['idempotency-key']);
+      secret = String(request.headers['x-event-job-secret']);
+      request.reply({ delay: 650, statusCode: 202, body: { id, status: 'queued' } });
+    }).as('enqueue');
+    cy.intercept({ method: 'GET', pathname: `${endpoint}/*` }, request => {
+      if (!id || !request.url.endsWith(`/${id}`)) return request.reply({ statusCode: 404 });
+      expect(request.headers['x-event-job-secret']).to.eq(secret);
+      request.reply({ body: published
+        ? { id, status: 'published', events: [{ index: 0, status: 'published', slug: 'concerto-4242' }] }
+        : { id, status: 'processing', events: [] } });
     });
-  }
-
-  it('pauses on a duplicate and leaves manual publication to the user', () => {
-    let saves = 0;
-    cy.intercept('POST', '/api/crop-image', { statusCode: 200, fixture: 'event-poster.jpg,null', headers: { 'Content-Type': 'image/jpeg' } });
-    cy.intercept('POST', '/api/events', request => { saves++; request.reply({ statusCode: 500 }); });
-    scanPoster([{ id: 7, ...event, slug: 'autopilot-concerto-7' }]);
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-    cy.wait('@autopilotDuplicates');
-    cy.get('[data-testid="autopilot-stopped"]').should('contain', 'Lancio in pausa').and('contain', 'già presente');
-    cy.get('[data-testid="autopilot-panel"]').should('not.exist');
+    cy.get('[data-rocket-stage="build"]').should('contain', 'Sto inviando');
+    cy.contains('File ricevuto').should('not.exist');
+    cy.wait('@enqueue').its('response.statusCode').should('eq', 202);
+    cy.get('[data-testid="creation-job-status"]').should('contain', 'File ricevuto, evento in elaborazione');
+    cy.contains('Pubblicazione completata').should('not.exist');
+    cy.visit('/eventi');
+    cy.location('pathname').should('eq', '/eventi');
+    cy.then(() => { published = true; });
+    cy.visit('/crea');
+    cy.contains('Pubblicazione completata').should('be.visible');
+    cy.contains('Apri evento 1').should('have.attr', 'href', '/events/concerto-4242');
+    cy.then(() => expect(uploads).to.eq(1));
+  });
+
+  it('restores a job requiring review without publishing it automatically', () => {
+    let id: string;
+    cy.intercept('POST', endpoint, request => {
+      id = String(request.headers['idempotency-key']);
+      request.reply({ statusCode: 202, body: { id, status: 'queued' } });
+    });
+    cy.intercept({ method: 'GET', pathname: `${endpoint}/*` }, request => {
+      if (!id || !request.url.includes(id)) return request.reply({ statusCode: 404 });
+      if (request.query.input) return request.reply({ fixture: 'event-poster.png,null', headers: { 'Content-Type': 'image/png' } });
+      request.reply({ body: { id, status: 'review', reason: 'duplicate', canReview: true, events: [{ index: 0, status: 'duplicate' }] } });
+    });
+    cy.fixture('event-poster.png', 'base64').then(image => {
+      cy.intercept('POST', '/api/process-image', { body: { events: [event], previewImageDataUrl: `data:image/png;base64,${image}` } }).as('manualScan');
+    });
+    cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Status': 'unchanged' } });
+    cy.intercept('POST', '/api/events/check-duplicates', { body: { duplicates: [null] } });
+    cy.intercept('POST', '/api/events', () => { throw new Error('Review must not automatically publish'); });
+    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
+    cy.contains('Revisione necessaria. Nessun evento pubblicato.').should('be.visible');
+    cy.contains('già presente').should('be.visible');
+    cy.contains('button', 'Rivedi manualmente').click();
+    cy.wait('@manualScan');
     cy.get('[data-testid="publish-all-events-top"]').should('be.visible');
-    cy.wait(500);
-    cy.then(() => expect(saves).to.eq(0));
   });
 
-  it('pauses on a failed cover crop', () => {
-    let saves = 0;
-    cy.intercept('POST', '/api/crop-image', { statusCode: 204, headers: { 'X-Image-Crop-Reason': 'verification-rejected' } });
-    cy.intercept('POST', '/api/events', request => { saves++; request.reply({ statusCode: 500 }); });
-    scanPoster();
+  it('reuses the same receipt when the first response is lost', () => {
+    let key: string;
+    let attempts = 0;
+    cy.intercept('POST', endpoint, request => {
+      const id = String(request.headers['idempotency-key']);
+      if (++attempts === 1) {
+        key = id;
+        return request.reply({ statusCode: 503 });
+      }
+      expect(id).to.eq(key);
+      request.reply({ statusCode: 202, body: { id, status: 'queued' } });
+    }).as('retry');
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-    cy.get('[data-testid="autopilot-stopped"]').should('contain', 'copertina non è pronta');
-    cy.then(() => expect(saves).to.eq(0));
-  });
-
-  it('continues automatic publication when the cover needs no crop', () => {
-    let saves = 0;
-    cy.intercept('POST', '/api/crop-image', {
-      statusCode: 204,
-      headers: { 'X-Image-Crop-Status': 'unchanged' },
-    }).as('unchangedCrop');
-    cy.intercept('POST', '/api/events', request => {
-      saves++;
-      request.reply({ statusCode: 201, body: { id: 4243, title: event.title, slug: 'autopilot-unchanged-4243' } });
-    }).as('unchangedSave');
-    scanPoster();
-
+    cy.wait('@retry');
+    cy.contains('Ricezione non confermata').should('be.visible');
+    cy.contains('File ricevuto').should('not.exist');
     cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-    cy.wait(['@autopilotScan', '@autopilotDuplicates', '@unchangedCrop']);
-    cy.wait('@unchangedSave');
-    cy.contains('Evento creato').should('be.visible');
-    cy.location('pathname', { timeout: 15000 }).should('eq', '/events/autopilot-unchanged-4243');
-    cy.then(() => expect(saves).to.eq(1));
-  });
-
-  it('keeps the draft after a failed automatic save and lets the user retry', () => {
-    let saves = 0;
-    cy.intercept('POST', '/api/crop-image', { statusCode: 200, fixture: 'event-poster.jpg,null', headers: { 'Content-Type': 'image/jpeg' } });
-    cy.intercept('POST', '/api/events', request => {
-      saves++;
-      request.reply(saves === 1
-        ? { statusCode: 503, body: { error: 'Salvataggio non disponibile' } }
-        : { statusCode: 201, body: { id: 4343, title: event.title } });
-    }).as('autopilotRetry');
-    scanPoster();
-    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-    cy.get('[data-testid="autopilot-stopped"]').should('contain', 'Salvataggio non disponibile');
-    cy.contains('[role="alert"]', 'Salvataggio non disponibile').should('be.visible');
-    cy.get('[data-testid="publish-all-events-top"]').should('be.enabled').click();
-    cy.wait('@autopilotRetry');
-    cy.contains('Evento creato').should('be.visible');
-    cy.then(() => expect(saves).to.eq(2));
-  });
-
-  it('lets the user stop the launch and review, and remembers a disabled toggle', () => {
-    let saves = 0;
-    cy.intercept('POST', '/api/crop-image', () => new Promise<void>(() => undefined));
-    cy.intercept('POST', '/api/events', request => { saves++; request.reply({ statusCode: 500 }); });
-    scanPoster();
-    cy.get('input[type="file"]').first().selectFile('cypress/fixtures/event-poster.png', { force: true });
-    cy.get('[data-testid="autopilot-review"]').click();
-    cy.get('[data-testid="autopilot-stopped"]').should('contain', 'rivedere i dettagli');
-    cy.get('[data-testid="publish-all-events-top"]').should('be.visible');
-    cy.then(() => expect(saves).to.eq(0));
-    cy.contains('button', 'Crea un altro evento').click();
-    cy.get('[data-testid="autopublish-toggle"]').uncheck();
-    cy.window().its('localStorage').invoke('getItem', 'eventscanner:autopublish').should('eq', '0');
+    cy.wait('@retry').its('response.statusCode').should('eq', 202);
   });
 });
 

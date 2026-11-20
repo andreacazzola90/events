@@ -5,7 +5,8 @@ import sharp from 'sharp';
 
 let supabaseClient: ReturnType<typeof createSupabaseClient> | undefined;
 
-export function getSupabaseClient() {
+export function getSupabaseClient(signal?: AbortSignal) {
+  if (signal) return createSupabaseClient(signal);
   if (supabaseClient) return supabaseClient;
 
   supabaseClient = createSupabaseClient();

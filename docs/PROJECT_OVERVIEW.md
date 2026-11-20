@@ -160,7 +160,7 @@ Artifacts generated:
 ## 8) Operational notes
 
 - Events API applies deduplication (title + date + location) on create.
-- Event list API deduplicates global responses; inspect missing public-event coordinates with `npm run backfill:event-coordinates` and persist resolved places with `npm run backfill:event-coordinates -- --apply`.
+- Event list API deduplicates global responses; inspect missing public-event coordinates with `npm run backfill:event-coordinates` and persist resolved places with `npm run backfill:event-coordinates -- --apply`. Retry selected records using `npm run backfill:event-coordinates -- --apply --ids=123,456`.
 - Geocoding uses OpenStreetMap Nominatim via [lib/geocoding.ts](../lib/geocoding.ts).
 - Extension auth flow uses dedicated endpoint /api/auth/extension-login and CORS helpers.
 - Some project docs already exist at repository root (PWA, analytics, Cypress, Vercel).

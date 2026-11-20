@@ -24,6 +24,7 @@ export type EventCoordinateBackfillResult = {
   dryRun: boolean;
   candidates: number;
   resolved: number;
+  reused: number;
   updated: number;
   clearedInvalid: number;
   unresolved: number;
@@ -70,6 +71,14 @@ function getSafeErrorDetails(error: unknown) {
   return { errorType };
 }
 
+function normalizeLocationKey(location: string): string {
+  return location
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export function createNominatimRequestPacer(
   now: () => number = Date.now,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
@@ -90,6 +99,7 @@ export async function backfillEventCoordinates(options: {
   database: EventBackfillDatabase;
   apply: boolean;
   geocode: Geocode;
+  eventIds?: number[];
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   onProgress?: (completed: number, total: number) => void;
@@ -97,6 +107,7 @@ export async function backfillEventCoordinates(options: {
   const events = await options.database.event.findMany({
     where: {
       isPublished: true,
+      ...(options.eventIds ? { id: { in: options.eventIds } } : {}),
       OR: [
         { latitude: null },
         { longitude: null },
@@ -120,6 +131,7 @@ export async function backfillEventCoordinates(options: {
     dryRun: !options.apply,
     candidates: events.length,
     resolved: 0,
+    reused: 0,
     updated: 0,
     clearedInvalid: 0,
     unresolved: 0,
@@ -130,8 +142,43 @@ export async function backfillEventCoordinates(options: {
     failedEventErrors: [],
   };
   if (!options.apply) return result;
+  if (events.length === 0) return result;
 
   const beforeRequest = createNominatimRequestPacer(options.now, options.sleep);
+  const knownEvents = await options.database.event.findMany({
+    where: {
+      isPublished: true,
+      latitude: { gte: -90, lte: 90 },
+      longitude: { gte: -180, lte: 180 },
+    },
+    select: {
+      id: true,
+      location: true,
+      latitude: true,
+      longitude: true,
+      updatedAt: true,
+    },
+  });
+  const knownCoordinates = new Map<string, Coordinates | null>();
+  for (const knownEvent of knownEvents) {
+    if (!isValidCoordinates(knownEvent)) continue;
+    const key = normalizeLocationKey(knownEvent.location);
+    if (!key) continue;
+
+    const existing = knownCoordinates.get(key);
+    if (!existing) {
+      knownCoordinates.set(key, {
+        latitude: knownEvent.latitude,
+        longitude: knownEvent.longitude,
+      });
+    } else if (
+      existing.latitude !== knownEvent.latitude ||
+      existing.longitude !== knownEvent.longitude
+    ) {
+      knownCoordinates.set(key, null);
+    }
+  }
+
   const clearInvalidComponents = async (event: EventCoordinateCandidate) => {
     const data: Partial<Coordinates> = {};
     if (event.latitude !== null && !isValidLatitude(event.latitude)) data.latitude = null;
@@ -160,13 +207,15 @@ export async function backfillEventCoordinates(options: {
         result.unresolvedEventIds.push(event.id);
         await clearInvalidComponents(event);
       } else {
-        const coordinates = await options.geocode(event.location, { beforeRequest });
+        const known = knownCoordinates.get(normalizeLocationKey(event.location));
+        const coordinates = known ?? await options.geocode(event.location, { beforeRequest });
         if (!isValidCoordinates(coordinates)) {
           result.unresolved++;
           result.unresolvedEventIds.push(event.id);
           await clearInvalidComponents(event);
         } else {
           result.resolved++;
+          if (known) result.reused++;
           const update = await options.database.event.updateMany({
             where: {
               id: event.id,

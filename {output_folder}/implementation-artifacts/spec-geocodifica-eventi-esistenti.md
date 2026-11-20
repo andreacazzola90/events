@@ -49,7 +49,7 @@ context:
 **Execution:**
 - [x] `app/components/EventMap.tsx` -- richiedere fino a 500 eventi includendo anche i passati, come il calendario, e lasciare al filtro client la scelta degli eventi futuri.
 - [x] `app/lib/geocoding.ts`, `lib/geocoding.ts` -- riusare il geocoder con località verificata e serializzare le richieste Nominatim del backfill, con almeno un secondo tra richieste.
-- [x] `lib/event-coordinate-backfill.ts`, `scripts/backfill-event-coordinates.mjs`, `package.json` -- aggiungere un backfill seriale per gli eventi pubblici senza coordinate valide; default dry-run, scrittura solo con `--apply`, aggiornamento condizionale, pulizia dei componenti non validi, avanzamento e ID degli irrisolti.
+- [x] `lib/event-coordinate-backfill.ts`, `scripts/backfill-event-coordinates.mjs`, `package.json` -- aggiungere un backfill seriale per gli eventi pubblici senza coordinate valide; default dry-run, scrittura solo con `--apply`, filtro opzionale per ID, riuso di coordinate già verificate per luoghi pubblicati con indirizzo normalizzato identico, aggiornamento condizionale, pulizia dei componenti non validi, avanzamento e ID degli irrisolti.
 - [x] `lib/geocoding.test.mjs`, `lib/event-coordinate-backfill.test.mjs`, test API/mappa pertinenti -- coprire località non risolte, dry-run, aggiornamenti concorrenti e richiesta completa della mappa.
 - [x] `lib/map-event-date-filter.ts`, `lib/map-event-date-filter.test.mjs` -- verificare che il filtro locale continui a escludere gli eventi passati dopo il caricamento esteso.
 
@@ -80,6 +80,9 @@ context:
 
 - Il backfill seleziona solo eventi pubblici e parte senza richieste esterne o scritture.
   [`event-coordinate-backfill.ts:89`](../../lib/event-coordinate-backfill.ts#L89)
+
+- I luoghi pubblicati con indirizzo normalizzato identico riutilizzano coordinate valide; corrispondenze ambigue ricadono sul geocoder.
+  [`event-coordinate-backfill.ts:145`](../../lib/event-coordinate-backfill.ts#L145)
 
 - Gli aggiornamenti condizionali preservano componenti validi e rifiutano record modificati in parallelo.
   [`event-coordinate-backfill.ts:170`](../../lib/event-coordinate-backfill.ts#L170)

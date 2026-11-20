@@ -6,6 +6,13 @@ import { geocodeLocation } from '../lib/geocoding.ts';
 nextEnv.loadEnvConfig(process.cwd());
 
 const apply = process.argv.includes('--apply');
+const idsArgument = process.argv.find(argument => argument.startsWith('--ids='));
+const eventIds = idsArgument
+  ? idsArgument.slice('--ids='.length).split(',').map(Number)
+  : undefined;
+if (eventIds?.some(id => !Number.isInteger(id) || id < 1)) {
+  throw new Error('--ids must contain comma-separated positive integer event IDs.');
+}
 const prisma = new PrismaClient({
   datasources: {
     db: {
@@ -18,6 +25,7 @@ try {
   const result = await backfillEventCoordinates({
     database: prisma,
     apply,
+    eventIds,
     geocode: geocodeLocation,
     onProgress: (completed, total) => {
       if (completed % 25 === 0 || completed === total) {
@@ -28,6 +36,7 @@ try {
   console.log(
     `${result.dryRun ? 'Dry run' : 'Backfill'}: ${result.candidates} candidate(s), ` +
       `${result.resolved} resolved, ${result.updated} updated, ` +
+      `${result.reused} reused from matching published locations, ` +
       `${result.clearedInvalid} invalid coordinate(s) cleared, ` +
       `${result.unresolved} unresolved, ${result.concurrentChanges} changed concurrently, ` +
       `${result.failed} failed.`,

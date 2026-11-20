@@ -42,6 +42,7 @@ function getExpectedLocality(location: string): string | null {
   const locality = parts[parts.length - 1]
     .replace(/\b\d{5}\b/g, "")
     .replace(/\s*\([a-z]{2,3}\)\s*$/i, "")
+    .replace(/^\d+[a-z]?\s+/i, "")
     .trim();
   return locality || null;
 }

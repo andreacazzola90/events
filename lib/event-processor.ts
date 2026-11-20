@@ -7,7 +7,7 @@ import { compressImage } from '../app/lib/image-utils';
 import { splitEventsByTime } from './event-display';
 import { buildEventExtractionHints } from './event-hints';
 import { isWebSearchConfigured, webSearch } from './google-search';
-import { selectEventImage } from './event-image';
+import { collectVisitSchioGalleryImages, selectEventImage } from './event-image';
 import type { EventImageCandidate } from './event-image';
 import { completeMissingEventFields, verifyScannedEvents, SCAN_AGENT_VERSION } from './event-scan-agents';
 import type { ScanAgentCompletion, ScanAgentReport } from './event-scan-agents';
@@ -521,6 +521,9 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
                     add(itempropImage?.getAttribute('content') || itempropImage?.getAttribute('src') || itempropImage?.getAttribute('data-src'), 'itemprop-image');
                     return candidates;
                 });
+                if (/(^|\.)visitschio\.it$/i.test(new URL(page.url()).hostname)) {
+                    imageCandidates.push(...await page.evaluate(collectVisitSchioGalleryImages));
+                }
 
                 finalImageUrl = selectEventImage(imageCandidates, url);
                 if (!finalImageUrl) {

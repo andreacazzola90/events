@@ -1,9 +1,10 @@
 export type EventImageCandidate = {
   url: string;
-  source: 'event-schema' | 'provider-event' | 'og-image' | 'twitter-image' | 'itemprop-image';
+  source: 'visitschio-gallery' | 'event-schema' | 'provider-event' | 'og-image' | 'twitter-image' | 'itemprop-image';
 };
 
 const SOURCE_PRIORITY: Record<EventImageCandidate['source'], number> = {
+  'visitschio-gallery': 6,
   'event-schema': 5,
   'provider-event': 4,
   'og-image': 3,
@@ -12,6 +13,40 @@ const SOURCE_PRIORITY: Record<EventImageCandidate['source'], number> = {
 };
 
 const GENERIC_IMAGE_PATH = /(?:^|[\/_-])(logo|favicon|sprite|avatar|placeholder|no[-_]?image|default)(?:[\/_.-]|$)/i;
+
+// Kept self-contained so Puppeteer can serialize it into the page.
+export function collectVisitSchioGalleryImages(): EventImageCandidate[] {
+  if (!/(^|\.)visitschio\.it$/i.test(window.location.hostname)) return [];
+
+  const candidates: EventImageCandidate[] = [];
+  const roots: (Document | ShadowRoot)[] = [document];
+  for (const root of roots) {
+    root.querySelectorAll('*').forEach(element => {
+      if (element.shadowRoot) roots.push(element.shadowRoot);
+    });
+    root.querySelectorAll('dw-gen-gallery-image').forEach(gallery => {
+      const galleryRoots: (Element | ShadowRoot)[] = [gallery];
+      for (const galleryRoot of galleryRoots) {
+        galleryRoot.querySelectorAll('*').forEach(element => {
+          if (element.shadowRoot) galleryRoots.push(element.shadowRoot);
+        });
+        if (galleryRoot === gallery && gallery.shadowRoot) galleryRoots.push(gallery.shadowRoot);
+        galleryRoot.querySelectorAll('img').forEach(image => {
+          if (image.currentSrc) candidates.push({ url: image.currentSrc, source: 'visitschio-gallery' });
+        });
+        galleryRoot.querySelectorAll('picture source').forEach(source => {
+          const srcset = source.getAttribute('srcset') || '';
+          if (/\bdata:/i.test(srcset)) return;
+          srcset.split(',').forEach(entry => {
+            const url = entry.trim().split(/\s+/)[0];
+            if (url) candidates.push({ url, source: 'visitschio-gallery' });
+          });
+        });
+      }
+    });
+  }
+  return candidates;
+}
 
 export function normalizeFacebookEventUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 512) return;

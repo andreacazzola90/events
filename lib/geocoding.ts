@@ -3,6 +3,10 @@ export interface Coordinates {
   longitude: number | null;
 }
 
+export interface GeocodingOptions {
+  beforeRequest?: () => Promise<void>;
+}
+
 interface NominatimResult {
   lat: string;
   lon: string;
@@ -76,7 +80,10 @@ function isLikelyAddress(location: string): boolean {
   return /[a-zA-Z]{3,}/.test(trimmed);
 }
 
-export async function geocodeLocation(location: string): Promise<Coordinates> {
+export async function geocodeLocation(
+  location: string,
+  options: GeocodingOptions = {},
+): Promise<Coordinates> {
   if (!isLikelyAddress(location)) {
     return { latitude: null, longitude: null };
   }
@@ -85,7 +92,7 @@ export async function geocodeLocation(location: string): Promise<Coordinates> {
   const cachedResult = geocodeCache.get(cacheKey);
   if (cachedResult) return cachedResult;
 
-  const resultPromise = resolveLocation(location);
+  const resultPromise = resolveLocation(location, options);
   geocodeCache.set(cacheKey, resultPromise);
   if (geocodeCache.size > MAX_GEOCODE_CACHE_ENTRIES) {
     const oldestKey = geocodeCache.keys().next().value;
@@ -102,11 +109,15 @@ export async function geocodeLocation(location: string): Promise<Coordinates> {
   return result;
 }
 
-async function resolveLocation(location: string): Promise<Coordinates> {
+async function resolveLocation(
+  location: string,
+  options: GeocodingOptions,
+): Promise<Coordinates> {
   try {
     const expectedLocality = getExpectedLocality(location);
-    const signal = AbortSignal.timeout(5_000);
+    const signal = AbortSignal.timeout(options.beforeRequest ? 12_000 : 5_000);
     const searchNominatim = async (query: string): Promise<NominatimResult[]> => {
+      await options.beforeRequest?.();
       const params = new URLSearchParams({
         format: "jsonv2",
         q: query,

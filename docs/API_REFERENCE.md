@@ -289,7 +289,7 @@ Example 409 response:
   - public listings use short shared CDN caching; user-scoped listings are private and never shared-cacheable
   - only published events are returned by default. Draft inclusion is an uncached, private admin-only listing.
   - public detail, related-event, calendar, favorite and sitemap surfaces likewise exclude drafts.
-  - coordinates are resolved when an event is created, not during list reads
+  - coordinates are resolved after event creation, not during list reads; existing published events can be checked with `npm run backfill:event-coordinates` and updated only with `npm run backfill:event-coordinates -- --apply`
   - global response dedupe if userId is not set
 
 Example request:

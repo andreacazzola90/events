@@ -25,8 +25,8 @@ import { AppIcon } from "./EventIcons";
 import EventCategoryIcon from "./EventCategoryIcon";
 import EventCategoryBadge from "./EventCategoryBadge";
 import { STANDARD_CATEGORIES } from "../../lib/constants";
-import { parseEventDate } from "../../lib/calendar-ics";
 import { calendarToday } from "../../lib/calendar-view";
+import { mapEventMatchesDateFilter, type MapDateFilter } from "../../lib/map-event-date-filter";
 import { generateUniqueSlug } from "../../lib/slug-utils";
 import LoadingAnimation from "./LoadingAnimation";
 
@@ -77,33 +77,6 @@ const isValidLatLngTuple = (
 };
 
 const DEFAULT_MAP_CENTER: [number, number] = [45.7175, 11.3593];
-type MapDateFilter = "upcoming" | "today" | "tomorrow" | "weekend" | "week" | "custom";
-
-function toDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getDateRange(filter: Exclude<MapDateFilter, "upcoming" | "custom">, today: string) {
-  const start = new Date(`${today}T12:00:00`);
-  if (filter === "tomorrow") start.setDate(start.getDate() + 1);
-  if (filter === "week") {
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    return { start: toDateKey(start), end: toDateKey(end) };
-  }
-  if (filter === "weekend") {
-    if (start.getDay() !== 0 && start.getDay() !== 6) {
-      start.setDate(start.getDate() + (6 - start.getDay()));
-    }
-    const end = new Date(start);
-    if (start.getDay() === 6) end.setDate(end.getDate() + 1);
-    return { start: toDateKey(start), end: toDateKey(end) };
-  }
-  return { start: toDateKey(start), end: toDateKey(start) };
-}
 
 // Component to control map view
 function MapController({
@@ -217,7 +190,7 @@ export default function EventMap() {
   const fetchEventsWithCoordinates = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/events");
+      const response = await fetch("/api/events?limit=500&includePast=true");
       if (!response.ok) throw new Error("Failed to fetch events");
 
       const eventsData = await response.json();
@@ -320,16 +293,7 @@ export default function EventMap() {
       if (categoryFilter && event.category !== categoryFilter) return false;
       if (organizerFilter && !(event.organizer || "").toLocaleLowerCase("it").includes(organizerFilter.toLocaleLowerCase("it"))) return false;
 
-      const date = parseEventDate(event.date);
-      if (!date) return false;
-      const eventDate = `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
-      if (dateFilter === "upcoming" && eventDate < today) return false;
-      if (dateFilter !== "upcoming" && dateFilter !== "custom") {
-        const range = getDateRange(dateFilter, today);
-        if (eventDate < range.start || eventDate > range.end) return false;
-      }
-      if (dateFrom && eventDate < dateFrom) return false;
-      if (dateTo && eventDate > dateTo) return false;
+      if (!mapEventMatchesDateFilter(event.date, dateFilter, today, dateFrom, dateTo)) return false;
       return true;
     });
 

@@ -52,6 +52,6 @@
     "PUPPETEER_SKIP_DOWNLOAD": "true"
   },
   "outputDirectory": ".next",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run vercel-build",
   "installCommand": "npm ci"
 }

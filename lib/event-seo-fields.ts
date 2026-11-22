@@ -6,6 +6,7 @@ import {
   type OfferAvailability,
   type PerformerType,
 } from '../app/types/event';
+import { parseEventDate } from './calendar-ics';
 
 export type EventSeoFieldValues = {
   endDate?: string | null;
@@ -62,6 +63,14 @@ function isValidIsoDate(value: string): boolean {
 
 function isValidEventTime(value: string): boolean {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
+}
+
+function normalizeEventDate(value: string): string | null {
+  const parts = parseEventDate(value);
+  if (!parts) return null;
+  const [year, month, day] = [parts.year, parts.month, parts.day];
+  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return isValidIsoDate(date) ? date : null;
 }
 
 export function isValidOfferValidFrom(value: string): boolean {
@@ -125,6 +134,37 @@ export function parseEventSeoFields(input: unknown):
     } else {
       fields.eventStatus = value.trim();
     }
+  }
+
+  const endDateValue = typeof record.endDate === 'string' ? record.endDate.trim() : '';
+  const endTimeValue = typeof record.endTime === 'string' ? record.endTime.trim() : '';
+  if (endTimeValue && !endDateValue) {
+    return { ok: false, error: 'Dati SEO non validi: l’ora di fine richiede una data di fine.' };
+  }
+  if (endDateValue) {
+    const rawStartDate = typeof record.date === 'string' ? record.date.trim() : '';
+    const startDate = rawStartDate ? normalizeEventDate(rawStartDate) : null;
+    const startTime = typeof record.time === 'string' ? record.time.trim() : '';
+    if (startDate && (endDateValue < startDate || (
+      endDateValue === startDate
+      && endTimeValue
+      && startTime
+      && endTimeValue < startTime
+    ))) {
+      return { ok: false, error: 'Dati SEO non validi: la fine dell’evento non può precedere l’inizio.' };
+    }
+  }
+
+  const performerName = typeof record.performerName === 'string' ? record.performerName.trim() : '';
+  const performerType = typeof record.performerType === 'string' ? record.performerType.trim() : '';
+  if (!!performerName !== !!performerType) {
+    return { ok: false, error: 'Dati SEO non validi: performer richiede nome e tipo.' };
+  }
+
+  const organizer = typeof record.organizer === 'string' ? record.organizer.trim() : '';
+  const organizerUrl = typeof record.organizerUrl === 'string' ? record.organizerUrl.trim() : '';
+  if (organizerUrl && !organizer) {
+    return { ok: false, error: 'Dati SEO non validi: l’URL dell’organizzatore richiede il nome dell’organizzatore.' };
   }
 
   return { ok: true, fields: fields as EventSeoFieldValues };

@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
       Location: `/api/event-creation-jobs/${id}`,
       'Server-Timing': `enqueue;dur=${(performance.now() - started).toFixed(1)}`,
     });
-  } catch {
-    console.warn('[event-creation] Registrazione non disponibile');
+  } catch (error) {
+    console.warn('[event-creation] Registrazione non disponibile', error instanceof Error ? error.message : error);
     return jobResponse({ error: 'Non abbiamo potuto confermare la ricezione. Puoi riprovare con lo stesso file.' }, 503);
   }
 }

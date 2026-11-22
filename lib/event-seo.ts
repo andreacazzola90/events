@@ -132,7 +132,11 @@ export function getEventJsonLd(event: EventSeoInput) {
     : (EVENT_STATUSES as readonly string[]).includes(event.eventStatus)
       ? event.eventStatus
       : undefined;
-  const endDate = event.endDate ? getEventEndDate(event.endDate, event.endTime) : null;
+  const candidateEndDate = event.endDate ? getEventEndDate(event.endDate, event.endTime) : null;
+  const endDate = candidateEndDate
+    && (!startDate || Date.parse(candidateEndDate) >= Date.parse(startDate))
+    ? candidateEndDate
+    : null;
   const address = meaningfulText(event.address);
   const hasCoordinates = typeof event.latitude === 'number' && Number.isFinite(event.latitude)
     && event.latitude >= -90 && event.latitude <= 90
@@ -156,8 +160,8 @@ export function getEventJsonLd(event: EventSeoInput) {
       ...(address ? { address } : {}),
       ...(hasCoordinates ? { geo: { '@type': 'GeoCoordinates', latitude: event.latitude, longitude: event.longitude } } : {}),
     },
-    ...(organizer || (organizerUrl && isValidHttpUrl(organizerUrl))
-      ? { organizer: { '@type': 'Organization', ...(organizer ? { name: organizer } : {}), ...(organizerUrl && isValidHttpUrl(organizerUrl) ? { url: organizerUrl } : {}) } }
+    ...(organizer
+      ? { organizer: { '@type': 'Organization', name: organizer, ...(organizerUrl && isValidHttpUrl(organizerUrl) ? { url: organizerUrl } : {}) } }
       : {}),
     ...(offers ? { offers, ...(priceOffer?.price === 0 ? { isAccessibleForFree: true } : {}) } : {}),
     ...(modified && Number.isFinite(modified.getTime()) ? { dateModified: modified.toISOString() } : {}),

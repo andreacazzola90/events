@@ -2,7 +2,7 @@
 title: 'Completamento dei dati strutturati degli eventi'
 type: 'feature'
 created: '2026-11-20'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'dfea31e7987cdd160a05e572741f673207f59584'
 context:
   - '{project-root}/{output_folder}/planning-artifacts/architecture.md'
@@ -70,3 +70,37 @@ Il markup non può garantire risultati avanzati per eventi privi di dati facolta
 - `node --test lib/event-seo.test.mjs` -- test mirati JSON-LD superati.
 - `npx tsc --noEmit` -- nessun errore di tipo.
 - `npx prisma validate` -- schema Prisma valido.
+
+## Suggested Review Order
+
+**Validazione dei dati**
+
+- Definisce i limiti degli URL, delle date, dei performer e dell’offerta.
+  [`event-seo-fields.ts:81`](../../lib/event-seo-fields.ts#L81)
+
+- Blocca fine precedente all’inizio e coppie performer/organizzatore incomplete.
+  [`event-seo-fields.ts:139`](../../lib/event-seo-fields.ts#L139)
+
+**Persistenza e migrazione**
+
+- Conserva i campi opzionali nel modello senza backfill inventato.
+  [`schema.prisma:44`](../../prisma/schema.prisma#L44)
+
+- Applica i valori validati in creazione e modifica.
+  [`route.ts:190`](../../app/api/events/route.ts#L190)
+
+- Modifica gli eventi esistenti senza perdere i dati precedenti.
+  [`route.ts:151`](../../app/api/events/[id]/route.ts#L151)
+
+**Rendering pubblico**
+
+- Produce JSON-LD soltanto dai valori espliciti e verificati.
+  [`event-seo.ts:97`](../../lib/event-seo.ts#L97)
+
+- Espone i campi facoltativi nel form di modifica.
+  [`edit/page.tsx:554`](../../app/events/[slug]/edit/page.tsx#L554)
+
+**Test**
+
+- Copre omissioni, input invalidi, JSON-LD e casi limite.
+  [`event-seo.test.mjs:222`](../../lib/event-seo.test.mjs#L222)

@@ -18,6 +18,16 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+### Local TLS certificate errors
+
+If image requests fail with `SELF_SIGNED_CERT_IN_CHAIN` on a network that uses TLS inspection, verify with your network administrator that the inspection certificate is trusted by your operating system. With a Node.js version that supports `NODE_USE_SYSTEM_CA` (tested with Node.js 22.22.3), restart the development server with:
+
+```bash
+NODE_USE_SYSTEM_CA=1 npm run dev
+```
+
+This includes the operating system's trusted certificates in Node.js certificate verification; it does not disable TLS verification. This setting is optional and applies only to the command above.
+
 ## Motion and visual language
 
 The homepage uses an editorial industrial palette. Page content and event cards are visible immediately, without entrance animations delaying the first paint. Interactive controls retain CSS hover and focus states. Motion respects the operating system's `prefers-reduced-motion` setting. The event list requires the project's database and Supabase environment configuration to display live events.

@@ -5,6 +5,7 @@ import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
 import { extractTextFromImage } from '../app/lib/ocr';
 import { compressImage } from '../app/lib/image-utils';
 import { splitEventsByTime } from './event-display';
+import { groupPosterEventsByDay, posterTextContainsTitle } from './poster-events';
 import { buildEventExtractionHints } from './event-hints';
 import { isWebSearchConfigured, webSearch } from './google-search';
 import { collectVisitSchioGalleryImages, selectEventImage } from './event-image';
@@ -15,6 +16,8 @@ import { validatePublicScanUrl } from './pdf-url';
 import { withGroqRateLimit } from './groq-rate-limit';
 import { htmlToEventText } from './http-scraper';
 import { FACEBOOK_EVENT_UNAVAILABLE, hasFacebookEventDetails, isFacebookEventSource, normalizeFacebookEventUrl } from './facebook-event';
+import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, validateOriginalEventImageFile } from './event-media';
+import { posterFingerprint } from './poster-fingerprint';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_SECRET_KEY,
@@ -572,6 +575,7 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
 
     // 1b. Estrai testo dall'immagine con OCR se disponibile
     let imageText = '';
+    let imageFingerprint: string | null = null;
     const imageForOcr = finalImageUrl || pageScreenshotForOcr;
     if (imageForOcr) {
         try {
@@ -584,6 +588,13 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
             } else {
                 const imageResponse = await fetch(imageForOcr, { signal: budgetSignal(8_000) });
                 imageBlob = await imageResponse.blob();
+                const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' } as Record<string, string>)[imageBlob.type.toLowerCase()];
+                if (imageResponse.ok && extension && imageBlob.size <= MAX_ORIGINAL_EVENT_IMAGE_BYTES) {
+                    const bytes = new Uint8Array(await imageBlob.arrayBuffer());
+                    if (validateOriginalEventImageFile(`poster.${extension}`, imageBlob.type, bytes).ok) {
+                        imageFingerprint = posterFingerprint(bytes);
+                    }
+                }
             }
 
             const rawImageFile = new File([imageBlob], 'event-image.jpg', { type: imageBlob.type });
@@ -632,6 +643,7 @@ REGOLE DI CLASSIFICAZIONE:
 - Se trovi stesso titolo e stessa data con più orari di inizio => caso 3 (un evento per ogni orario)
 - Se trovi date diverse all'interno di rassegna/ciclo/festival => caso 2 (UN evento per data)
 - Se non ci sono segnali di multiplo => caso 1
+- Se la locandina ha un titolo comune esplicito, riportalo come "seriesTitle" per ogni appuntamento. Non inventarlo.
 
 FORMATO RISPOSTA:
 - Caso 1: restituisci un oggetto JSON singolo
@@ -852,8 +864,16 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         return normalized;
     });
 
+    const posterEvents = events.map(event => ({
+        ...event,
+        posterFingerprint: !isFacebookUrl && finalImageUrl && imageText && posterTextContainsTitle(imageText, event.title) ? imageFingerprint : null,
+    }));
+    const groupedEvents = finalImageUrl && imageText
+        ? groupPosterEventsByDay(posterEvents, event => posterTextContainsTitle(imageText, event.title))
+        : posterEvents;
+
     return {
-        events,
+        events: groupedEvents,
         imageUrl: finalImageUrl,
         debug: {
             ocrRaw: combinedText,

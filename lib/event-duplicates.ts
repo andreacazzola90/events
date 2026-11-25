@@ -3,11 +3,17 @@ import type { Prisma } from '@prisma/client';
 import type { DuplicateMatch } from '../app/types/event';
 import { sameEventStartTime } from './event-display';
 import { generateUniqueSlug } from './slug-utils';
+import { findFingerprintEventIds } from './poster-fingerprint';
 
 export interface DuplicateCandidate {
   title?: string | null;
   date?: string | null;
   time?: string | null;
+  location?: string | null;
+  imageUrl?: string | null;
+  originalImageUrl?: string | null;
+  posterImageUrl?: string | null;
+  posterFingerprint?: string | null;
   sourceUrl?: string | null;
 }
 
@@ -79,22 +85,41 @@ function sameStartOrUnknown(existing?: string | null, candidate?: string | null)
   return !(candidate || '').trim() || sameEventStartTime(existing, candidate);
 }
 
-/**
- * Same date and start time as an existing event, with a similar title or the same source page
- * (multi-session pages like "Hallovin 26" are re-extracted with slightly different titles).
- */
-export async function findDuplicateEvent(candidate: DuplicateCandidate, client: Pick<Prisma.TransactionClient, 'event'> = prisma): Promise<DuplicateMatch | null> {
+function sameLocationOrUnknown(first?: string | null, second?: string | null): boolean {
+  const normalize = (value?: string | null) => {
+    const text = normalizeText(value || '');
+    return /^(?:non trovato|non definito|sconosciuto)$/.test(text) ? '' : text;
+  };
+  const a = normalize(first);
+  const b = normalize(second);
+  return !a || !b || a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)));
+}
+
+function posterUrl(value?: string | null): string {
+  try {
+    const url = new URL(value || '');
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
+export async function findDuplicateEvent(candidate: DuplicateCandidate, client: Pick<Prisma.TransactionClient, 'event' | '$queryRaw'> = prisma): Promise<DuplicateMatch | null> {
   const dates = dateVariants(candidate.date);
   if (dates.length === 0 || !candidate.title?.trim()) return null;
 
   const sameDay = await client.event.findMany({
     where: { date: { in: dates } },
-    select: { id: true, title: true, date: true, time: true, location: true, sourceUrl: true },
+    select: { id: true, title: true, date: true, time: true, location: true, sourceUrl: true, imageUrl: true, originalImageUrl: true },
   });
 
   const source = sourceKey(candidate.sourceUrl);
+  const fingerprintIds = sameDay.length ? await findFingerprintEventIds(client, candidate.posterFingerprint) : [];
+  const posters = [posterUrl(candidate.originalImageUrl), posterUrl(candidate.posterImageUrl), posterUrl(candidate.imageUrl)].filter(Boolean);
   const sameStart = sameDay.filter((ev) => sameStartOrUnknown(ev.time, candidate.time));
-  const match = sameStart.find((ev) => titlesMatch(ev.title, candidate.title!)) ??
+  const match = sameDay.find((ev) => fingerprintIds.includes(ev.id)) ??
+    sameDay.find((ev) => posters.some(url => url === posterUrl(ev.originalImageUrl) || url === posterUrl(ev.imageUrl))) ??
+    sameStart.find((ev) => sameLocationOrUnknown(ev.location, candidate.location) && titlesMatch(ev.title, candidate.title!)) ??
     (source ? sameStart.find((ev) => sourceKey(ev.sourceUrl) === source) : undefined);
 
   if (!match) return null;

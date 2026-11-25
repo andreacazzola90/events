@@ -7,6 +7,7 @@ import { normalizeEventTitle } from '../../../lib/event-title';
 import { createEventImageAnalyzer, VisionServiceUnavailableError } from '../../../lib/vision-ai';
 import { compressImage } from '../../lib/image-utils';
 import { splitEventsByTime } from '../../../lib/event-display';
+import { groupPosterEventsByDay } from '../../../lib/poster-events';
 import { buildEventExtractionHints } from '../../../lib/event-hints';
 import type { EventData } from '../../types/event';
 import { isWebSearchConfigured, webSearch } from '../../../lib/google-search';
@@ -627,6 +628,7 @@ REGOLE:
 
         return normalized;
       });
+      finalEvents = groupPosterEventsByDay(finalEvents);
       if (!background) finalEvents = finalEvents.map(event => {
         const scanFeedbackToken = signScanBaseline(event, rawText);
         return scanFeedbackToken ? { ...event, scanFeedbackToken } : event;

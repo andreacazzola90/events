@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createEventWithCalendar, scheduleCalendarDeliveries } from "../../../../lib/google-calendar";
+import { findDuplicateEvent, lockEventDates } from "../../../../../lib/event-duplicates";
 import { processEventLink } from "../../../../../lib/event-processor";
+import { savePosterFingerprint } from "../../../../../lib/poster-fingerprint";
 import { getBrowser, closeBrowser } from "../../../../../lib/browser-vercel";
 import { geocodeLocation } from "@/lib/geocoding";
 import { invalidatePublicEvents } from "../../../../../lib/public-event-cache";
@@ -493,6 +495,7 @@ export async function POST(request: NextRequest) {
           let savedAny = false;
 
           for (const eventData of result.events || []) {
+            const duplicateCandidate = { ...eventData, imageUrl: eventData.posterFingerprint ? eventData.imageUrl : undefined };
             // Skip results that don't look like real events (includes past-date check)
             if (!isValidEventResult(eventData, todayStr)) {
               const isPast = eventData.date && /^\d{4}-\d{2}-\d{2}$/.test(eventData.date) && eventData.date < todayStr;
@@ -512,7 +515,7 @@ export async function POST(request: NextRequest) {
             if (title && date && location) {
               const existing = await prisma.event.findFirst({
                 where: { title, date, location },
-              });
+              }) || await findDuplicateEvent(duplicateCandidate);
               if (existing) {
                 duplicateEvents.push({ title, date, existingId: existing.id, sourceUrl: url });
                 entry.status = "duplicate";
@@ -537,8 +540,13 @@ export async function POST(request: NextRequest) {
               longitude = coords.longitude;
             }
 
-            const saved = await createEventWithCalendar({
-              data: {
+            const publication = await prisma.$transaction(async tx => {
+              await lockEventDates(tx, [date]);
+              const duplicate = await tx.event.findFirst({ where: { title, date, location } }) ||
+                await findDuplicateEvent(duplicateCandidate, tx);
+              if (duplicate) return { saved: null, duplicate };
+              const saved = await createEventWithCalendar({
+                data: {
                 title,
                 description: eventData.description || "",
                 date,
@@ -554,8 +562,18 @@ export async function POST(request: NextRequest) {
                 sourceUrl: url,
                 externalId: getExternalIdFromUrl(url),
                 origin: source.name.toLowerCase().replace(/\s+/g, "-"),
-              } as any,
+                } as any,
+              }, tx);
+              await savePosterFingerprint(tx, saved.id, eventData.posterFingerprint);
+              return { saved, duplicate: null };
             });
+            if (!publication.saved) {
+              duplicateEvents.push({ title, date, existingId: publication.duplicate.id, sourceUrl: url });
+              entry.status = "duplicate";
+              await send({ type: "duplicate", title, date, existingId: publication.duplicate.id });
+              continue;
+            }
+            const saved = publication.saved;
 
             savedEvents.push({
               id: saved.id,

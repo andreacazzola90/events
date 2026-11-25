@@ -229,7 +229,7 @@ export default function CreaEvento() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    events: list.map(({ title, date, time, sourceUrl }) => ({ title, date, time, sourceUrl })),
+                    events: list.map(({ title, date, time, location, imageUrl, originalImageUrl, posterImageUrl, sourceUrl }) => ({ title, date, time, location, imageUrl, originalImageUrl, posterImageUrl, sourceUrl })),
                 }),
             });
             if (!response.ok || checkId !== duplicateCheckId.current) return;

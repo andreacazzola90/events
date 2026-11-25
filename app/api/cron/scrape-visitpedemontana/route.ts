@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createEventWithCalendar, scheduleCalendarDeliveries } from '../../../lib/google-calendar';
 import { processEventLink } from '../../../../lib/event-processor';
+import { savePosterFingerprint } from '../../../../lib/poster-fingerprint';
 import { getBrowser, closeBrowser } from '../../../../lib/browser-vercel';
 import { invalidatePublicEvents } from '../../../../lib/public-event-cache';
 import { geocodeLocation } from '@/lib/geocoding';
@@ -815,6 +816,7 @@ async function scrapeOneSource(
 
         if (result.events && result.events.length > 0) {
           for (const eventData of result.events) {
+            const duplicateCandidate = { ...eventData, imageUrl: eventData.posterFingerprint ? eventData.imageUrl : undefined };
             // Filtra gli eventi già passati (in base alla data estratta)
             if (eventData.date) {
               const eventDate = new Date(eventData.date);
@@ -841,7 +843,7 @@ async function scrapeOneSource(
                   date: candidateDate,
                   location: candidateLocation,
                 },
-              });
+              }) || await findDuplicateEvent(duplicateCandidate);
               if (existing) {
                 duplicateEvents.push({ title: candidateTitle, date: candidateDate, existingId: existing.id });
                 if (dryRun) {
@@ -867,7 +869,7 @@ async function scrapeOneSource(
             const publication = await prisma.$transaction(async tx => {
               await lockEventDates(tx, [candidateDate]);
               const duplicate = await tx.event.findFirst({ where: { title: candidateTitle, date: candidateDate, location: candidateLocation } }) ||
-                await findDuplicateEvent({ ...eventData, title: candidateTitle, date: candidateDate }, tx);
+                await findDuplicateEvent({ ...duplicateCandidate, title: candidateTitle, date: candidateDate }, tx);
               if (duplicate) return { saved: null, duplicate };
               const saved = await createEventWithCalendar({
               data: {
@@ -889,6 +891,7 @@ async function scrapeOneSource(
                 origin: originTag,
               } as any,
               }, tx);
+              await savePosterFingerprint(tx, saved.id, eventData.posterFingerprint);
               return { saved, duplicate: null };
             }, { maxWait: 2_000, timeout: 15_000 });
             if (!publication.saved) {

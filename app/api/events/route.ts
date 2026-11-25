@@ -7,7 +7,7 @@ import { unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../pages/api/auth/[...nextauth]";
 import { generateUniqueSlug } from "../../../lib/slug-utils";
-import { findDuplicateEvent } from "../../../lib/event-duplicates";
+import { findDuplicateEvent, lockEventDates } from "../../../lib/event-duplicates";
 import { toIsoDate } from "../../../lib/event-utils";
 import { authenticateExtensionRequest } from "../../../lib/extension-auth";
 import {
@@ -16,12 +16,13 @@ import {
 } from "../../../lib/extension-cors";
 import { recordScanCorrections } from "../../../lib/scan-learning-store";
 import { createEventWithSeries } from "../../../lib/event-series-create";
-import { redactOriginalEventImageMetadata, validateEventMediaFile, validateOriginalEventImageFile } from "../../../lib/event-media";
+import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, redactOriginalEventImageMetadata, validateEventMediaFile, validateOriginalEventImageFile } from "../../../lib/event-media";
 import { isCoverImageCrop } from "../../../lib/cover-image-crop";
 import { invalidatePublicEvents, PUBLIC_EVENTS_TAG } from "../../../lib/public-event-cache";
 import { calendarToday } from "../../../lib/calendar-view";
 import type { Prisma } from "@prisma/client";
 import { parseEventSeoFields, type EventSeoFieldValues } from "../../../lib/event-seo-fields";
+import { posterFingerprint, savePosterFingerprint } from "../../../lib/poster-fingerprint";
 
 function isAdminSession(session: any): boolean {
   const user = session?.user as any;
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
     let imageFile: File | null = null;
     let originalImageFile: File | null = null;
     let posterFile: File | null = null;
+    let fingerprint: string | null = null;
     let imageUrl: string | undefined = undefined;
     let originalImageUrl: string | undefined = undefined;
     let originalImageCrop: { x: number; y: number; width: number; height: number } | null = null;
@@ -126,6 +128,11 @@ export async function POST(request: NextRequest) {
           const imageResponse = await fetch(imageUrl);
           const imageBlob = await imageResponse.blob();
           const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
+          const mime = imageBlob.type.toLowerCase();
+          const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" } as Record<string, string>)[mime];
+          if (imageResponse.ok && extension && validateOriginalEventImageFile(`poster.${extension}`, mime, imageBuffer).ok) {
+            fingerprint = posterFingerprint(imageBuffer);
+          }
 
           console.log(
             "[API /events POST] Uploading external image to Supabase...",
@@ -177,6 +184,15 @@ export async function POST(request: NextRequest) {
             NextResponse.json({ error: validation.ok ? "La sorgente deve essere un’immagine" : validation.error }, { status: 400 }),
             request,
           );
+        }
+        fingerprint = posterFingerprint(bytes);
+      }
+      if (!originalImageFile) {
+        const posterSource = posterFile || imageFile;
+        if (posterSource && posterSource.size <= MAX_ORIGINAL_EVENT_IMAGE_BYTES) {
+          const bytes = new Uint8Array(await posterSource.arrayBuffer());
+          const validation = validateOriginalEventImageFile(posterSource.name, posterSource.type, bytes, posterSource.size);
+          if (validation.ok && validation.kind === "image") fingerprint = posterFingerprint(bytes);
         }
       }
       if (originalImageFile) {
@@ -244,8 +260,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const duplicate = await findDuplicateEvent(eventDataToSave);
-    if (duplicate) {
+    const publish = () => prisma.$transaction(async tx => {
+      await lockEventDates(tx, [eventDataToSave.date]);
+      const duplicate = await findDuplicateEvent({ ...eventDataToSave, posterImageUrl: eventData.imageUrl, posterFingerprint: fingerprint }, tx);
+      if (duplicate) return { duplicate, saved: null };
+      const saved = await createEventWithSeries(eventDataToSave, eventData.seriesTitle, tx);
+      await savePosterFingerprint(tx, saved.event.id, fingerprint);
+      return { duplicate: null, saved };
+    });
+    let publication;
+    try {
+      publication = await publish();
+    } catch (error) {
+      const conflict = error as { code?: string; meta?: { target?: unknown } };
+      if (conflict.code !== 'P2002' || !Array.isArray(conflict.meta?.target) || !conflict.meta.target.includes('slug')) throw error;
+      publication = await publish();
+    }
+    if (!publication.saved) {
+      const { duplicate } = publication;
       if (uploadedOriginalPath) {
         await deleteEventMediaFromSupabase(uploadedOriginalPath).catch(cleanupError => {
           console.error("[API /events POST] Duplicate original cleanup failed:", cleanupError);
@@ -275,7 +307,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify(eventDataToSave, null, 2),
     );
 
-    const { event, seriesSlug } = await createEventWithSeries(eventDataToSave, eventData.seriesTitle);
+    const { event, seriesSlug } = publication.saved;
     uploadedOriginalPath = null;
     scheduleCalendarDeliveries();
 

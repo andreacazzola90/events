@@ -76,6 +76,7 @@ model Event {
   favorites   Favorite[]
   calendarDeliveries GoogleCalendarDelivery[]
   media       EventMedia[]
+  posterFingerprint EventPosterFingerprint?
   telegramPublications TelegramPublication[]
   instagramPublications InstagramPublication[]
   personalTelegramPublications PersonalTelegramScanPublication[]
@@ -132,6 +133,14 @@ model EventMedia {
   event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, position])
+}
+
+model EventPosterFingerprint {
+  eventId     Int    @id
+  fingerprint String
+  event       Event  @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([fingerprint])
 }
 
 model User {

@@ -17,6 +17,7 @@ import { getEventStartTime } from './event-display';
 import { geocodeLocation } from './geocoding';
 import { invalidatePublicEvents } from './public-event-cache';
 import { JOB_HISTORY_TTL_MS, JOB_LEASE_MS, MAX_JOB_ATTEMPTS, jobHash, retryJobAt } from './event-creation-job-policy';
+import { savePosterFingerprint } from './poster-fingerprint';
 
 type JobEvent = { index: number; status: 'published' | 'duplicate' | 'review'; eventId?: number; slug?: string; seriesSlug?: string };
 export type JobOutcome = { reason?: string; events: JobEvent[] };
@@ -87,6 +88,7 @@ function isRealDate(date: string) {
 
 async function processJob(job: Claim, signal: AbortSignal) {
   const input = new File([new Uint8Array(job.input!)], 'locandina', { type: job.mimeType });
+  const fingerprint = jobHash(job.input!);
   const { crop, reason } = await verifyPosterCover(input, job.ownerId ?? undefined, signal);
   if (!crop) {
     if (!permanentCropFailures.includes(reason)) throw new Error('crop-unavailable');
@@ -119,7 +121,7 @@ async function processJob(job: Claim, signal: AbortSignal) {
   if (decision.action === 'stop') return review(decision.reason);
   const dates = events.map(event => event.date);
   if (dates.some(date => !isRealDate(date))) return review('missing-data');
-  const duplicates = await Promise.all(events.map((event, index) => findDuplicateEvent({ ...event, date: dates[index] })));
+  const duplicates = await Promise.all(events.map((event, index) => findDuplicateEvent({ ...event, date: dates[index], posterFingerprint: fingerprint })));
   if (duplicates.some(Boolean)) return finish(prisma, job, 'review', {
     reason: 'duplicate', events: duplicates.map((match, index) => ({ index, status: match ? 'duplicate' : 'review' })),
   });
@@ -155,7 +157,7 @@ async function processJob(job: Claim, signal: AbortSignal) {
     const results: JobEvent[] = [];
     for (let index = 0; index < events.length; index++) {
       const { title, description, time, location, organizer, category, price, sourceUrl, seriesTitle } = events[index];
-      if (await findDuplicateEvent({ title, date: dates[index], time, sourceUrl }, tx)) {
+      if (await findDuplicateEvent({ title, date: dates[index], time, location, imageUrl: covers[index], sourceUrl, posterFingerprint: fingerprint }, tx)) {
         throw new ImageScanError('duplicate', 422, 'duplicate');
       }
       const { event, seriesSlug } = await createEventWithSeries({
@@ -163,6 +165,7 @@ async function processJob(job: Claim, signal: AbortSignal) {
         price, sourceUrl: sourceUrl || null, rawText: '', imageUrl: covers[index],
         origin: 'user', createdById: job.ownerId, ...locations.get(location),
       }, seriesTitle, tx);
+      await savePosterFingerprint(tx, event.id, fingerprint);
       results.push({ index, status: 'published', eventId: event.id, slug: generateUniqueSlug(event.title, event.id), ...(seriesSlug ? { seriesSlug } : {}) });
     }
     signal.throwIfAborted();

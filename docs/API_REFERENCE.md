@@ -486,6 +486,7 @@ curl -X DELETE "http://localhost:3000/api/favorites" \
 - File: [app/api/process-image/route.ts](../app/api/process-image/route.ts)
 - Purpose: OCR + AI extraction from flyer image
 - Output: one or multiple normalized events
+- Activities extracted from the same uploaded poster and valid calendar day are combined into one draft; their titles, times, locations and descriptions remain in its programme. Different or unknown dates remain separate. An explicit common series title becomes the combined title; otherwise the activity titles are retained.
 - Event-data vision analyzes the entire image, with OCR fallback. There are no automatic crop, bounds-detection or crop-privacy verification calls.
 - Success output: `events` and `previewImageDataUrl`, a JPEG data URL containing the complete uploaded image, auto-oriented without cropping, padding or stretching. Crop-related `imageWarning` and `POSTER_PRIVACY_REVIEW_REQUIRED` responses are no longer produced.
 - Data vision prefers Groq then NVIDIA unless overridden by `AI_VISION_PROVIDERS` or, with higher precedence, `AI_VISION_EXTRACTION_PROVIDERS`. `AI_VISION_CROP_PROVIDERS` is no longer used by this endpoint. The analyzer has a 180-second budget, at most 60 seconds per request and no automatic retries; truncated responses are discarded. Structured text extraction, PDFs and cron continue to use Groq. See [OPENAI_SETUP.md](../OPENAI_SETUP.md).
@@ -524,6 +525,10 @@ Example 200 response (shape):
 - File: [app/api/process-link/route.ts](../app/api/process-link/route.ts)
 - Purpose: scrape URL and extract event data
 - Delegates to [lib/event-processor.ts](../lib/event-processor.ts)
+- Activities from the same page on the same valid day are combined only when OCR of its image contains their titles; otherwise they remain separate. Combined drafts retain the programme details.
+- Duplicate checks consider date, title, time, venue and exact HTTP(S) image URL. A matching poster on the same day is considered a duplicate even when title, time or venue differ; existing events are not automatically modified.
+- Optional byte-exact SHA-256 poster matching detects identical files uploaded with different URLs. It covers validated original uploads, image-creation jobs, and web scrapes whose poster OCR contains the event title; social screenshots are not fingerprinted. Fingerprints are computed server-side, checked under the publication date lock, and saved in the event transaction. The preliminary browser check cannot compare file bytes.
+- The additive `20261125110000_event_poster_fingerprints` migration must be applied before setting `EVENT_POSTER_FINGERPRINT_ENABLED=true`; leave the flag disabled until then. `vercel-build` runs `prisma migrate deploy` automatically. Enabling the flag without the table causes publication to fail rather than silently skipping the check. No backfill is provided, so previously created events lack fingerprints; recompressed, resized or cropped versions also do not match by fingerprint. Image URL and other duplicate checks remain available.
 - Accepts public Facebook event URLs, including mobile URLs and tracking parameters such as `acontext`. Direct event links are normalized to `https://www.facebook.com/events/<id>/`.
 - Facebook extraction reads public metadata, structured event data and page text, without logging in. When event details are unavailable (login required, private/deleted event or access restrictions), the API returns HTTP 400 with a message suggesting a screenshot instead; it does not extract events from a generic login page.
 

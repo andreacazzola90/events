@@ -489,6 +489,12 @@ model CronJobRun {
   @@index([queuePositionAt])
 }
 
+model CronJobSetting {
+  jobKey    String   @id
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
 /// Field corrected by a user between AI extraction and publication; reused as few-shot lessons.
 model ScanCorrection {
   id             Int      @id @default(autoincrement())

@@ -7,6 +7,7 @@ import InstagramScanAdmin from "./InstagramScanAdmin";
 import PageHeading from "../components/PageHeading";
 import LoadingAnimation from "../components/LoadingAnimation";
 import CronJobLauncher from "./CronJobLauncher";
+import CronScheduleSettings from "./CronScheduleSettings";
 import CronSourceRunStatus, { type CronJobRun } from "./CronSourceRunStatus";
 
 type CronSource = {
@@ -869,9 +870,22 @@ export default function CronAdminClient() {
               {dispatcherError && <p className="mt-1 text-xs text-red-300">{dispatcherError}</p>}
               {dispatcherRun?.resultJson && (() => {
                 try {
-                  const parsed = JSON.parse(dispatcherRun.resultJson) as { failed?: unknown; jobs?: unknown };
+                  const parsed = JSON.parse(dispatcherRun.resultJson) as {
+                    failed?: unknown;
+                    jobs?: unknown;
+                    excluded?: unknown;
+                  };
                   const failedKeys = Array.isArray(parsed.failed)
                     ? parsed.failed.filter((key): key is string => typeof key === "string")
+                    : [];
+                  const excludedKeys = Array.isArray(parsed.excluded)
+                    ? parsed.excluded.flatMap((entry) => {
+                      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return [];
+                      const excluded = entry as Record<string, unknown>;
+                      return excluded.status === "excluded" && typeof excluded.key === "string"
+                        ? [excluded.key]
+                        : [];
+                    })
                     : [];
                   const failedJobs: { key: string; httpStatus?: number; error?: string; data?: unknown }[] = [];
                   if (Array.isArray(parsed.jobs)) {
@@ -891,6 +905,11 @@ export default function CronAdminClient() {
                     <>
                       {failedKeys.length > 0 && (
                         <p className="mt-1 text-xs text-red-300">Da controllare: {failedKeys.join(", ")}</p>
+                      )}
+                      {excludedKeys.length > 0 && (
+                        <p className="mt-1 text-xs text-gray-400">
+                          Esclusi dalla pianificazione: {excludedKeys.join(", ")}
+                        </p>
                       )}
                       {failedJobs.length > 0 && (
                         <ul className="mt-2 space-y-1 text-xs text-red-200">
@@ -923,6 +942,8 @@ export default function CronAdminClient() {
             </div>
           </div>
         </section>
+
+        <CronScheduleSettings />
 
         <CronJobLauncher />
 

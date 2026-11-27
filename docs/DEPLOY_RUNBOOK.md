@@ -237,6 +237,12 @@ The Cron Admin per-site scan status and logs require `20261106100000_add_cron_jo
 - Use preview deployments for validation before merge.
 - Confirm final deployment health by hitting core pages and APIs.
 
+### Event image delivery
+
+`next.config.ts` sets `images.unoptimized: true`: Next Image components deliver their original URLs directly, without the Vercel image optimizer. This avoids `402 OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED` responses from `/_next/image` when the originals are still available. Event records, uploaded files, cover selection, layout and lazy loading are unchanged. Browsers download the original file rather than a resized AVIF/WebP variant, which can increase mobile bandwidth; upstream hosts must allow direct image delivery.
+
+Rebuild and deploy for this setting to take effect. Check a published event and a listing at mobile and desktop widths: image `src`/`currentSrc` must point to the original host, not `/_next/image`, and the image request must return HTTP 200. No database migration or re-publication of existing events is required. Previously cached HTML or an older open tab can still contain optimizer URLs until refreshed.
+
 ## 5.4 Build identity and timestamp
 
 - The footer and `/versioni` share the current build identity: the unchanged package version plus the first seven commit characters, for example `0.3.4+abcdef1`. Release-history version numbers remain unchanged.
@@ -303,7 +309,9 @@ Run smoke checks:
 
 All cron endpoints require `Authorization: Bearer <CRON_SECRET_KEY>`. Application code and the admin manual proxy read only `CRON_SECRET_KEY` and fail closed when it is absent/empty. There is no fallback to `CRON_SECRET`.
 
-Vercel Hobby only allows daily cron jobs, so [vercel.json](../vercel.json) defines a single cron, `GET /api/cron/daily` at 18:00 UTC (Vercel may start it any time within that hour). It calls all jobs below in parallel with the same bearer token. For native Vercel scheduling, set both `CRON_SECRET_KEY` and `CRON_SECRET` to the exact same value in Production and redeploy. Vercel reads `CRON_SECRET` to send the bearer; the application validates it only against `CRON_SECRET_KEY`. KEY alone supports authenticated manual/external calls but does not configure Vercel's automatic bearer. The story only generates/publishes on the weekdays set in the admin tab (Europe/Rome, default Wednesday), once per day.
+Vercel Hobby only allows daily cron jobs, so [vercel.json](../vercel.json) defines a single cron, `GET /api/cron/daily` at 18:00 UTC (Vercel may start it any time within that hour). It calls enabled jobs below in parallel with the same bearer token. For native Vercel scheduling, set both `CRON_SECRET_KEY` and `CRON_SECRET` to the exact same value in Production and redeploy. Vercel reads `CRON_SECRET` to send the bearer; the application validates it only against `CRON_SECRET_KEY`. KEY alone supports authenticated manual/external calls but does not configure Vercel's automatic bearer. The story only generates/publishes on the weekdays set in the admin tab (Europe/Rome, default Wednesday), once per day.
+
+The Cron Admin panel has a global **Job della pianificazione giornaliera** selection. Apply the prepared additive migration `20261127170000_add_cron_job_settings` before deploying this setting; the migration creates the dedicated `CronJobSetting` table and is not applied by this code change. Rows absent from the table default to enabled, including newly added jobs with no saved setting. All jobs can be disabled. A database read error makes the daily dispatcher return an explicit error without calling any job. These settings affect future automatic dispatches only; **Avvio manuale cron** remains independent and can launch any job. No scheduled entry point or cadence is changed.
 
 ### Creazione di eventi in background
 
@@ -317,6 +325,8 @@ VisitPedemontana source-queue changes require applying the additive Prisma migra
 
 Endpoints:
 - GET /api/cron/daily (Vercel scheduled entry point)
+- GET /api/admin/cron-settings (admin session required)
+- PUT /api/admin/cron-settings (admin session and same-origin request required)
 - GET /api/cron/sync-google-calendar
 - GET /api/cron/scrape-visitpedemontana
 - GET /api/cron/generate-instagram-story

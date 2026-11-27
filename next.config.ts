@@ -9,6 +9,8 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 const imagesConfig = {
   images: {
+    // Serve originals directly: Vercel image optimization can block delivery with HTTP 402.
+    unoptimized: true,
     formats: ["image/avif", "image/webp"],
     qualities: [65, 75],
     minimumCacheTTL: 60 * 60 * 24,

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CRON_JOBS } from "../../../../lib/cron-jobs";
 import { runCronJob } from "../../../../lib/cron-dispatch";
+import { getCronJobSettings, type CronJobSettingState } from "../../../../lib/cron-job-settings";
 
 // Vercel Hobby allows only daily cron jobs: this single entry point fans out
 // to every scheduled job. Each job runs in its own function invocation (with
@@ -29,6 +30,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  let settings: CronJobSettingState[];
+  try {
+    settings = await getCronJobSettings();
+  } catch (error) {
+    console.error("[Daily Cron] Failed to read automatic job settings:", error);
+    return NextResponse.json(
+      { status: "error", error: "cron_settings_unavailable" },
+      { status: 503 },
+    );
+  }
+  const enabledKeys = new Set(settings.filter((setting) => setting.enabled).map((setting) => setting.key));
+  const enabledJobs = CRON_JOBS.filter((job) => enabledKeys.has(job.key));
+  const excluded = CRON_JOBS
+    .filter((job) => !enabledKeys.has(job.key))
+    .map((job) => ({ key: job.key, status: "excluded" as const }));
+
   const startedAt = new Date();
   try {
     await (prisma as any).cronJobRun.upsert({
@@ -42,12 +59,15 @@ export async function GET(request: NextRequest) {
 
   const origin = request.nextUrl.origin;
   const jobs = await Promise.all(
-    CRON_JOBS.map((job) => runCronJob(origin, job, authorization!)),
+    enabledJobs.map((job) => runCronJob(origin, job, authorization!)),
   );
   const failed = jobs.filter((job) => !job.ok).map((job) => job.key);
 
   if (failed.length) {
     console.error("[Daily Cron] Failed jobs:", failed.join(", "));
+  }
+  if (excluded.length) {
+    console.info("[Daily Cron] Excluded jobs:", excluded.map(({ key }) => key).join(", "));
   }
 
   const result = {
@@ -56,6 +76,7 @@ export async function GET(request: NextRequest) {
     finishedAt: new Date().toISOString(),
     failed,
     jobs,
+    excluded,
   };
   try {
     await (prisma as any).cronJobRun.updateMany({

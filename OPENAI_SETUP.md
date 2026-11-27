@@ -1,6 +1,37 @@
 # AI Vision Cloud
 
-Le immagini sono analizzate intere per estrarre i dati dell'evento, con OCR come fallback. Al caricamento partono in parallelo l'estrazione e `POST /api/crop-image`, prima della pubblicazione. Appena pronti i dati, la bozza appare con l'immagine originale e lo stato "Immagine in elaborazione"; il crop verificato sostituisce automaticamente la copertina. Su errore o incertezza l'originale viene escluso dalla pubblicazione e resta disponibile solo per il ritaglio manuale; viene proposta la scelta di immagini web. Il pulsante Pubblica si abilita quando termina il controllo e salva la copertina scelta oppure l'evento senza immagine. PDF e link non attivano questo ramo; i ritagli manuali hanno precedenza. L'estrazione strutturata degli eventi, i PDF e il cron continuano a usare Groq.
+Le immagini sono analizzate intere per estrarre i dati dell'evento, con OCR come fallback. Al caricamento partono in parallelo l'estrazione e `POST /api/crop-image`, prima della pubblicazione. Appena pronti i dati, la bozza appare con l'immagine originale e lo stato "Immagine in elaborazione"; il crop verificato sostituisce automaticamente la copertina. Su errore o incertezza l'originale viene escluso dalla pubblicazione e resta disponibile solo per il ritaglio manuale; viene proposta la scelta di immagini web. Il pulsante Pubblica si abilita quando termina il controllo e salva la copertina scelta oppure l'evento senza immagine. PDF e link non attivano questo ramo; i ritagli manuali hanno precedenza. L'estrazione testuale dei link e il cron usano la catena Groq, Cloudflare Workers AI, OpenRouter `:free`; immagini e PDF restano fuori da questa modifica.
+
+## Fallback AI Testuale Per Link E Cron
+
+Il processore dei link e i suoi agenti testuali (completamento/verifica) provano, nell'ordine configurato, Groq, Cloudflare Workers AI e OpenRouter con un modello gratuito. Sono saltati i provider senza credenziali complete; non e necessario configurare tutti e tre. L'ordine predefinito e `groq,cloudflare,openrouter`. Solo le chiamate testuali di link e cron usano questa catena: non comprende immagini, PDF, OCR, crop o rielaborazione eventi. Gemini non viene usato.
+
+Variabili server (esempio senza credenziali):
+
+```dotenv
+AI_TEXT_PROVIDERS=groq,cloudflare,openrouter
+GROQ_API_SECRET_KEY=
+GROQ_TEXT_MODEL=openai/gpt-oss-20b
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_WORKERS_AI_API_TOKEN=
+CLOUDFLARE_TEXT_MODEL=@cf/meta/llama-3.3-70b-instruct-fp8-fast
+OPENROUTER_API_SECRET_KEY=
+OPENROUTER_TEXT_MODEL=provider/modello:free
+```
+
+- **Groq:** `GROQ_API_SECRET_KEY` e necessaria per il primo provider; il modello e sovrascrivibile con `GROQ_TEXT_MODEL`. Se mancano le nuove credenziali, Groq mantiene il comportamento preesistente.
+- **Cloudflare Workers AI:** servono sia `CLOUDFLARE_ACCOUNT_ID` sia `CLOUDFLARE_WORKERS_AI_API_TOKEN`. Creare il token dedicato dalla pagina Workers AI oppure assegnare i permessi account **Workers AI - Read** e **Workers AI - Edit**. L'API usa l'endpoint OpenAI-compatible per account; il modello predefinito `@cf/meta/llama-3.3-70b-instruct-fp8-fast` supporta JSON Mode. Il precedente `@cf/meta/llama-3.1-8b-instruct` e stato ritirato (HTTP 410, codice 5028): aggiornare anche eventuali override locali o Vercel. Account ID e token sono distinti; non condividere il token.
+- **OpenRouter:** usare `OPENROUTER_API_SECRET_KEY` e impostare esplicitamente `OPENROUTER_TEXT_MODEL` a un modello compatibile con JSON il cui identificatore termini esattamente in `:free`. Una chiave gia usata dal ramo immagini, senza modello testuale, non abilita questo fallback. Un modello esplicito senza suffisso viene rifiutato; il codice non rimuove il suffisso, non sceglie un modello a pagamento e non attiva fallback alternativi a pagamento. Quote e disponibilita dei modelli gratuiti possono cambiare.
+
+Inserire tutte le credenziali solo nelle variabili server dell'ambiente locale o in Vercel; mai usare `NEXT_PUBLIC_`, committarle o inviarle in chat. La catena disattiva i retry automatici SDK e condivide il budget temporale della richiesta per lasciare spazio ai fallback. Se e configurato soltanto Groq, mantiene i quattro retry del limiter e l'intero budget precedente; con alternative configurate passa subito al fallback su quota esaurita. Credenziali errate, input non valido e rifiuti di sicurezza sono errori espliciti, non motivi per aggirare il provider; solo una risposta 429 da tutti i provider configurati e disponibili produce il rinvio quota del cron. Se una quota e esaurita insieme a un guasto transitorio, il risultato e un errore temporaneo, non un falso successo quota.
+
+### Quote E Costi
+
+Cloudflare pubblica un'allocazione Workers AI di 10.000 Neurons al giorno senza costo; l'uso oltre la quota richiede un piano Workers Paid e viene addebitato secondo le tariffe del modello. In un account gia su piano Paid possono quindi verificarsi costi per uso oltre l'allocazione: questa integrazione non cambia il piano, non imposta limiti di spesa e non garantisce fatture pari a zero. Anche le quote Groq e OpenRouter sono indipendenti, finite e soggette alle condizioni correnti dei rispettivi account. Verificare quote, modelli, termini e prezzi prima dell'attivazione.
+
+Fonti ufficiali: [Workers AI OpenAI-compatible endpoints](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/), [Cloudflare JSON Mode e modelli supportati](https://developers.cloudflare.com/workers-ai/features/json-mode/), [token REST e permessi](https://developers.cloudflare.com/workers-ai/get-started/rest-api/), [prezzi e quota Neurons](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+
+Verifica live del 27 novembre 2026 con soli dati sintetici, senza creare eventi: Groq e Cloudflare con il nuovo modello hanno restituito JSON completo e campi attesi; il modello OpenRouter configurato ha risposto HTTP 429. La prova non garantisce disponibilita futura, accuratezza su pagine reali o configurazione del deployment Vercel.
 
 ## Provider E Fallback
 

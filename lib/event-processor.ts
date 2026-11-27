@@ -1,4 +1,3 @@
-import Groq from 'groq-sdk';
 import { getBrowser, closeBrowser } from './browser-vercel';
 import { EventData } from '../app/types/event';
 import { extractTextFromImageSimple } from '../app/lib/ocr-simple';
@@ -13,15 +12,11 @@ import type { EventImageCandidate } from './event-image';
 import { completeMissingEventFields, verifyScannedEvents, SCAN_AGENT_VERSION } from './event-scan-agents';
 import type { ScanAgentCompletion, ScanAgentReport } from './event-scan-agents';
 import { validatePublicScanUrl } from './pdf-url';
-import { withGroqRateLimit } from './groq-rate-limit';
+import { createTextAI } from './text-ai';
 import { htmlToEventText } from './http-scraper';
 import { FACEBOOK_EVENT_UNAVAILABLE, hasFacebookEventDetails, isFacebookEventSource, normalizeFacebookEventUrl } from './facebook-event';
 import { MAX_ORIGINAL_EVENT_IMAGE_BYTES, validateOriginalEventImageFile } from './event-media';
 import { posterFingerprint } from './poster-fingerprint';
-
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_SECRET_KEY,
-});
 
 /** Shared by every step; below the 55s maxDuration of /api/process-link to leave time for the response. */
 const LINK_BUDGET_MS = 50_000;
@@ -102,11 +97,6 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
 
     url = normalizeFacebookEventUrl(url);
     let isFacebookUrl = isFacebookEventSource(url);
-
-    // Verifica che GROQ_API_SECRET_KEY sia configurata
-    if (!process.env.GROQ_API_SECRET_KEY) {
-        throw new Error('API non configurata correttamente. Aggiungi GROQ_API_SECRET_KEY alle variabili d\'ambiente.');
-    }
 
     // Vercel stops the function at 55s (vercel.json): every step below shares this budget.
     const startedAt = Date.now();
@@ -625,11 +615,11 @@ export async function processEventLink(url: string, options?: ProcessEventLinkOp
         combinedText = `TESTO DALLA PAGINA WEB:\n${pageText}\n\nTESTO DALL'IMMAGINE (OCR):\n${imageText}`;
     }
 
-    // 2. Costruisci indizi euristici per aiutare Groq (date, orari, prezzi, luoghi)
+    // 2. Costruisci indizi euristici per aiutare l'estrazione (date, orari, prezzi, luoghi)
     const heuristicHints = buildEventExtractionHints(combinedText);
 
-    // 3. Usa Groq per estrarre le informazioni dell'evento
-    logger.log('=== GROQ API CALL ===');
+    // 3. Usa il provider testuale configurato per estrarre le informazioni dell'evento
+    logger.log('=== TEXT AI API CALL ===');
     const currentDate = new Date().toISOString().split('T')[0];
 
     const prompt = `Estrai le informazioni dell'evento dal seguente testo di una pagina web.
@@ -717,7 +707,8 @@ ${combinedText}
 
 Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
 
-    const completion = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
+    const completeTextAI = createTextAI();
+    const completion = await completeTextAI({
         messages: [
             {
                 role: 'system',
@@ -728,8 +719,6 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
                 content: prompt,
             },
         ],
-        // llama-3.1-8b-instant was retired by Groq; this is the current equivalent available on this key.
-        model: 'openai/gpt-oss-20b',
         response_format: { type: 'json_object' },
         temperature: 0.1,
         // gpt-oss reasoning models bill their internal chain-of-thought against
@@ -737,14 +726,14 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         // emitting any JSON (json_validate_failed with empty failed_generation).
         max_tokens: 4000,
         reasoning_effort: 'low',
-    }, requestOptions), { budgetMs: Math.max(1, Math.min(25_000, remainingMs() - 4_000)) });
+    }, { budgetMs: Math.max(1, Math.min(25_000, remainingMs() - 4_000)) });
 
     const responseText = completion.choices[0]?.message?.content || '';
     let first = responseText.indexOf('{');
     let last = responseText.lastIndexOf('}');
     
     if (first === -1 || last === -1 || last <= first) {
-        throw new Error('Groq AI non ha restituito un JSON valido.');
+        throw new Error('Text AI non ha restituito un JSON valido.');
     }
     
     const jsonStr = responseText.slice(first, last + 1);
@@ -768,14 +757,13 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
     events = splitEventsByTime(events);
 
     const completeScanAgent: ScanAgentCompletion = async (messages, signal) => {
-        const result = await withGroqRateLimit('openai/gpt-oss-20b', requestOptions => groq.chat.completions.create({
+        const result = await completeTextAI({
             messages,
-            model: 'openai/gpt-oss-20b',
             response_format: { type: 'json_object' },
             temperature: 0.1,
             max_tokens: 2000,
             reasoning_effort: 'low',
-        }, requestOptions), { signal, budgetMs: Math.max(1, Math.min(10_000, remainingMs())) });
+        }, { signal, budgetMs: Math.max(1, Math.min(10_000, remainingMs())) });
         if (result.choices[0]?.finish_reason !== 'stop') throw new Error('Incomplete scan agent response');
         return result.choices[0]?.message?.content || '';
     };
@@ -787,8 +775,8 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         completionReports.push(result.agent);
     }
 
-    // Capture Groq raw (pre-verifica Google)
-    const groqRawData = JSON.parse(JSON.stringify(events));
+    // Capture raw data (pre-verifica Google)
+    const extractedRawData = JSON.parse(JSON.stringify(events));
     let googleRawData: any = null;
     let verificationReports: ScanAgentReport[] = [];
 
@@ -877,7 +865,7 @@ Rispondi SOLO con il JSON, senza altri testi o spiegazioni.`;
         imageUrl: finalImageUrl,
         debug: {
             ocrRaw: combinedText,
-            groqRaw: groqRawData,
+            groqRaw: extractedRawData,
             googleRaw: googleRawData,
             scanAgents: {
                 version: SCAN_AGENT_VERSION,

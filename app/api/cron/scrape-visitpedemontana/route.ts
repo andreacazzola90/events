@@ -288,7 +288,7 @@ async function scrapeOneSource(
     return {
       status: 'partial',
       dryRun,
-      message: 'Quota Groq temporaneamente esaurita: sorgente rinviata al prossimo cron utile.',
+      message: 'Quota AI temporaneamente esaurita: sorgente rinviata al prossimo cron utile.',
       nextApiPage: sourceConfig.nextApiPage,
       pendingEventLinks: sourceConfig.pendingEventLinks,
       rateLimitRetryAt: sourceConfig.rateLimitRetryAt,
@@ -920,10 +920,13 @@ async function scrapeOneSource(
           rateLimitRetryAt = retryAt;
           summaryEntry.visited = true;
           summaryEntry.status = 'deferred';
-          console.warn('[VisitPedemontana] Groq quota busy; preserving remaining links', { retryAt });
+          console.warn('[VisitPedemontana] AI quota busy; preserving remaining links', { retryAt });
           break;
         }
-        console.error(`[VisitPedemontana] Error processing ${url}:`, error);
+        console.error(`[VisitPedemontana] Error processing ${url}:`, {
+          name: error instanceof Error ? error.name : 'Error',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
         errors.push({ url, error: error instanceof Error ? error.message : 'Unknown error' });
         summaryEntry.visited = true;
         summaryEntry.status = 'error';
@@ -957,7 +960,7 @@ async function scrapeOneSource(
       nextApiPage: dryRun ? sourceConfig.nextApiPage : nextApiPage,
       pendingEventLinks: dryRun ? sourceConfig.pendingEventLinks : pendingEventLinks,
       rateLimitRetryAt: dryRun ? sourceConfig.rateLimitRetryAt : rateLimitRetryAt,
-      ...(rateLimitRetryAt ? { message: 'Quota Groq temporaneamente esaurita: link conservati per il prossimo cron utile.' } : {}),
+      ...(rateLimitRetryAt ? { message: 'Quota AI temporaneamente esaurita: link conservati per il prossimo cron utile.' } : {}),
       found: eventLinks.length,
       new: newEventLinks.length,
       processed: dryRun ? dryRunStats.wouldSave : processedEvents.length,
@@ -1047,7 +1050,7 @@ export async function GET(request: NextRequest) {
         sourceId: source.id,
         sourceName: source.name,
         status: 'partial',
-        message: 'Quota Groq temporaneamente esaurita: sorgente rinviata al prossimo cron utile.',
+        message: 'Quota AI temporaneamente esaurita: sorgente rinviata al prossimo cron utile.',
         ...checkpoint,
         deferred: source.pendingEventLinks.length,
       };

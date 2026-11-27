@@ -7,8 +7,12 @@ export class GroqRateLimitError extends Error {
   readonly status = 429;
   readonly retryAt: number;
 
-  constructor(retryAt: number, cause?: unknown) {
-    super('Quota Groq temporaneamente esaurita: elaborazione rinviata.', { cause });
+  constructor(
+    retryAt: number,
+    cause?: unknown,
+    message = 'Quota Groq temporaneamente esaurita: elaborazione rinviata.',
+  ) {
+    super(message, { cause });
     this.name = 'GroqRateLimitError';
     this.retryAt = retryAt;
   }
@@ -73,9 +77,10 @@ function waitForQuota(ms: number, signal: AbortSignal): Promise<void> {
 export async function withGroqRateLimit<T>(
   model: string,
   invoke: (options: { signal: AbortSignal; timeout: number; maxRetries: 0 }) => Promise<T>,
-  options: { budgetMs?: number; signal?: AbortSignal } = {},
+  options: { budgetMs?: number; signal?: AbortSignal; maxRetries?: number } = {},
 ): Promise<T> {
   const budgetMs = Math.max(1, Math.floor(options.budgetMs ?? 25_000));
+  const maxRetries = Math.max(0, Math.floor(options.maxRetries ?? MAX_RETRIES));
   const deadline = Date.now() + budgetMs;
   const timeoutSignal = AbortSignal.timeout(budgetMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
@@ -86,6 +91,7 @@ export async function withGroqRateLimit<T>(
     // Other requests in this process may extend the cooldown while we are waiting.
     while ((cooldowns.get(model) ?? 0) > Date.now()) {
       const retryAt = cooldowns.get(model)!;
+      if (maxRetries === 0) throw new GroqRateLimitError(retryAt, lastError);
       if (retryAt + MIN_REQUEST_MS >= deadline) throw new GroqRateLimitError(retryAt, lastError);
       await waitForQuota(retryAt - Date.now(), signal);
     }
@@ -100,7 +106,7 @@ export async function withGroqRateLimit<T>(
       const nextAttemptAt = Math.max(cooldowns.get(model) ?? 0, retryAt);
       cooldowns.set(model, nextAttemptAt);
       console.warn('[groq-rate-limit] Quota busy', { model, attempt: attempt + 1, retryAt: nextAttemptAt });
-      if (attempt >= MAX_RETRIES || nextAttemptAt + MIN_REQUEST_MS >= deadline) {
+      if (attempt >= maxRetries || nextAttemptAt + MIN_REQUEST_MS >= deadline) {
         throw new GroqRateLimitError(nextAttemptAt, error);
       }
     }
